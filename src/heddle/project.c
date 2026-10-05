@@ -1,3 +1,4 @@
+#include "glob.h"
 #include "lang.h"
 #include "project.h"
 #include "recipe.h"
@@ -140,6 +141,71 @@ static int load_strings(const TOML *cfg, const char *section, const char *key,
     }
 }
 
+static int cmp_str(const void *a, const void *b) {
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+
+static int load_sources(const TOML *cfg, const char *section, const char *dir,
+                        char ***out, int *n, char *err, size_t errsz) {
+    for (int i = 0; ; i++) {
+        const char *v = toml_arr(cfg, section, "src", i);
+
+        if (!v) break;
+
+        if (!glob_has_wild(v)) {
+            char *full = dir ? prefixed(dir, v) : sys_dup(v);
+
+            if (full) {
+                vec_add(out, n, full);
+                free(full);
+            }
+
+            continue;
+        }
+
+        GLOB_LIST l;
+        glob_init(&l);
+
+        int hit = glob_dir(dir && dir[0] ? dir : ".", v, &l);
+
+        if (hit == 0) {
+            snprintf(err, errsz, "section [%s]: pattern '%s' matches nothing",
+                     section, v);
+            glob_free(&l);
+            return -1;
+        }
+
+        for (int k = 0; k < l.n; k++) {
+            char *full = dir ? prefixed(dir, l.items[k]) : sys_dup(l.items[k]);
+
+            if (full) {
+                vec_add(out, n, full);
+                free(full);
+            }
+        }
+
+        glob_free(&l);
+    }
+
+    if (*n > 1) {
+        qsort(*out, (size_t)*n, sizeof(char *), cmp_str);
+
+        int w = 1;
+
+        for (int i = 1; i < *n; i++) {
+            if (strcmp((*out)[i], (*out)[w - 1])) {
+                (*out)[w++] = (*out)[i];
+            } else {
+                free((*out)[i]);
+            }
+        }
+
+        *n = w;
+    }
+
+    return 0;
+}
+
 static int target_fill(TARGET *t, const TOML *cfg,
                        const char *section, char *err, size_t errsz) {
     const char *type = toml_str(cfg, section, "type");
@@ -154,7 +220,8 @@ static int target_fill(TARGET *t, const TOML *cfg,
         return -1;
     }
 
-    if (load_strings(cfg, section, "src", t->dir, &t->src, &t->nsrc) != 0)
+    if (load_sources(cfg, section, t->dir, &t->src, &t->nsrc,
+                     err, errsz) != 0)
         return -1;
 
     if (load_strings(cfg, section, "inc", t->dir, &t->inc, &t->ninc) != 0)

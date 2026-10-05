@@ -1,9 +1,9 @@
 #include "recipe.h"
 
+#include "glob.h"
 #include "sys.h"
 #include "toml.h"
 
-#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,55 +36,6 @@ static void push(char ***v, int *n, const char *s) {
     (*v)[*n] = sys_dup(s);
 
     if ((*v)[*n]) (*n)++;
-}
-
-static int wild(const char *pat, const char *name) {
-    const char *star = strchr(pat, '*');
-
-    if (!star) return !strcmp(pat, name);
-
-    size_t pre  = (size_t)(star - pat);
-    size_t post = strlen(star + 1);
-    size_t ln   = strlen(name);
-
-    if (ln < pre + post) return 0;
-    if (pre && strncmp(pat, name, pre)) return 0;
-    if (post && strcmp(name + ln - post, star + 1)) return 0;
-
-    return 1;
-}
-
-static void scan(RECIPE *r, const char *dir, const char *pat) {
-    DIR *d = opendir(dir);
-    if (!d) return;
-
-    struct dirent *e;
-
-    while ((e = readdir(d))) {
-        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-
-        char *full = join(dir, e->d_name);
-        if (!full) continue;
-
-        if (sys_isdir(full)) {
-            if (strchr(pat, '/')) {
-                const char *slash = strchr(pat, '/');
-                char        head[256];
-
-                snprintf(head, sizeof(head), "%.*s", (int)(slash - pat), pat);
-
-                if (wild(head, e->d_name)) scan(r, full, slash + 1);
-            } else {
-                scan(r, full, pat);
-            }
-        } else if (wild(pat, e->d_name)) {
-            push(&r->build.files, &r->build.nfile, full);
-        }
-
-        free(full);
-    }
-
-    closedir(d);
 }
 
 int recipe_match(const char *dir) {
@@ -151,8 +102,23 @@ int recipe_load(RECIPE *r, const char *dir, char *err, size_t errsz) {
         return -1;
     }
 
-    for (int i = 0; i < r->build.npat; i++)
-        scan(r, r->dir, r->build.patterns[i]);
+    for (int i = 0; i < r->build.npat; i++) {
+        GLOB_LIST g;
+
+        glob_init(&g);
+        glob_dir(r->dir, r->build.patterns[i], &g);
+
+        for (int k = 0; k < g.n; k++) {
+            char *full = join(r->dir, g.items[k]);
+
+            if (full) {
+                push(&r->build.files, &r->build.nfile, full);
+                free(full);
+            }
+        }
+
+        glob_free(&g);
+    }
 
     if (r->build.npat && !r->build.nfile) {
         snprintf(err, errsz, "%s: no sources match", dir);

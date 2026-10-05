@@ -335,4 +335,36 @@ rm -rf out .heddle heddle.lock
 unset HEDDLE_REGISTRY
 echo
 
+echo "src glob:"
+cd "$HERE/glob"
+rm -rf out .heddle
+
+$HEDDLE app >/dev/null 2>&1
+check_rc "glob build" $? 0
+check_eq "glob build output" "$(./out/app)" "71"
+
+graph=$(cat .heddle/app.graph)
+case "$graph" in
+    *"src/util/util.c"*) ok "src/*.c expanded" ;;
+    *)                   bad "src/util/*.c not expanded: $graph" ;;
+esac
+case "$graph" in
+    *"src/extra/sub/b.c"*) ok "** expanded into subdirs" ;;
+    *)                     bad "src/extra/**/*.c not expanded: $graph" ;;
+esac
+case "$graph" in
+    *"app/main.c"*) ok "app/*.c expanded" ;;
+    *)              bad "app/*.c not expanded: $graph" ;;
+esac
+
+n=$(grep -c "o out/extra_a.o src/extra/a.c" .heddle/app.graph)
+check_eq "overlapping globs dedup" "$n" "1"
+
+rm -rf out .heddle
+$HEDDLE app >/dev/null 2>&1
+out=$($HEDDLE app -v 2>&1)
+expect_err "glob noop rebuild" "$out" "0 ran"
+rm -rf out .heddle
+echo
+
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"

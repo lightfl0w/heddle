@@ -1,0 +1,28 @@
+[build]
+dir = "out"
+
+[toolchain.host]
+cc = "cc"
+cflags = ["-O2", "-Wall"]
+
+[target.util]
+type = "staticlib"
+src = ["src/util/*.c"]
+inc = ["src/util"]
+
+[target.math]
+type = "staticlib"
+src = ["src/math/*.c"]
+inc = ["src/util", "src/math"]
+deps = ["util"]
+
+[target.extra]
+type = "staticlib"
+src = ["src/extra/*.c", "src/extra/**/*.c"]
+inc = ["src/extra"]
+
+[target.app]
+type = "exe"
+src = ["app/*.c"]
+inc = ["src/math", "src/extra"]
+deps = ["math", "util", "extra"]
