@@ -1,0 +1,7 @@
+.xmake/
+build/
+.build/
+bench/
+loom
+.DS_Store
+.vscode/compile_commands.json
