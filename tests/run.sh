@@ -482,4 +482,63 @@ mv heddle.keep.toml heddle.toml
 rm -rf out .heddle stage stage2
 echo
 
+echo "init:"
+WORK=$(mktemp -d)
+cd "$WORK"
+
+out=$($HEDDLE init --list 2>&1)
+check_rc "init --list" $? 0
+expect_err "lists exe" "$out" "exe"
+expect_err "lists embedded" "$out" "embedded"
+
+out=$($HEDDLE init bogus 2>&1)
+check_rc "unknown type rejected" $? 2
+expect_err "unknown type message" "$out" "unknown project type"
+
+$HEDDLE init exe exe1 </dev/null >/dev/null 2>&1
+check_rc "init exe" $? 0
+[ -f exe1/heddle.toml ] && [ -f exe1/src/main.c ] \
+    && ok "exe files created" || bad "exe files missing"
+( cd exe1 && $HEDDLE app >/dev/null 2>&1 )
+check_rc "generated exe builds" $? 0
+check_eq "generated exe runs" "$(cd exe1 && ./out/app)" "hello"
+( cd exe1 && $HEDDLE check >/dev/null 2>&1 )
+check_rc "generated exe checks" $? 0
+
+$HEDDLE init lib lib1 </dev/null >/dev/null 2>&1
+( cd lib1 && $HEDDLE mylib >/dev/null 2>&1 )
+check_rc "generated lib builds" $? 0
+[ -f lib1/include/mylib.h ] && ok "lib header created" || bad "lib header missing"
+
+$HEDDLE init embedded fw1 --arch=riscv32imac </dev/null >/dev/null 2>&1
+check_rc "init embedded" $? 0
+grep -q 'arch = "riscv32imac"' fw1/heddle.toml \
+    && ok "embedded arch recorded" || bad "embedded arch wrong"
+( cd fw1 && $HEDDLE check >/dev/null 2>&1 )
+check_rc "generated embedded checks" $? 0
+grep -q "riscv64-unknown-elf" <(cd fw1 && $HEDDLE check 2>&1) \
+    && ok "embedded derives cross prefix" || bad "embedded prefix wrong"
+
+out=$($HEDDLE init embedded fw2 --arch=nope 2>&1)
+check_rc "bad arch rejected" $? 2
+expect_err "bad arch message" "$out" "unknown arch"
+
+if command -v nasm >/dev/null 2>&1; then
+    $HEDDLE init baremetal os1 </dev/null >/dev/null 2>&1
+    ( cd os1 && $HEDDLE image >/dev/null 2>&1 )
+    check_rc "generated baremetal builds" $? 0
+    sig=$(xxd -s 510 -l 2 -p os1/out/mbr.bin 2>/dev/null)
+    check_eq "generated boot signature" "$sig" "55aa"
+else
+    echo "  skip (nasm not found)"
+fi
+
+out=$($HEDDLE init exe exe1 </dev/null 2>&1)
+expect_err "existing files skipped" "$out" "exists"
+out=$($HEDDLE init exe exe1 --force </dev/null 2>&1)
+expect_err "force overwrites" "$out" "create"
+
+rm -rf "$WORK"
+echo
+
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"

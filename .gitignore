@@ -8,3 +8,6 @@ loom
 *.log
 .heddle/
 out/
+*.o
+*.obj
+*.exe

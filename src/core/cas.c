@@ -10,12 +10,19 @@
 
 #ifdef _WIN32
 #include <direct.h>
+#include <fcntl.h>
+#include <io.h>
 #define MKDIR(p) _mkdir(p)
+
+#define CAS_O_RDONLY (O_RDONLY | O_BINARY)
+#define CAS_O_WRONLY (O_WRONLY | O_CREAT | O_TRUNC | O_BINARY)
 #else
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 #define MKDIR(p) mkdir((p), 0755)
+#define CAS_O_RDONLY (O_RDONLY)
+#define CAS_O_WRONLY (O_WRONLY | O_CREAT | O_TRUNC)
 #endif
 
 struct CAS {
@@ -58,7 +65,7 @@ static int try_reflink(int in, int out) {
 }
 
 static int copy_file(const char *from, const char *to) {
-    int in = open(from, O_RDONLY);
+    int in = open(from, CAS_O_RDONLY);
     if (in < 0) return -1;
 
     char *dir = sys_dup(to);
@@ -71,7 +78,7 @@ static int copy_file(const char *from, const char *to) {
 
     free(dir);
 
-    int out = open(to, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int out = open(to, CAS_O_WRONLY, 0644);
     if (out < 0) {
         close(in);
         return -1;
@@ -116,7 +123,7 @@ static int copy_bytes(const void *p, size_t n, const char *to) {
 
     free(dir);
 
-    int out = open(to, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int out = open(to, CAS_O_WRONLY, 0644);
     if (out < 0) return -1;
 
     const char *b = (const char *)p;

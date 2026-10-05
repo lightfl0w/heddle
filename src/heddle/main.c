@@ -1,6 +1,7 @@
 #include "heddle.h"
 
 #include "emit.h"
+#include "init.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,7 @@ static int usage(const char *prog) {
     fprintf(stderr,
             "usage: %s [build] TARGET\n"
             "       %s run TARGET\n"
+            "       %s init [TYPE] [DIR]   create a new project\n"
             "       %s check\n"
             "       %s toolchains\n"
             "       %s tool install        restore toolchain + dependencies\n"
@@ -43,7 +45,7 @@ static int usage(const char *prog) {
             "  --prefix DIR      install prefix (required for install)\n"
             "  --destdir DIR     stage under DIR, do not touch the system\n"
             "  --dry-run         print the install plan only\n",
-            prog, prog, prog, prog, prog, prog, prog, prog, prog);
+            prog, prog, prog, prog, prog, prog, prog, prog, prog, prog);
     return 2;
 }
 
@@ -181,6 +183,9 @@ int main(int argc, char **argv) {
 
     if (argc >= 3 && !strcmp(argv[1], "ldconv"))
         return heddle_ldconv(argc, argv);
+
+    if (argc >= 2 && !strcmp(argv[1], "init"))
+        return heddle_init(argc, argv);
 
     emit_set_self(argv[0]);
 

@@ -12,8 +12,6 @@ typedef struct {
     int         no_cache;
     int         offline;
     const char *registry;
-
-    /* install */
     const char *prefix;
     const char *destdir;
     int         dry_run;

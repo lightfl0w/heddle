@@ -23,6 +23,7 @@ heddle app
 也可写成 `heddle build app`。子命令：
 
 ```sh
+heddle init           # 生成一个新工程
 heddle check          # 只做配置静态检查
 heddle toolchains     # 列出探测到的工具链
 heddle tool install   # 恢复工具链 + 依赖，写/修 heddle.lock
@@ -55,6 +56,34 @@ heddle -C /path/to/proj app
 | `--prefix DIR` | 安装前缀 |
 | `--destdir DIR` | 安装暂存目录 |
 | `--dry-run` | 只打印安装计划 |
+
+## 新建工程
+
+```sh
+heddle init                 # 交互选择类型
+heddle init embedded fw     # 指定类型和目录
+heddle init lib --force     # 覆盖已存在的文件
+heddle init --list          # 列出类型
+```
+
+| 类型 | 生成内容 |
+| --- | --- |
+| `exe` | 本机可执行，一个 `src/main.c` |
+| `lib` | 静态库 + 公共头 + 安装规则 |
+| `embedded` | 交叉目标（`--arch` 选架构）+ 链接脚本 + `entry` |
+| `baremetal` | 引导扇区 + 内核 + 磁盘镜像，演示 `raw` / `custom` |
+
+`embedded` 的架构用 `--arch` 指定，不指定就交互选择：
+
+```sh
+heddle init embedded fw --arch=armv7em
+```
+
+支持 `armv7em` `armv7m` `armv6m` `armv8m` `cortex-m7` `aarch64`
+`riscv32imac` `riscv64` `xtensa` `avr` `msp430`。
+生成的 `[target] arch` 会自动推出编译器前缀和编译参数，不用手写。
+
+默认不覆盖已有文件
 
 ## 工具链与依赖的统一管理
 
