@@ -1,0 +1,16 @@
+#!/bin/sh
+# fake IAR compiler: compile via host cc, record invocation
+echo "iccarm $*" >> .linkspy
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out=$2; shift 2; continue ;;
+    --dlib_config) shift 2; continue ;;
+    -I*) shift; continue ;;
+    -D*) shift; continue ;;
+    --*) shift; continue ;;
+  esac
+  last=$1
+  shift
+done
+exec cc -c "$last" -Iinclude -o "$out"

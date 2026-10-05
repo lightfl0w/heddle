@@ -1,5 +1,6 @@
 #include "emit.h"
 #include "lang.h"
+#include "link.h"
 #include "sys.h"
 
 #include <stdarg.h>
@@ -512,6 +513,55 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
     return 0;
 }
 
+static const char *g_self = "heddle";
+
+void emit_set_self(const char *argv0) {
+    if (argv0 && argv0[0]) g_self = argv0;
+}
+
+static const char *ld_ext(const char *family) {
+    if (!strcmp(family, "iar")) return ".icf";
+    if (!strcmp(family, "armcc")) return ".sct";
+
+    return NULL;
+}
+
+static int is_gnu_script(const char *path) {
+    const char *dot = strrchr(path, '.');
+
+    return dot && (!strcmp(dot, ".ld") || !strcmp(dot, ".lds"));
+}
+
+static char *script_for_family(const PROJECT *p, const TARGET *t,
+                               PLAN *pl, int *ok, int *step_id) {
+    const char *fam = p->tc.family ? p->tc.family : "gnu";
+
+    *ok      = 1;
+    *step_id = -1;
+
+    if (!t->ldscript) return NULL;
+
+    const char *ext = ld_ext(fam);
+
+    if (!ext || !is_gnu_script(t->ldscript)) return sys_dup(t->ldscript);
+
+    char out[4096];
+    snprintf(out, sizeof(out), "%s/%s%s", p->build_dir, t->name, ext);
+
+    char cmd[8192];
+    snprintf(cmd, sizeof(cmd), "'%s' ldconv %s %s '%s'",
+             g_self, t->ldscript, fam, out);
+
+    STEP *st = plan_add(pl, cmd);
+
+    if (!st) { *ok = 0; return NULL; }
+
+    step_out(st, out);
+
+    *step_id = pl->n - 1;
+    return sys_dup(out);
+}
+
 int emit_graph(const PROJECT *p, const char *target, const char *graph,
                char *err, size_t errsz) {
     int root = target_index(p, target);
@@ -605,7 +655,9 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
         if (!out) continue;
 
         char cmd[16384];
-        int  len = 0;
+        int  len   = 0;
+        int  sstep = -1;
+
         cmd[0] = 0;
 
         if (t->type == TARGET_CUSTOM) {
@@ -626,43 +678,79 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
                 free(obj);
             }
         } else {
-            addf(cmd, sizeof(cmd), &len, "%s", p->tc.ld);
+            char  *objs[4096];
+            char  *libs[4096];
+            int    nobj = 0, nlib = 0;
 
-            if (t->type == TARGET_SHAREDLIB)
-                addf(cmd, sizeof(cmd), &len, " %s", p->tc.soflag);
-
-            addf(cmd, sizeof(cmd), &len, " -o %s", out);
-
-            for (int k = 0; k < t->nsrc; k++) {
+            for (int k = 0; k < t->nsrc && nobj < 4096; k++) {
                 char *obj = object_of(p, t, t->src[k]);
 
-                if (obj) addf(cmd, sizeof(cmd), &len, " %s", obj);
-
-                free(obj);
+                if (obj) objs[nobj++] = obj;
             }
 
-            for (int k = 0; k < t->ndeps; k++) {
+            for (int k = 0; k < t->ndeps && nlib < 4096; k++) {
                 int d = target_index(p, t->deps[k]);
 
                 if (d < 0) continue;
 
                 char *lib = emit_artifact(p, &p->targets[d]);
 
-                if (lib) addf(cmd, sizeof(cmd), &len, " %s", lib);
-
-                free(lib);
+                if (lib) libs[nlib++] = lib;
             }
 
-            if (t->ldscript)
-                addf(cmd, sizeof(cmd), &len, " -T %s", t->ldscript);
+            char depflags[4096];
+            int  dlen = 0;
 
-            for (int k = 0; k < p->tc.nldflags; k++)
-                addf(cmd, sizeof(cmd), &len, " %s", p->tc.ldflags[k]);
+            depflags[0] = 0;
+            put_dep_ldflags(p, depflags, sizeof(depflags), &dlen);
 
-            for (int k = 0; k < t->nldflags; k++)
-                addf(cmd, sizeof(cmd), &len, " %s", t->ldflags[k]);
+            if (dlen && depflags[0] == ' ') {
+                memmove(depflags, depflags + 1, (size_t)dlen);
+                dlen--;
+            }
 
-            put_dep_ldflags(p, cmd, sizeof(cmd), &len);
+            char  *ldflags[1024];
+            int    nldf = 0;
+
+            for (int k = 0; k < p->tc.nldflags && nldf < 1024; k++)
+                ldflags[nldf++] = p->tc.ldflags[k];
+
+            for (int k = 0; k < t->nldflags && nldf < 1024; k++)
+                ldflags[nldf++] = t->ldflags[k];
+
+            if (dlen) ldflags[nldf++] = depflags;
+
+            int   sok = 1;
+            char *script = script_for_family(p, t, &pl, &sok, &sstep);
+
+            if (!sok) {
+                for (int k = 0; k < nobj; k++) free(objs[k]);
+                for (int k = 0; k < nlib; k++) free(libs[k]);
+                free(out);
+                snprintf(err, errsz, "out of memory");
+                goto fail;
+            }
+
+            LINK_REQ req;
+            memset(&req, 0, sizeof(req));
+
+            req.out      = out;
+            req.objs     = objs;
+            req.nobj     = nobj;
+            req.libs     = libs;
+            req.nlib     = nlib;
+            req.ldflags  = ldflags;
+            req.nldf     = nldf;
+            req.ldscript = script;
+            req.entry    = t->entry;
+            req.shared   = t->type == TARGET_SHAREDLIB;
+
+            link_cmd(&p->tc, &req, cmd, sizeof(cmd));
+
+            free(script);
+
+            for (int k = 0; k < nobj; k++) free(objs[k]);
+            for (int k = 0; k < nlib; k++) free(libs[k]);
         }
 
         STEP *st = plan_add(&pl, cmd);
@@ -672,6 +760,8 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
             snprintf(err, errsz, "out of memory");
             goto fail;
         }
+
+        if (sstep >= 0) step_dep(st, sstep);
 
         step_out(st, out);
         free(out);
@@ -699,7 +789,6 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
 
     for (int i = 0; i < pl.n; i++) {
         STEP *st = &pl.steps[i];
-        if (st->ndep > 0) continue;
 
         for (int k = 0; k < st->nout; k++) {
             for (int j = 0; j < i; j++) {

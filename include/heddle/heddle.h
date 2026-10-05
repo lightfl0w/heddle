@@ -27,4 +27,6 @@ int heddle_tool_plan(const HEDDLE_OPTS *o);
 
 int heddle_env_verify(const HEDDLE_OPTS *o);
 
+int heddle_ldconv(int argc, char **argv);
+
 #endif

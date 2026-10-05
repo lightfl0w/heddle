@@ -6,6 +6,7 @@
 
 typedef struct TOOLCHAIN {
     char *name;
+    char *family;
 
     char *cc;
     char *cxx;

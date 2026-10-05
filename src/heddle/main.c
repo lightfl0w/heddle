@@ -1,5 +1,7 @@
 #include "heddle.h"
 
+#include "emit.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -154,6 +156,11 @@ static int parse(int argc, char **argv, ARGS *a) {
 
 int main(int argc, char **argv) {
     ARGS a;
+
+    if (argc >= 3 && !strcmp(argv[1], "ldconv"))
+        return heddle_ldconv(argc, argv);
+
+    emit_set_self(argv[0]);
 
     memset(&a, 0, sizeof(a));
 

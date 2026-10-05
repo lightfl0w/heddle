@@ -40,6 +40,7 @@ typedef struct {
     char  *out;
 
     char  *ldscript;
+    char  *entry;
     char  *format;
 } TARGET;
 

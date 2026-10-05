@@ -169,18 +169,22 @@ deps = ["mbr", "kernel"]
 | --- | --- | --- |
 | `.c` | `cc` | C |
 | `.cc` `.cpp` `.cxx` `.c++` | `cxx` | C++ |
-| `.asm` | `as` | NASM，默认 `-f elf` |
+| `.asm` | `as` | NASM，`-f` 由 `[target] arch` 决定（`elf`/`elf32`/`elf64`） |
 | `.S` `.s` | `cc` | GAS |
 
-链接脚本用 `linker_script` 声明，改脚本会触发重链接：
+链接脚本用 `linker_script` 声明，改脚本会触发重链接。这是语义声明，
+具体参数由当前工具链的 `family` 决定，不写死 `-T`：
 
 ```toml
 [target.kernel]
 type = "exe"
 src = ["src/boot.asm", "src/kernel.c"]
 linker_script = "src/kernel.ld"
+entry = "reset_handler"
 ldflags = ["-nostdlib", "-m32"]
 ```
+
+详见下面的 [family](#family)。
 
 加一门新语言只需在配置里声明：
 
@@ -218,10 +222,34 @@ ar = "arm-none-eabi-ar"
 cflags = ["-mcpu=cortex-m4", "-O2"]
 ```
 
-预设：`host` `linux` `gcc` `clang` `macos` `mingw` `msvc`。
-可覆盖字段：`cc` `cxx` `ar` `ld` `cflags` `ldflags` `objext` `binext` `libext` `dllpre` `dllext` `soflag` `platform`。
+预设：`host` `linux` `gcc` `clang` `macos` `mingw` `armcc` `iar` `msvc`。
+可覆盖字段：`family` `cc` `cxx` `ar` `ld` `cflags` `ldflags` `objext` `binext` `libext` `dllpre` `dllext` `soflag` `platform`。
 
 找不到编译器或工具链名写错会直接报错，不静默回退。
+
+### family
+
+`family` 决定链接命令的方言，取值 `gnu` `armcc` `iar` `msvc`。预设自带，
+也可以在 `[toolchain.X]` 里改。
+
+同一个 `linker_script`，换个 `family` 就是另一套参数：
+
+```toml
+[target.kernel]
+type = "exe"
+src = ["src/*.c"]
+linker_script = "kernel.ld"
+entry = "reset_handler"
+```
+
+| family | 链接脚本参数 | entry |
+| --- | --- | --- |
+| `gnu` | `-T kernel.ld` | `-e reset_handler` |
+| `armcc` | `--scatter=kernel.sct` | `--entry=reset_handler` |
+| `iar` | `--config=kernel.icf` | `--entry=reset_handler` |
+| `msvc` | `/DEF:kernel.def` | `/ENTRY:reset_handler` |
+
+`armcc` 和 `iar` 拿到 `.ld` 时会先转成 `.sct`/`.icf`（一个构建步骤，改了 `.ld` 会重链）。
 
 ### 多包
 

@@ -17,6 +17,7 @@
 
 typedef struct {
     const char *name;
+    const char *family;
     const char *cc;
     const char *cxx;
     const char *as;
@@ -30,15 +31,17 @@ typedef struct {
 } TC_PRESET;
 
 static const TC_PRESET g_presets[] = {
-    { "host",  "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
-    { "linux", "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
-    { "gcc",   "gcc",   "g++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
-    { "clang", "clang", "clang++", "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
-    { "macos", "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".dylib", "-dynamiclib" },
-    { "mingw", "x86_64-w64-mingw32-gcc", "x86_64-w64-mingw32-g++",
+    { "host",  "gnu",  "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
+    { "linux", "gnu",  "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
+    { "gcc",   "gnu",  "gcc",   "g++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
+    { "clang", "gnu",  "clang", "clang++", "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
+    { "macos", "gnu",  "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".dylib", "-dynamiclib" },
+    { "armcc", "armcc","armcc", "armcc",   "armasm", "armar", ".o", "",   ".lib", "",    ".dll",   ""            },
+    { "iar",   "iar",  "iccarm","iccarm",  "iasm",  "iarchive", ".o", "", ".a",   "",    ".dll",   ""            },
+    { "mingw", "gnu",  "x86_64-w64-mingw32-gcc", "x86_64-w64-mingw32-g++",
                "x86_64-w64-mingw32-nasm", "x86_64-w64-mingw32-ar",
                ".obj", ".exe", ".a", "lib", ".dll", "-shared" },
-    { "msvc",  "cl",    "cl",      "nasm", "lib", ".obj", ".exe", ".lib", "", ".dll", "-shared" },
+    { "msvc",  "msvc", "cl",    "cl",      "nasm", "lib", ".obj", ".exe", ".lib", "", ".dll", "-shared" },
 };
 
 static const char *const g_auto[] = { "gcc", "clang", "tcc", "msvc" };
@@ -234,6 +237,7 @@ static void read_flags(const char *dir, TOOLCHAIN *tc, const char *user) {
 
 static void load_preset(TOOLCHAIN *tc, const TC_PRESET *p) {
     tc->name     = sys_dup(p->name);
+    tc->family   = sys_dup(p->family);
     tc->cc       = sys_dup(p->cc);
     tc->cxx      = sys_dup(p->cxx);
     tc->as       = sys_dup(p->as);
@@ -353,6 +357,7 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name,
                   or_default(&t, sect, "toolset", NULL));
 
     tc->name     = sys_dup(name);
+    tc->family   = dup_or(&t, sect, "family", p->family);
     tc->cc       = dup_or(&t, sect, "cc", p->cc);
     tc->cxx      = dup_or(&t, sect, "cxx", p->cxx);
     tc->ar       = dup_or(&t, sect, "ar", p->ar);
@@ -451,7 +456,7 @@ int tc_tool_ok(const TOOLCHAIN *tc, const char *tool) {
 }
 
 void tc_free(TOOLCHAIN *tc) {
-    char *strs[] = { tc->name, tc->cc, tc->cxx, tc->as, tc->ar, tc->ld, tc->objext,
+    char *strs[] = { tc->name, tc->family, tc->cc, tc->cxx, tc->as, tc->ar, tc->ld, tc->objext,
                      tc->binext, tc->libext, tc->dllpre, tc->dllext,
                      tc->soflag, tc->platform };
 

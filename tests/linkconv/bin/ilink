@@ -1,0 +1,13 @@
+#!/bin/sh
+echo "ilink $*" >> .linkspy
+# find output and objects, link via host cc for real
+out=""; objects=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output=*) out=${1#--output=} ;;
+    --config=*) ;;
+    *) objects="$objects $1" ;;
+  esac
+  shift
+done
+exec cc -o "$out" $objects

@@ -83,6 +83,7 @@ static void target_free(TARGET *t) {
     free(t->cmd);
     free(t->out);
     free(t->ldscript);
+    free(t->entry);
     free(t->format);
 
     memset(t, 0, sizeof(*t));
@@ -241,11 +242,13 @@ static int target_fill(TARGET *t, const TOML *cfg,
         return -1;
     }
 
-    const char *lds = toml_str(cfg, section, "linker_script");
-    const char *fmt = toml_str(cfg, section, "format");
-    const char *out = toml_str(cfg, section, "out");
+    const char *lds   = toml_str(cfg, section, "linker_script");
+    const char *entry = toml_str(cfg, section, "entry");
+    const char *fmt   = toml_str(cfg, section, "format");
+    const char *out   = toml_str(cfg, section, "out");
 
     t->ldscript = lds ? project_path(t->dir, lds) : NULL;
+    t->entry    = entry ? sys_dup(entry) : NULL;
     t->format   = fmt ? sys_dup(fmt) : NULL;
     t->out      = out ? sys_dup(out) : NULL;
 

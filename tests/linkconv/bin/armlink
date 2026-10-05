@@ -1,0 +1,5 @@
+#!/bin/sh
+echo "armlink $*" >> .linkspy
+out=""; objs=""
+for a in "$@"; do case "$a" in --output=*) out=${a#--output=};; --scatter=*|--entry=*|--shared) ;; *) objs="$objs $a";; esac; done
+exec cc -o "$out" $objs

@@ -1,0 +1,24 @@
+[build]
+dir = "out"
+
+[toolchain.iar]
+family = "iar"
+cc = "iccarm"
+ld = "ilink"
+ar = "ar"
+
+[toolchain.armcc]
+family = "armcc"
+cc = "armcc"
+ld = "armlink"
+ar = "ar"
+
+[toolchain.native]
+based_on = "host"
+family = "gnu"
+
+[target.kernel]
+type = "exe"
+src = ["src/main.c"]
+linker_script = "src/kernel.ld"
+entry = "reset_handler"

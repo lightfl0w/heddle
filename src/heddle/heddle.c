@@ -2,6 +2,7 @@
 
 #include "build.h"
 #include "emit.h"
+#include "ldconv.h"
 #include "pkg.h"
 #include "project.h"
 #include "sys.h"
@@ -299,5 +300,18 @@ int heddle_env_verify(const HEDDLE_OPTS *o) {
            m.lock_path, m.tools.n, m.deps.n, m.deps.n == 1 ? "y" : "ies");
 
     pkg_manifest_free(&m);
+    return 0;
+}
+
+int heddle_ldconv(int argc, char **argv) {
+    if (argc < 5) return 2;
+
+    char err[256] = {0};
+
+    if (ldconv_convert(argv[2], argv[3], argv[4], err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: ldconv: %s\n", err);
+        return 1;
+    }
+
     return 0;
 }

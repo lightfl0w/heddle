@@ -1,6 +1,7 @@
 #!/bin/bash
 set -u
 
+ORIG_PATH=$PATH
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 
@@ -365,6 +366,59 @@ $HEDDLE app >/dev/null 2>&1
 out=$($HEDDLE app -v 2>&1)
 expect_err "glob noop rebuild" "$out" "0 ran"
 rm -rf out .heddle
+echo
+
+echo "linker script (toolchain neutral):"
+cd "$HERE/linkconv"
+rm -rf out .heddle .linkspy
+export PATH="$HERE/linkconv/bin:$PATH"
+
+$HEDDLE -t native kernel >/dev/null 2>&1
+check_rc "gnu build" $? 0
+case "$(cat .heddle/kernel.graph)" in
+    *"-T src/kernel.ld"*)   ok "gnu passes -T" ;;
+    *)                      bad "gnu lost -T" ;;
+esac
+[ "$(wc -l < .heddle/kernel.graph)" = "2" ] \
+    && ok "gnu links in one step" || bad "gnu added a conversion step"
+
+rm -rf out .heddle
+$HEDDLE -t iar kernel >/dev/null 2>&1
+check_rc "iar build" $? 0
+graph=$(cat .heddle/kernel.graph)
+case "$graph" in
+    *"ldconv src/kernel.ld iar"*) ok "iar converts .ld to .icf" ;;
+    *)                            bad "iar did not convert: $graph" ;;
+esac
+case "$graph" in
+    *"--config=out/kernel.icf"*)  ok "iar uses --config" ;;
+    *)                            bad "iar missing --config: $graph" ;;
+esac
+case "$graph" in
+    *"--entry=reset_handler"*)    ok "iar entry is semantic" ;;
+    *)                            bad "iar entry missing: $graph" ;;
+esac
+case "$graph" in
+    *"< 1 0"*) ok "link waits for script" ;;
+    *)         bad "link does not depend on conversion: $graph" ;;
+esac
+grep -q "define region FLASH" out/kernel.icf \
+    && ok "converted icf has regions" || bad "converted icf wrong"
+
+rm -rf out .heddle
+$HEDDLE -t armcc kernel >/dev/null 2>&1
+check_rc "armcc build" $? 0
+graph=$(cat .heddle/kernel.graph)
+case "$graph" in
+    *"--scatter=out/kernel.sct"*) ok "armcc uses --scatter" ;;
+    *)                            bad "armcc missing --scatter: $graph" ;;
+esac
+grep -q "^  FLASH 0x8000000" out/kernel.sct \
+    && ok "scatter has region" || bad "scatter wrong"
+
+rm -rf out .heddle .linkspy
+unset PATH
+export PATH="$ORIG_PATH"
 echo
 
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"
