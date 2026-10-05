@@ -1,0 +1,2 @@
+#!/bin/sh
+exec g++ -DUSING_MANAGED_TOOLCHAIN=1 "$@"

@@ -2,6 +2,7 @@
 
 #include "build.h"
 #include "emit.h"
+#include "pkg.h"
 #include "project.h"
 #include "sys.h"
 
@@ -9,6 +10,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+static void env_free(char **v, int n) {
+    for (int i = 0; i < n; i++) free(v[i]);
+
+    free(v);
+}
 
 static int load(const HEDDLE_OPTS *o, PROJECT *p, char *err, size_t errsz) {
     if (sys_chdir(o->root) != 0) {
@@ -81,13 +88,28 @@ static int build_target(const HEDDLE_OPTS *o, PROJECT *p, char *err) {
     bo.cache_dir  = o->cache;
     bo.remote     = o->remote;
     bo.no_cache   = o->no_cache;
-    bo.env        = p->tc.env;
-    bo.nenv       = p->tc.nenv;
+
+    int    npk   = 0;
+    char **pkenv = pkg_env(&p->pkg, &npk);
+    int    nen   = p->tc.nenv + npk;
+
+    char **env = nen ? (char **)malloc(sizeof(char *) * (size_t)nen) : NULL;
+    int    n   = 0;
+
+    if (env) {
+        for (int i = 0; i < p->tc.nenv; i++) env[n++] = p->tc.env[i];
+        for (int i = 0; i < npk; i++)         env[n++] = pkenv[i];
+    }
+
+    bo.env  = env;
+    bo.nenv = n;
 
     BUILD_ENGINE *e = build_open(&bo, err, sizeof(err));
 
     if (!e) {
         fprintf(stderr, "heddle: %s\n", err);
+        env_free(pkenv, npk);
+        free(env);
         return 1;
     }
 
@@ -105,6 +127,8 @@ static int build_target(const HEDDLE_OPTS *o, PROJECT *p, char *err) {
         fprintf(stderr, "heddle: %d ran, %d cached\n", ran, hit);
 
     build_close(e);
+    env_free(pkenv, npk);
+    free(env);
     return rc;
 }
 
@@ -182,5 +206,93 @@ int heddle_toolchains(void) {
                tc_probe(name) ? "ok" : "-", tc_preset_cc(name));
     }
 
+    return 0;
+}
+
+static void apply_registry_env(const HEDDLE_OPTS *o) {
+    if (o->registry && o->registry[0]) {
+#if defined(_WIN32)
+        _putenv_s("HEDDLE_REGISTRY", o->registry);
+#else
+        setenv("HEDDLE_REGISTRY", o->registry, 1);
+#endif
+    }
+}
+
+static int pkg_load(const HEDDLE_OPTS *o, PKG_MANIFEST *m, char *err,
+                    size_t errsz) {
+    if (sys_chdir(o->root) != 0) {
+        snprintf(err, errsz, "cannot enter project directory '%s'", o->root);
+        return -1;
+    }
+
+    apply_registry_env(o);
+
+    return pkg_manifest_load(m, ".", err, errsz);
+}
+
+int heddle_tool_plan(const HEDDLE_OPTS *o) {
+    char         err[512] = {0};
+    PKG_MANIFEST m;
+
+    if (pkg_load(o, &m, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        return 1;
+    }
+
+    pkg_plan(&m);
+    pkg_manifest_free(&m);
+    return 0;
+}
+
+int heddle_tool_install(const HEDDLE_OPTS *o) {
+    char         err[512] = {0};
+    PKG_MANIFEST m;
+
+    if (pkg_load(o, &m, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        return 1;
+    }
+
+    if (o->verbose) pkg_plan(&m);
+
+    if (pkg_install(&m, o->offline, o->verbose, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        pkg_manifest_free(&m);
+        return 1;
+    }
+
+    int nt = m.tools.n;
+    int nd = m.deps.n;
+
+    printf("heddle: installed %d toolchain package%s and %d dependenc%s\n",
+           nt, nt == 1 ? "" : "s", nd, nd == 1 ? "y" : "ies");
+
+    if (nt || nd)
+        printf("heddle: store %s\nheddle: lock  %s\n", m.store, m.lock_path);
+
+    pkg_manifest_free(&m);
+    return 0;
+}
+
+int heddle_env_verify(const HEDDLE_OPTS *o) {
+    char         err[512] = {0};
+    PKG_MANIFEST m;
+
+    if (pkg_load(o, &m, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        return 1;
+    }
+
+    if (pkg_verify(&m, o->verbose, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        pkg_manifest_free(&m);
+        return 1;
+    }
+
+    printf("heddle: environment matches %s (%d toolchain, %d dependenc%s)\n",
+           m.lock_path, m.tools.n, m.deps.n, m.deps.n == 1 ? "y" : "ies");
+
+    pkg_manifest_free(&m);
     return 0;
 }

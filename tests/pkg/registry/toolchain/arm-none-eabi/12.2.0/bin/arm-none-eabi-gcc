@@ -1,0 +1,15 @@
+#!/bin/sh
+# Fake cross-gcc for tests: accept the ARM flags the target profile
+# derives, drop them before handing off to the host compiler, and tag
+# the translation unit so tests can prove the managed toolchain ran.
+args=""
+skip=0
+for a in "$@"; do
+    if [ "$skip" = 1 ]; then skip=0; continue; fi
+    case "$a" in
+        -mthumb|-mcpu=*|-mfpu=*|-mfloat-abi=*|--sysroot) skip=0; continue ;;
+        --sysroot=*) continue ;;
+    esac
+    args="$args '$a'"
+done
+eval exec gcc -DUSING_MANAGED_TOOLCHAIN=1 $args

@@ -25,6 +25,9 @@ heddle app
 ```sh
 heddle check          # 只做配置静态检查
 heddle toolchains     # 列出探测到的工具链
+heddle tool install   # 恢复工具链 + 依赖，写/修 heddle.lock
+heddle tool plan      # 只打印包解析计划
+heddle env verify     # 校验环境与锁文件完全一致
 ```
 
 工程根目录默认是当前目录，用 `-C` 切换：
@@ -45,6 +48,35 @@ heddle -C /path/to/proj app
 | `--cache DIR` | CAS 根目录 |
 | `--remote URL` | 远程 CAS，目录或 `http(s)://` |
 | `--no-cache` | 关闭缓存 |
+| `--registry DIR\|URL` | 包 registry，默认 `$HEDDLE_REGISTRY` |
+| `--offline` | 禁止访问 registry |
+
+## 工具链与依赖的统一管理
+
+`heddle tool install` 同时恢复工具链和所有依赖，落到工程内的隔离 store。
+
+```toml
+[toolchain]
+cross-gcc = "arm-none-eabi@12.2.0"
+qemu      = "8.0.0"
+
+[dependencies]
+freertos = "10.5.1"
+
+[target]
+arch  = "armv7em"
+abi   = "eabihf"
+float = "hard"
+```
+
+```sh
+heddle tool plan      # 看解析结果，不动文件
+heddle tool install   # 恢复工具链 + 依赖，写 heddle.lock
+heddle app            # 用被管理的交叉编译器和依赖构建
+heddle env verify     # 校验当前环境与锁完全一致
+```
+
+细节见 [工具链与依赖](docs/packages.md)。
 
 ## heddle.toml
 
@@ -245,3 +277,4 @@ build.txt                loom 自身的构建图，用于自举
 ## 文档
 
 - [语言插件](docs/language-plugins.md)：内置语言、声明新语言、占位符、C 接口
+- [工具链与依赖](docs/packages.md)：统一包管理、交叉 target 推导、锁文件、离线缓存、环境校验

@@ -9,6 +9,9 @@ typedef struct {
     int         check_only;
     int         list_tools;
     int         exec_after;
+    int         tool_install;
+    int         tool_plan;
+    int         env_verify;
 } ARGS;
 
 static int usage(const char *prog) {
@@ -17,6 +20,9 @@ static int usage(const char *prog) {
             "       %s run TARGET\n"
             "       %s check\n"
             "       %s toolchains\n"
+            "       %s tool install        restore toolchain + dependencies\n"
+            "       %s tool plan           print the resolved package plan\n"
+            "       %s env verify          verify the environment matches the lock\n"
             "\n"
             "options:\n"
             "  -C DIR            project root (default .)\n"
@@ -25,8 +31,10 @@ static int usage(const char *prog) {
             "  -v, --verbose     print toolchain and cache stats\n"
             "  --cache DIR       CAS root\n"
             "  --remote URL      remote CAS, dir or http(s)://\n"
-            "  --no-cache        disable cache\n",
-            prog, prog, prog, prog);
+            "  --no-cache        disable cache\n"
+            "  --registry DIR|URL  package registry (default $HEDDLE_REGISTRY)\n"
+            "  --offline         never contact the registry\n",
+            prog, prog, prog, prog, prog, prog, prog);
     return 2;
 }
 
@@ -57,12 +65,36 @@ static int parse(int argc, char **argv, ARGS *a) {
     const char  *v = NULL;
     int          t = 0;
 
+    int sub = 0;
+
     o->root = ".";
+    o->registry = getenv("HEDDLE_REGISTRY");
 
     for (int i = 1; i < argc; i++) {
         const char *arg = argv[i];
 
+        if (sub == 1) {
+            sub = 0;
+
+            if (!strcmp(arg, "install")) { a->tool_install = 1; continue; }
+            if (!strcmp(arg, "plan"))    { a->tool_plan    = 1; continue; }
+            if (!strcmp(arg, "list"))    { a->tool_plan    = 1; continue; }
+
+            fprintf(stderr, "heddle: unknown tool subcommand '%s'\n", arg);
+            return 2;
+        }
+
+        if (sub == 2) {
+            sub = 0;
+
+            if (!strcmp(arg, "verify")) { a->env_verify = 1; continue; }
+
+            fprintf(stderr, "heddle: unknown env subcommand '%s'\n", arg);
+            return 2;
+        }
+
         if (!strcmp(arg, "--no-cache"))       o->no_cache = 1;
+        else if (!strcmp(arg, "--offline"))   o->offline = 1;
         else if (!strcmp(arg, "-v"))          o->verbose = 1;
         else if (!strcmp(arg, "--verbose"))    o->verbose = 1;
         else if (!strcmp(arg, "-h"))          return usage(argv[0]);
@@ -70,6 +102,9 @@ static int parse(int argc, char **argv, ARGS *a) {
 
         else if (!strcmp(arg, "toolchains"))  a->list_tools = 1;
         else if (!strcmp(arg, "check"))       a->check_only = 1;
+
+        else if (!strcmp(arg, "tool"))        sub = 1;
+        else if (!strcmp(arg, "env"))         sub = 2;
 
         else if (!strcmp(arg, "build"))       continue;
         else if (!strcmp(arg, "run"))         a->exec_after = 1;
@@ -89,6 +124,9 @@ static int parse(int argc, char **argv, ARGS *a) {
         else if ((t = take(arg, "--remote", argc, argv, &i, &v)) < 0) return 2;
         else if (t) o->remote = v;
 
+        else if ((t = take(arg, "--registry", argc, argv, &i, &v)) < 0) return 2;
+        else if (t) o->registry = v;
+
         else if (arg[0] == '-') {
             fprintf(stderr, "heddle: unknown option '%s'\n", arg);
             return 2;
@@ -100,7 +138,15 @@ static int parse(int argc, char **argv, ARGS *a) {
         }
     }
 
-    if (a->list_tools || a->check_only) return 0;
+    if (sub) {
+        fprintf(stderr, "heddle: incomplete command\n");
+        return 2;
+    }
+
+    if (a->list_tools || a->check_only || a->tool_install || a->tool_plan ||
+        a->env_verify)
+        return 0;
+
     if (!o->target) return usage(argv[0]);
 
     return 0;
@@ -114,9 +160,12 @@ int main(int argc, char **argv) {
     int rc = parse(argc, argv, &a);
 
     if (rc) return rc;
-    if (a.list_tools) return heddle_toolchains();
-    if (a.check_only) return heddle_check(&a.o);
-    if (a.exec_after) return heddle_exec(&a.o);
+    if (a.list_tools)   return heddle_toolchains();
+    if (a.check_only)   return heddle_check(&a.o);
+    if (a.tool_install) return heddle_tool_install(&a.o);
+    if (a.tool_plan)    return heddle_tool_plan(&a.o);
+    if (a.env_verify)   return heddle_env_verify(&a.o);
+    if (a.exec_after)   return heddle_exec(&a.o);
 
     return heddle_run(&a.o);
 }

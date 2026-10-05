@@ -161,7 +161,6 @@ rm -rf out .heddle
 echo
 [ "$fail" -eq 0 ]
 
-# ---------- os (nasm + raw + linker_script + custom) ----------
 echo "os:"
 cd "$HERE/os"
 rm -rf out .heddle
@@ -192,5 +191,86 @@ else
 fi
 echo
 
+echo "pkg (toolchain + dependencies):"
+cd "$HERE/pkg"
+rm -rf out .heddle heddle.lock
+export HEDDLE_REGISTRY="$HERE/pkg/registry"
+
+out=$($HEDDLE tool plan 2>&1)
+check_rc "tool plan" $? 0
+expect_err "plan derives prefix" "$out" "arm-none-eabi-"
+expect_err "plan derives cpu"    "$out" "cortex-m4"
+expect_err "plan lists toolchain" "$out" "arm-none-eabi"
+expect_err "plan lists dependency" "$out" "freertos"
+
+$HEDDLE tool install >/dev/null 2>&1
+check_rc "tool install" $? 0
+[ -f heddle.lock ] && ok "lockfile written" || bad "lockfile missing"
+grep -q "^toolchain arm-none-eabi 12.2.0 sha256:" heddle.lock \
+    && ok "lock records toolchain hash" || bad "lock toolchain line"
+grep -q "^library freertos 10.5.1 sha256:" heddle.lock \
+    && ok "lock records dependency hash" || bad "lock library line"
+
+$HEDDLE env verify >/dev/null 2>&1
+check_rc "env verify after install" $? 0
+
+rm -rf out .heddle/app.graph
+$HEDDLE app >/dev/null 2>&1
+check_rc "build with managed toolchain" $? 0
+check_eq "dependency linked in" "$(./out/app | head -1)" "10501"
+check_eq "managed compiler used" "$(./out/app | tail -1)" "managed"
+
+printf 'int freertos_version(void){return 0;}\n' \
+    > .heddle/store/library/freertos/10.5.1/include/freertos.h
+$HEDDLE env verify >/dev/null 2>&1
+check_rc "env verify catches drift" $? 1
+
+out=$($HEDDLE -v tool install 2>&1)
+expect_err "install repairs drift" "$out" "repairing"
+$HEDDLE env verify >/dev/null 2>&1
+check_rc "env verify after repair" $? 0
+
+unset HEDDLE_REGISTRY
+rm -rf out .heddle/app.graph
+$HEDDLE app >/dev/null 2>&1
+check_rc "offline build (no registry)" $? 0
+check_eq "offline run" "$(./out/app | head -1)" "10501"
+
+rm -rf .heddle
+out=$($HEDDLE --offline tool install 2>&1)
+check_rc "offline cold install fails" $? 1
+expect_err "offline message" "$out" "offline"
+
+rm -rf .heddle
+$HEDDLE env verify >/dev/null 2>&1
+check_rc "verify without lock fails" $? 1
+
+rm -rf out .heddle heddle.lock
+unset HEDDLE_REGISTRY
+echo
+
+echo "pkg (tarball registry):"
+TARREG="$HERE/pkg/registry-targz"
+rm -rf "$TARREG"
+mkdir -p "$TARREG/library/freertos"
+( cd "$HERE/pkg/registry/library/freertos/10.5.1" \
+  && tar czf "$TARREG/library/freertos/10.5.1.tar.gz" . )
+mkdir -p "$TARREG/toolchain/arm-none-eabi"
+( cd "$HERE/pkg/registry/toolchain/arm-none-eabi/12.2.0" \
+  && tar czf "$TARREG/toolchain/arm-none-eabi/12.2.0.tar.gz" . )
+rm -rf out .heddle heddle.lock
+( cd "$HERE/pkg" \
+  && HEDDLE_REGISTRY="$TARREG" $HEDDLE tool install >/dev/null 2>&1 )
+check_rc "install from tarball registry" $? 0
+[ -f "$HERE/pkg/.heddle/store/library/freertos/10.5.1/include/freertos.h" ] \
+    && ok "tarball hoisted to store root" || bad "tarball wrapper not hoisted"
+( cd "$HERE/pkg" \
+  && HEDDLE_REGISTRY="$TARREG" $HEDDLE app >/dev/null 2>&1 )
+check_rc "build from tarball registry" $? 0
+check_eq "tarball dependency linked" "$(cd "$HERE/pkg" && ./out/app | head -1)" "10501"
+( cd "$HERE/pkg" && $HEDDLE env verify >/dev/null 2>&1 )
+check_rc "verify tarball store" $? 0
+rm -rf "$TARREG" "$HERE/pkg/out" "$HERE/pkg/.heddle" "$HERE/pkg/heddle.lock"
+echo
 
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"

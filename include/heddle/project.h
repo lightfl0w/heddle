@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+#include "pkg.h"
 #include "toolchain.h"
 #include "toml.h"
 
@@ -48,6 +49,10 @@ typedef struct {
     char *toolchain_name;
 
     TOOLCHAIN tc;
+
+    PKG_MANIFEST pkg;
+    char        *target_prefix;
+    char        *target_sysroot;
 
     TARGET *targets;
     int     ntargets;

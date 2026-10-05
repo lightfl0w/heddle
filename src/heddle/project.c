@@ -324,7 +324,32 @@ int project_load(PROJECT *p, const char *root, const char *toolchain,
 
     toml_free(&top);
 
-    if (tc_load(&p->tc, p->root, p->toolchain_name, err, errsz) != 0) {
+    if (pkg_manifest_load(&p->pkg, p->root, err, errsz) != 0) {
+        project_free(p);
+        return -1;
+    }
+
+    p->target_prefix  = sys_dup(p->pkg.toolchain_prefix);
+    p->target_sysroot = sys_dup(p->pkg.sysroot);
+
+    pkg_prepend_path(&p->pkg);
+
+    char target_flags[1024];
+    snprintf(target_flags, sizeof(target_flags), "%s %s",
+             p->pkg.target.cpu, p->pkg.target.fpu);
+
+    if (tc_load_ex(&p->tc, p->root, p->toolchain_name,
+                   p->target_prefix, p->target_sysroot,
+                   target_flags, err, errsz) != 0) {
+        project_free(p);
+        return -1;
+    }
+
+    if (p->pkg.tools.n > 0 && !tc_tool_ok(&p->tc, p->tc.cc)) {
+        snprintf(err, errsz,
+                 "managed toolchain '%s' is not installed "
+                 "(compiler '%s' not found); run 'heddle tool install'",
+                 p->pkg.tools.items[0].name, p->tc.cc);
         project_free(p);
         return -1;
     }
@@ -347,6 +372,11 @@ void project_free(PROJECT *p) {
     free(p->root);
     free(p->build_dir);
     free(p->toolchain_name);
+
+    free(p->target_prefix);
+    free(p->target_sysroot);
+
+    pkg_manifest_free(&p->pkg);
 
     tc_free(&p->tc);
 

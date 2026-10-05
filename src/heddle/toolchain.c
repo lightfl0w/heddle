@@ -272,10 +272,54 @@ static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
 
 int tc_load(TOOLCHAIN *tc, const char *dir, const char *name,
             char *err, size_t errsz) {
+    return tc_load_ex(tc, dir, name, NULL, NULL, NULL, err, errsz);
+}
+
+static char *apply_prefix(const char *prefix, const char *tool) {
+    if (!prefix || !prefix[0] || !tool || !tool[0]) return sys_dup(tool);
+    if (strchr(tool, '/') || strchr(tool, '\\')) return sys_dup(tool);
+    if (!strncmp(tool, prefix, strlen(prefix))) return sys_dup(tool);
+
+    size_t n = strlen(prefix) + strlen(tool) + 1;
+    char  *p = (char *)malloc(n);
+
+    if (p) snprintf(p, n, "%s%s", prefix, tool);
+
+    return p;
+}
+
+int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name,
+               const char *prefix, const char *sysroot,
+               const char *extra_cflags,
+               char *err, size_t errsz) {
     memset(tc, 0, sizeof(*tc));
 
     if (is_auto(name)) {
-        if (apply_auto(tc, dir, "host") == 0) return 0;
+        if (prefix && prefix[0]) {
+            char cc[512];
+            snprintf(cc, sizeof(cc), "%sgcc", prefix);
+
+            if (on_path(cc)) {
+                load_preset(tc, preset_of("gcc"));
+
+                free(tc->name);
+                free(tc->cc);
+                free(tc->cxx);
+                free(tc->ar);
+                free(tc->ld);
+
+                tc->name = sys_dup(prefix);
+                tc->cc   = sys_dup(cc);
+                tc->cxx  = apply_prefix(prefix, "g++");
+                tc->ar   = apply_prefix(prefix, "ar");
+                tc->ld   = sys_dup(cc);
+
+                read_flags(dir, tc, "host");
+                goto overlay;
+            }
+        }
+
+        if (apply_auto(tc, dir, "host") == 0) goto overlay;
 
         snprintf(err, errsz,
                  "no C compiler found on PATH; "
@@ -326,6 +370,45 @@ int tc_load(TOOLCHAIN *tc, const char *dir, const char *name,
     add_flags(&t, sect, "ldflags", &tc->ldflags, &tc->nldflags);
 
     toml_free(&t);
+
+overlay:
+    if (prefix && prefix[0]) {
+        char buf[512];
+
+        char *n;
+
+        n = apply_prefix(prefix, tc->cc);  free(tc->cc);  tc->cc  = n;
+        n = apply_prefix(prefix, tc->cxx); free(tc->cxx); tc->cxx = n;
+        n = apply_prefix(prefix, tc->ar);  free(tc->ar);  tc->ar  = n;
+        n = apply_prefix(prefix, tc->ld);  free(tc->ld);  tc->ld  = n;
+
+        snprintf(buf, sizeof(buf), "cross-%s", prefix);
+
+        size_t l = strlen(buf);
+
+        if (l && (buf[l - 1] == '-' || buf[l - 1] == '_')) buf[l - 1] = 0;
+
+        free(tc->platform);
+        tc->platform = sys_dup(buf);
+
+        if (sysroot && sysroot[0]) {
+            add_flag(&tc->cflags, &tc->ncflags, "--sysroot");
+            add_flag(&tc->cflags, &tc->ncflags, sysroot);
+        }
+    }
+
+    if (extra_cflags && extra_cflags[0]) {
+        char *copy = sys_dup(extra_cflags);
+        char *save = NULL;
+        char *tok;
+
+        for (tok = sys_tok(copy, " \t", &save); tok;
+             tok = sys_tok(NULL, " \t", &save))
+            add_flag(&tc->cflags, &tc->ncflags, tok);
+
+        free(copy);
+    }
+
     return 0;
 }
 
@@ -337,6 +420,34 @@ const char *tc_tool(const TOOLCHAIN *tc, const char *name) {
     if (!strcmp(name, "ld"))  return tc->ld;
 
     return name;
+}
+
+int tc_tool_ok(const TOOLCHAIN *tc, const char *tool) {
+    (void)tc;
+
+    if (!tool || !tool[0]) return 0;
+
+    SYS_STAT st;
+
+    if (sys_stat(tool, &st) == 0) return 1;
+
+    if (strchr(tool, '/') || strchr(tool, '\\')) return 0;
+
+    const char *path = getenv("PATH");
+    char       *copy = path ? sys_dup(path) : NULL;
+    char       *save = NULL;
+    int         ok   = 0;
+
+    for (char *d = sys_tok(copy, ":", &save); d && !ok;
+         d = sys_tok(NULL, ":", &save)) {
+        char buf[2048];
+
+        snprintf(buf, sizeof(buf), "%s/%s", d, tool);
+        ok = sys_stat(buf, &st) == 0;
+    }
+
+    free(copy);
+    return ok;
 }
 
 void tc_free(TOOLCHAIN *tc) {

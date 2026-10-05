@@ -1,0 +1,19 @@
+[build]
+dir = "out"
+
+[toolchain]
+cross-gcc = "arm-none-eabi@12.2.0"
+
+[dependencies]
+freertos = "10.5.1"
+
+[target]
+arch = "armv7em"
+abi = "eabihf"
+float = "hard"
+
+[target.app]
+type = "exe"
+src = ["src/main.c"]
+inc = ["src"]
+ldflags = []

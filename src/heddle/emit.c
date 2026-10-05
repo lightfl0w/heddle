@@ -229,6 +229,46 @@ static void put_incs(const TARGET *t, char *buf, size_t cap, int *len) {
         addf(buf, cap, len, " -I%s", t->inc[i]);
 }
 
+static void put_dep_incs(const PROJECT *p, char *buf, size_t cap, int *len) {
+    for (int i = 0; i < p->pkg.deps.n; i++) {
+        const PKG_SPEC *s = &p->pkg.deps.items[i];
+
+        if (!s->store_path) continue;
+
+        char *inc = project_path(s->store_path, "include");
+
+        if (inc) {
+            SYS_STAT st;
+
+            if (sys_stat(inc, &st) == 0 && st.is_dir)
+                addf(buf, cap, len, " -I%s", inc);
+
+            free(inc);
+        }
+    }
+}
+
+static void put_dep_ldflags(const PROJECT *p, char *buf, size_t cap, int *len) {
+    for (int i = 0; i < p->pkg.deps.n; i++) {
+        const PKG_SPEC *s = &p->pkg.deps.items[i];
+
+        if (!s->store_path) continue;
+
+        char *lib = project_path(s->store_path, "lib");
+
+        if (lib) {
+            SYS_STAT st;
+
+            if (sys_stat(lib, &st) == 0 && st.is_dir) {
+                addf(buf, cap, len, " -L%s", lib);
+                addf(buf, cap, len, " -l%s", s->name);
+            }
+
+            free(lib);
+        }
+    }
+}
+
 static void subst_arg(const char *arg, const char *src, const char *out,
                       const char *format, const char *root,
                       char *dst, size_t cap) {
@@ -374,6 +414,7 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
         incs[0] = 0;
 
         put_incs(t, incs, sizeof(incs), &ilen);
+        put_dep_incs(p, incs, sizeof(incs), &ilen);
 
         char flags[8192];
         int  flen = 0;
@@ -610,6 +651,8 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
 
             for (int k = 0; k < t->nldflags; k++)
                 addf(cmd, sizeof(cmd), &len, " %s", t->ldflags[k]);
+
+            put_dep_ldflags(p, cmd, sizeof(cmd), &len);
         }
 
         STEP *st = plan_add(&pl, cmd);
