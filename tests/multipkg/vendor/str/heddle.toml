@@ -1,0 +1,4 @@
+[target.str]
+type = "staticlib"
+src = ["src/slen.c"]
+inc = ["src"]

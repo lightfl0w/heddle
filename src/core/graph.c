@@ -1,7 +1,7 @@
-#define _POSIX_C_SOURCE 200809L
 
 #include "graph.h"
 #include "hash.h"
+#include "sys.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -123,7 +123,7 @@ static int list_add(char ***v, int *n, const char *s) {
     char **nv = (char **)realloc(*v, sizeof(char *) * (size_t)(*n + 1));
     if (!nv) return -1;
 
-    nv[*n] = strdup(s);
+    nv[*n] = sys_dup(s);
     if (!nv[*n]) return -1;
 
     *v = nv;

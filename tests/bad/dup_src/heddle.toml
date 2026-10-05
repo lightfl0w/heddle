@@ -1,0 +1,7 @@
+[target.a]
+type = "staticlib"
+src = ["src/a.c"]
+
+[target.b]
+type = "staticlib"
+src = ["src/a.c"]

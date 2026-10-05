@@ -1,11 +1,12 @@
-0: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/build.c -o build/build.o
-1: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/cas.c -o build/cas.o
-2: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/deps.c -o build/deps.o
-3: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/graph.c -o build/graph.o
-4: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/hash.c -o build/hash.o
-5: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/incremental.c -o build/incremental.o
-6: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/main.c -o build/main.o
-7: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/proc.c -o build/proc.o
-8: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/scheduler.c -o build/scheduler.o
-9: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/thread.c -o build/thread.o
-10: cc -pthread build/build.o build/cas.o build/deps.o build/graph.o build/hash.o build/incremental.o build/main.o build/proc.o build/scheduler.o build/thread.o -o loom < 0 1 2 3 4 5 6 7 8 9
+0: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/build.c -o build/build.o
+1: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/cas.c -o build/cas.o
+2: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/deps.c -o build/deps.o
+3: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/graph.c -o build/graph.o
+4: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/hash.c -o build/hash.o
+5: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/incremental.c -o build/incremental.o
+6: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/proc.c -o build/proc.o
+7: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/scheduler.c -o build/scheduler.o
+8: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/thread.c -o build/thread.o
+9: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/sys.c -o build/sys.o
+10: cc -std=gnu11 -O2 -Wall -Wextra -pthread -Isrc/core -Iinclude/core -c src/core/main.c -o build/main.o
+11: cc -pthread build/build.o build/cas.o build/deps.o build/graph.o build/hash.o build/incremental.o build/proc.o build/scheduler.o build/thread.o build/sys.o build/main.o -o loom < 0 1 2 3 4 5 6 7 8 9 10

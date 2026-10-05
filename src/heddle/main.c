@@ -1,0 +1,122 @@
+#include "heddle.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    HEDDLE_OPTS o;
+    int         check_only;
+    int         list_tools;
+    int         exec_after;
+} ARGS;
+
+static int usage(const char *prog) {
+    fprintf(stderr,
+            "usage: %s [build] TARGET\n"
+            "       %s run TARGET\n"
+            "       %s check\n"
+            "       %s toolchains\n"
+            "\n"
+            "options:\n"
+            "  -C DIR            project root (default .)\n"
+            "  -j N              parallel jobs\n"
+            "  -t NAME           toolchain, default auto-detect\n"
+            "  -v, --verbose     print toolchain and cache stats\n"
+            "  --cache DIR       CAS root\n"
+            "  --remote URL      remote CAS, dir or http(s)://\n"
+            "  --no-cache        disable cache\n",
+            prog, prog, prog, prog);
+    return 2;
+}
+
+static int take(const char *arg, const char *name, int argc, char **argv,
+                int *i, const char **out) {
+    size_t n = strlen(name);
+
+    if (!strcmp(arg, name)) {
+        if (*i + 1 >= argc) {
+            fprintf(stderr, "heddle: %s needs a value\n", name);
+            return -1;
+        }
+
+        *out = argv[++*i];
+        return 1;
+    }
+
+    if (name[1] != '-' && !strncmp(arg, name, n) && arg[n]) {
+        *out = arg + n;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int parse(int argc, char **argv, ARGS *a) {
+    HEDDLE_OPTS *o = &a->o;
+    const char  *v = NULL;
+    int          t = 0;
+
+    o->root = ".";
+
+    for (int i = 1; i < argc; i++) {
+        const char *arg = argv[i];
+
+        if (!strcmp(arg, "--no-cache"))       o->no_cache = 1;
+        else if (!strcmp(arg, "-v"))          o->verbose = 1;
+        else if (!strcmp(arg, "--verbose"))    o->verbose = 1;
+        else if (!strcmp(arg, "-h"))          return usage(argv[0]);
+        else if (!strcmp(arg, "--help"))      return usage(argv[0]);
+
+        else if (!strcmp(arg, "toolchains"))  a->list_tools = 1;
+        else if (!strcmp(arg, "check"))       a->check_only = 1;
+
+        else if (!strcmp(arg, "build"))       continue;
+        else if (!strcmp(arg, "run"))         a->exec_after = 1;
+
+        else if ((t = take(arg, "-C", argc, argv, &i, &v)) < 0) return 2;
+        else if (t) o->root = v;
+
+        else if ((t = take(arg, "-j", argc, argv, &i, &v)) < 0) return 2;
+        else if (t) o->jobs = atoi(v);
+
+        else if ((t = take(arg, "-t", argc, argv, &i, &v)) < 0) return 2;
+        else if (t) o->toolchain = v;
+
+        else if ((t = take(arg, "--cache", argc, argv, &i, &v)) < 0) return 2;
+        else if (t) o->cache = v;
+
+        else if ((t = take(arg, "--remote", argc, argv, &i, &v)) < 0) return 2;
+        else if (t) o->remote = v;
+
+        else if (arg[0] == '-') {
+            fprintf(stderr, "heddle: unknown option '%s'\n", arg);
+            return 2;
+        } else if (!o->target) {
+            o->target = arg;
+        } else {
+            fprintf(stderr, "heddle: unexpected '%s'\n", arg);
+            return 2;
+        }
+    }
+
+    if (a->list_tools || a->check_only) return 0;
+    if (!o->target) return usage(argv[0]);
+
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    ARGS a;
+
+    memset(&a, 0, sizeof(a));
+
+    int rc = parse(argc, argv, &a);
+
+    if (rc) return rc;
+    if (a.list_tools) return heddle_toolchains();
+    if (a.check_only) return heddle_check(&a.o);
+    if (a.exec_after) return heddle_exec(&a.o);
+
+    return heddle_run(&a.o);
+}

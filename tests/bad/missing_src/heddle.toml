@@ -1,0 +1,3 @@
+[target.a]
+type = "staticlib"
+src = ["src/a.c", "src/gone.c"]

@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 
 #include "build.h"
 #include "cas.h"
@@ -7,6 +6,7 @@
 #include "hash.h"
 #include "incremental.h"
 #include "scheduler.h"
+#include "sys.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -152,12 +152,12 @@ static unsigned long long tool_resolve(const char *name) {
     const char *path = getenv("PATH");
     if (!path) return 0;
 
-    char *copy = strdup(path);
+    char *copy = sys_dup(path);
     if (!copy) return 0;
 
     unsigned long long h = 0;
     char *save = NULL;
-    char *dir  = strtok_r(copy, ":", &save);
+    char *dir  = sys_tok(copy, ":", &save);
 
     while (dir) {
         size_t n = strlen(dir) + strlen(name) + 2;
@@ -171,7 +171,7 @@ static unsigned long long tool_resolve(const char *name) {
             if (h) break;
         }
 
-        dir = strtok_r(NULL, ":", &save);
+        dir = sys_tok(NULL, ":", &save);
     }
 
     free(copy);
@@ -185,7 +185,7 @@ static unsigned long long tool_hash(const char *name) {
     unsigned long long h = tool_resolve(name);
 
     if (g_ntools < 8) {
-        g_tools[g_ntools].name = strdup(name);
+        g_tools[g_ntools].name = sys_dup(name);
         g_tools[g_ntools].hash = h;
         g_ntools++;
     }
@@ -279,11 +279,11 @@ static void cache_restore(BUILD_ENGINE *e, int *dirty) {
 
         if (!restored) continue;
 
-        for (int k = 0; k < ent->nouts; k++) {
-            struct stat st;
-            if (stat(nd->outs[k], &st) == 0)
-                chmod(nd->outs[k], (mode_t)ent->outs[k].mode);
-        }
+        SYS_STAT st;
+
+        for (int k = 0; k < ent->nouts; k++)
+            if (sys_stat(nd->outs[k], &st) == 0)
+                sys_chmod(nd->outs[k], ent->outs[k].mode);
 
         incr_record(db, i);
         e->active[i] = 0;
@@ -318,9 +318,9 @@ static void cache_store(BUILD_ENGINE *e) {
         int ok = 1;
 
         for (int k = 0; k < nd->nouts; k++) {
-            struct stat st;
+            SYS_STAT st;
 
-            if (stat(nd->outs[k], &st) != 0) {
+            if (sys_stat(nd->outs[k], &st) != 0) {
                 ok = 0;
                 break;
             }
@@ -332,7 +332,7 @@ static void cache_store(BUILD_ENGINE *e) {
             }
 
             outs[n].hash = h;
-            outs[n].mode = (unsigned int)(st.st_mode & 07777);
+            outs[n].mode = st.mode & 07777;
             n++;
         }
 

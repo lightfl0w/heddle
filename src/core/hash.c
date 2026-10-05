@@ -1,6 +1,6 @@
-#define _POSIX_C_SOURCE 200809L
 
 #include "hash.h"
+#include "sys.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,7 +64,7 @@ static HASH_ENTRY *db_insert(HASH_DB *db, const char *path) {
         db->cap   = newcap;
     }
 
-    char *copy = strdup(path);
+    char *copy = sys_dup(path);
     if (!copy) return NULL;
 
     HASH_ENTRY *e = &db->items[db->count++];
@@ -76,24 +76,12 @@ static HASH_ENTRY *db_insert(HASH_DB *db, const char *path) {
     return e;
 }
 
-static long long mtime_ns(const struct stat *st) {
-#if defined(__APPLE__)
-    return (long long)st->st_mtimespec.tv_sec * 1000000000LL +
-           st->st_mtimespec.tv_nsec;
-#elif defined(_WIN32)
-    return (long long)st->st_mtime * 1000000000LL;
-#else
-    return (long long)st->st_mtim.tv_sec * 1000000000LL +
-           st->st_mtim.tv_nsec;
-#endif
-}
-
 unsigned long long hash_read_file(HASH_DB *db, const char *path) {
-    struct stat st;
-    if (stat(path, &st) != 0) return 0;
+    SYS_STAT st;
+    if (sys_stat(path, &st) != 0) return 0;
 
-    long long mt   = mtime_ns(&st);
-    long long size = (long long)st.st_size;
+    long long mt   = st.mtime_ns;
+    long long size = st.size;
 
     HASH_ENTRY *e = db ? hash_db_find(db, path) : NULL;
     if (e && e->value && e->mtime_ns == mt && e->size == size)
@@ -132,14 +120,14 @@ int hash_db_load(HASH_DB *db, const char *path) {
 
     while (fgets(line, sizeof(line), f)) {
         char *save = NULL;
-        char *tag  = strtok_r(line, " \t\r\n", &save);
+        char *tag  = sys_tok(line, " \t\r\n", &save);
 
         if (!tag || strcmp(tag, "H")) continue;
 
-        char *hex   = strtok_r(NULL, " \t\r\n", &save);
-        char *mtime = strtok_r(NULL, " \t\r\n", &save);
-        char *size  = strtok_r(NULL, " \t\r\n", &save);
-        char *file  = strtok_r(NULL, "\r\n", &save);
+        char *hex   = sys_tok(NULL, " \t\r\n", &save);
+        char *mtime = sys_tok(NULL, " \t\r\n", &save);
+        char *size  = sys_tok(NULL, " \t\r\n", &save);
+        char *file  = sys_tok(NULL, "\r\n", &save);
 
         if (!hex || !mtime || !size || !file) continue;
 

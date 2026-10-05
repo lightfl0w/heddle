@@ -1,7 +1,7 @@
-#define _POSIX_C_SOURCE 200809L
 
 #include "cas.h"
 #include "hash.h"
+#include "sys.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +26,7 @@ struct CAS {
 };
 
 static void make_dirs(const char *path) {
-    char *tmp = strdup(path);
+    char *tmp = sys_dup(path);
 
     for (char *p = tmp + 1; *p; p++) {
         if (*p != '/') continue;
@@ -62,7 +62,7 @@ static int copy_file(const char *from, const char *to) {
     int in = open(from, O_RDONLY);
     if (in < 0) return -1;
 
-    char *dir = strdup(to);
+    char *dir = sys_dup(to);
     char *slash = strrchr(dir, '/');
 
     if (slash) {
@@ -85,13 +85,13 @@ static int copy_file(const char *from, const char *to) {
     }
 
     char   buf[65536];
-    ssize_t got;
+    long long got;
 
     while ((got = read(in, buf, sizeof(buf))) > 0) {
-        ssize_t off = 0;
+        long long off = 0;
 
         while (off < got) {
-            ssize_t n = write(out, buf + off, (size_t)(got - off));
+            long long n = (long long)write(out, buf + off, (size_t)(got - off));
             if (n <= 0) {
                 close(in);
                 close(out);
@@ -107,7 +107,7 @@ static int copy_file(const char *from, const char *to) {
 }
 
 static int copy_bytes(const void *p, size_t n, const char *to) {
-    char *dir = strdup(to);
+    char *dir = sys_dup(to);
     char *slash = strrchr(dir, '/');
 
     if (slash) {
@@ -124,7 +124,7 @@ static int copy_bytes(const void *p, size_t n, const char *to) {
     size_t off = 0;
 
     while (off < n) {
-        ssize_t w = write(out, b + off, n - off);
+        long long w = (long long)write(out, b + off, (size_t)(n - off));
         if (w <= 0) {
             close(out);
             return -1;
@@ -194,8 +194,8 @@ static int remote_push(CAS *c, const char *rel, const char *src) {
 
     snprintf(dst, n, "%s/%s", c->remote, rel);
 
-    struct stat st;
-    if (stat(dst, &st) == 0) {
+    SYS_STAT st;
+    if (sys_stat(dst, &st) == 0) {
         free(dst);
         return 0;
     }
@@ -210,8 +210,8 @@ CAS *cas_open(const char *root, const char *remote, char *err, size_t errsz) {
     CAS *c = (CAS *)calloc(1, sizeof(CAS));
     if (!c) return NULL;
 
-    c->root   = strdup(root);
-    c->remote = remote ? strdup(remote) : NULL;
+    c->root   = sys_dup(root);
+    c->remote = remote ? sys_dup(remote) : NULL;
 
     if (c->remote)
         c->remote_http = !strncmp(c->remote, "http://", 7) ||
@@ -242,8 +242,8 @@ int cas_has(CAS *c, unsigned long long h) {
     char path[2048];
     obj_path(c, h, path, sizeof(path));
 
-    struct stat st;
-    if (stat(path, &st) == 0) return 1;
+    SYS_STAT st;
+    if (sys_stat(path, &st) == 0) return 1;
 
     char rel[64];
     obj_rel(h, rel, sizeof(rel));
@@ -267,8 +267,8 @@ int cas_put_hashed(CAS *c, const char *path, unsigned long long h) {
     char dst[2048];
     obj_path(c, h, dst, sizeof(dst));
 
-    struct stat st;
-    if (stat(dst, &st) == 0) return 0;
+    SYS_STAT st;
+    if (sys_stat(dst, &st) == 0) return 0;
 
     copy_file(path, dst);
 
@@ -283,8 +283,8 @@ int cas_get_file(CAS *c, unsigned long long h, const char *path) {
     char src[2048];
     obj_path(c, h, src, sizeof(src));
 
-    struct stat st;
-    if (stat(src, &st) != 0 && !cas_has(c, h)) return -1;
+    SYS_STAT st;
+    if (sys_stat(src, &st) != 0 && !cas_has(c, h)) return -1;
 
     return copy_file(src, path);
 }
@@ -293,8 +293,8 @@ int cas_put_bytes(CAS *c, unsigned long long h, const void *p, size_t n) {
     char dst[2048];
     obj_path(c, h, dst, sizeof(dst));
 
-    struct stat st;
-    if (stat(dst, &st) == 0) return 0;
+    SYS_STAT st;
+    if (sys_stat(dst, &st) == 0) return 0;
 
     if (copy_bytes(p, n, dst) != 0) return -1;
 
@@ -309,20 +309,20 @@ int cas_get_bytes(CAS *c, unsigned long long h, void **out, size_t *outlen) {
     char src[2048];
     obj_path(c, h, src, sizeof(src));
 
-    struct stat st;
-    if (stat(src, &st) != 0 && !cas_has(c, h)) return -1;
-    if (stat(src, &st) != 0) return -1;
+    SYS_STAT st;
+    if (sys_stat(src, &st) != 0 && !cas_has(c, h)) return -1;
+    if (sys_stat(src, &st) != 0) return -1;
 
     FILE *f = fopen(src, "rb");
     if (!f) return -1;
 
-    char *buf = (char *)malloc((size_t)st.st_size + 1);
+    char *buf = (char *)malloc((size_t)st.size + 1);
     if (!buf) {
         fclose(f);
         return -1;
     }
 
-    size_t got = fread(buf, 1, (size_t)st.st_size, f);
+    size_t got = fread(buf, 1, (size_t)st.size, f);
     buf[got] = 0;
 
     fclose(f);
@@ -335,7 +335,7 @@ int cas_get_bytes(CAS *c, unsigned long long h, void **out, size_t *outlen) {
 void ac_init(ACTION_CACHE *ac, CAS *cas, const char *root) {
     memset(ac, 0, sizeof(*ac));
     ac->cas  = cas;
-    ac->root = strdup(root);
+    ac->root = sys_dup(root);
 }
 
 void ac_free(ACTION_CACHE *ac) {
@@ -400,12 +400,12 @@ int ac_load(ACTION_CACHE *ac) {
 
     while (fgets(line, sizeof(line), f)) {
         char *save = NULL;
-        char *tag  = strtok_r(line, " \t\r\n", &save);
+        char *tag  = sys_tok(line, " \t\r\n", &save);
 
         if (!tag || strcmp(tag, "A")) continue;
 
-        char *key = strtok_r(NULL, " \t\r\n", &save);
-        char *n   = strtok_r(NULL, " \t\r\n", &save);
+        char *key = sys_tok(NULL, " \t\r\n", &save);
+        char *n   = sys_tok(NULL, " \t\r\n", &save);
 
         if (!key || !n) continue;
 
@@ -418,7 +418,7 @@ int ac_load(ACTION_CACHE *ac) {
         int got = 0;
 
         for (int i = 0; i < count; i++) {
-            char *tok = strtok_r(NULL, " \t\r\n", &save);
+            char *tok = sys_tok(NULL, " \t\r\n", &save);
             if (!tok) break;
 
             char *colon = strchr(tok, ':');

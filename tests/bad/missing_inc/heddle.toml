@@ -1,0 +1,4 @@
+[target.a]
+type = "staticlib"
+src = ["src/a.c"]
+inc = ["include/nope"]

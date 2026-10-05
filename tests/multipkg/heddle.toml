@@ -1,0 +1,16 @@
+[build]
+dir = "out"
+toolchain = "host"
+
+[toolchain.host]
+cc = "cc"
+cflags = ["-O2", "-Wall"]
+
+[target.app]
+type = "exe"
+src = ["app/main.c"]
+inc = ["vendor/str/src"]
+deps = ["str"]
+
+[package]
+deps = ["vendor/str"]

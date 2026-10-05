@@ -1,6 +1,6 @@
-#define _POSIX_C_SOURCE 200809L
 
 #include "deps.h"
+#include "sys.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -34,7 +34,7 @@ static int set_add(STRSET *s, const char *v) {
         s->cap   = newcap;
     }
 
-    s->items[s->count] = strdup(v);
+    s->items[s->count] = sys_dup(v);
     if (!s->items[s->count]) return -1;
 
     s->count++;
@@ -49,15 +49,15 @@ static void set_free(STRSET *s) {
 }
 
 static int file_exists(const char *path) {
-    struct stat st;
-    return stat(path, &st) == 0;
+    SYS_STAT st;
+    return sys_stat(path, &st) == 0;
 }
 
 static char *dir_of(const char *path) {
     const char *slash = strrchr(path, '/');
 
-    if (!slash) return strdup(".");
-    if (slash == path) return strdup("/");
+    if (!slash) return sys_dup(".");
+    if (slash == path) return sys_dup("/");
 
     size_t n = (size_t)(slash - path);
     char  *d = (char *)malloc(n + 1);
@@ -69,7 +69,7 @@ static char *dir_of(const char *path) {
 }
 
 static char *join_path(const char *dir, const char *name) {
-    if (!strcmp(dir, ".")) return strdup(name);
+    if (!strcmp(dir, ".")) return sys_dup(name);
 
     size_t n = strlen(dir) + strlen(name) + 2;
     char  *p = (char *)malloc(n);
@@ -221,11 +221,11 @@ int deps_load(GRAPH *g, const char *path) {
         graph_node_clear_dyn(&g->nodes[node]);
 
         char *save = NULL;
-        char *tok  = strtok_r(rest, " \t\r\n", &save);
+        char *tok  = sys_tok(rest, " \t\r\n", &save);
 
         while (tok) {
             graph_node_add_dyn(&g->nodes[node], tok);
-            tok = strtok_r(NULL, " \t\r\n", &save);
+            tok = sys_tok(NULL, " \t\r\n", &save);
         }
 
         g->nodes[node].scan_hash = key;

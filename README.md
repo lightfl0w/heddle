@@ -1,60 +1,187 @@
-# loom
+# heddle
 
-极简的 DAG 构建执行器，带内容哈希增量与动态依赖图
+构建工具。读 `heddle.toml`，生成依赖图，增量执行。
 
-## 特性
-
-| 能力 | 说明 |
-| --- | --- |
-| DAG 调度 | `build.txt` 描述节点与依赖，多线程执行，失败传播，`--retry` 重试 |
-| 内容哈希 DB | `FNV-1a` 内容指纹，mtime+size 短路；内容没变就不重建|
-| 动态依赖图 | 扫描 `#include` |
-| 增量计划 | 命令/输入/输出/头文件指纹陈旧才运行，脏节点沿 DAG 传播到后代 |
-| 并行调度 | `-j N`，调度器只运行计划中活跃的节点，inactive 节点直接视为完成 |
+引擎是 loom（`src/core`），负责 DAG 调度、内容哈希增量、头文件扫描和 CAS 缓存。
 
 ## 构建
 
 ```sh
-cc -std=c11 -O2 -Wall -Wextra -pthread -Iinclude -c src/*.c   # 或
 xmake
 ```
 
-自举：
-
-```sh
-./loom -f build.txt -j6 --logdir .build
-```
+产出 `build/linux/x86_64/release/heddle` 和同目录的 `loom`。
 
 ## 用法
 
+在工程目录里直接跑目标名：
+
 ```sh
-./loom -f build.txt -j8 --logdir .build
+heddle app
 ```
 
-选项：
+也可写成 `heddle build app`。子命令：
+
+```sh
+heddle check          # 只做配置静态检查
+heddle toolchains     # 列出探测到的工具链
+```
+
+工程根目录默认是当前目录，用 `-C` 切换：
+
+```sh
+heddle -C sub app
+heddle -C /path/to/proj app
+```
+
+完整选项：
 
 | 选项 | 含义 |
 | --- | --- |
-| `-f FILE` | 构建图文件（必填） |
-| `-j N` | 并发任务数，默认 1 |
-| `--retry N` | 失败节点重试次数，默认 0 |
-| `--cwd DIR` | 命令执行目录 |
-| `--logdir DIR` | 日志与指纹 DB 目录，默认 `.build` |
-| `--stop` | 失败后停止调度（默认 keep-going） |
-| `--cache DIR` | CAS 与动作缓存根目录，默认与 `--logdir` 相同 |
-| `--remote URL` | 远程 CAS：本地目录或 `http(s)://` |
-| `--no-cache` | 关闭缓存查找与写入 |
+| `-C DIR` | 工程根目录，默认 `.` |
+| `-j N` | 并发数 |
+| `-t NAME` | 指定工具链，默认自动探测 |
+| `-v`, `--verbose` | 打印工具链与 `N ran, M cached` |
+| `--cache DIR` | CAS 根目录 |
+| `--remote URL` | 远程 CAS，目录或 `http(s)://` |
+| `--no-cache` | 关闭缓存 |
 
-## build.txt 格式
+## heddle.toml
+
+```toml
+[build]
+dir = "out"              # 产物目录，默认 "build"
+toolchain = "auto"       # 自动探测，默认值
+
+[toolchain.host]
+cc = "cc"
+cflags = ["-O2", "-Wall"]
+
+[toolchain.debug]        # 用 -t debug 选它
+based_on = "host"        # 继承 host 预设，再覆盖下面的字段
+cflags = ["-O0", "-g3", "-Wall"]
+
+[target.util]            # 目标名就是 section 名
+type = "staticlib"
+src = ["src/util/util.c"]
+inc = ["src/util"]
+
+[target.app]
+type = "exe"
+src = ["app/main.c"]
+inc = ["src/util"]
+deps = ["util"]          # 依赖另一个目标，自动拓扑排序
+```
+
+每个目标：
+
+| 键 | 含义 |
+| --- | --- |
+| `type` | 必填，见下 |
+| `src` | 必填，源文件列表，每个生成一个 .o |
+| `inc` | 头文件搜索目录 |
+| `deps` | 依赖的目标名 |
+| `cflags` | 本目标额外的编译选项 |
+| `ldflags` | 本目标额外的链接选项 |
+
+`cflags` 和工具链的 `cflags` 叠加，工具链的在前。
+
+### type
+
+`type` 是目标种类，产物格式和后缀由工具链的 `objext`/`binext`/`libext`/`dllext` 决定，
+跟 `.exe` 这个后缀没关系。Linux 上 `type = "exe"` 出来的是 ELF。
+
+| type | 别名 | 含义 | host/gcc/clang | mingw |
+| --- | --- | --- | --- | --- |
+| `exe` | `executable` `bin` | 可执行文件 | `out/app`（ELF） | `out/app.exe` |
+| `staticlib` | `lib` | 静态库 | `out/libNAME.a` | `out/libNAME.a` |
+| `sharedlib` | `dylib` `so` | 动态库 | `out/libNAME.so` | `out/NAME.dll` |
+
+### 工具链
+
+不写 `[build] toolchain` 就是自动探测：按 `gcc`、`clang`、`tcc`、`msvc` 顺序，
+取第一个 `PATH` 里存在的编译器。`auto` 和 `native` 等价于省略。
 
 ```
-# 节点序号: 命令 [< 依赖节点序号...]
-0: cc -O2 -c a.c -o a.o
-1: cc -O2 -Iinc -c b.c -o b.o
-2: cc a.o b.o -o app < 0 1
+$ heddle --toolchains
+detected toolchains (auto uses the first match):
+  gcc      ok     cc
+  clang    ok     clang
+  tcc      -      tcc
+  msvc     -      cl
 ```
 
-- 输出文件取自命令里的 `-o` 值。
-- 输入文件取自命令里带 `.` 或 `/` 的普通 token（排除 `-o` 及其值和自身输出）。
-- `-I DIR` / `-IDIR` 声明头文件搜索目录。
-- 依赖顺序由 `<` 决定；头文件依赖由扫描自动补充。
+探测到了就填 `cflags`（`-t` 选中的那个 section）；想固定工具链就直接写：
+
+```toml
+[toolchain.myarm]
+based_on = "gcc"
+cc = "arm-none-eabi-gcc"
+ar = "arm-none-eabi-ar"
+cflags = ["-mcpu=cortex-m4", "-O2"]
+```
+
+预设：`host` `linux` `gcc` `clang` `macos` `mingw` `msvc`。
+可覆盖字段：`cc` `cxx` `ar` `ld` `cflags` `ldflags` `objext` `binext` `libext` `dllpre` `dllext` `soflag` `platform`。
+
+找不到编译器或工具链名写错会直接报错，不静默回退。
+
+### 多包
+
+子目录带自己的 `heddle.toml` 就是一个包。根配置里列出：
+
+```toml
+[package]
+deps = ["vendor/greet"] 
+```
+
+子包的目标和根配置共用一个命名空间，所以根里可以直接 `deps = ["greet"]`。
+
+## 静态检查
+
+`--check` 在生成图之前检查，任何一条不过就报错退出：
+
+- 依赖的目标存在，且不是 `exe`
+- 目标之间无环
+- 源文件存在、路径不出工程、扩展名是 `.c` `.cc` `.cpp` `.cxx` `.c++` `.S` 之一
+- 一个源文件没有被两个目标同时声明
+- `inc` 目录存在
+
+```
+$ heddle -C . --check
+heddle: 2 targets ok, toolchain=host platform=host
+  greet            staticlib  src=1 inc=1 deps=0
+  hello            exe        src=1 inc=1 deps=1
+```
+
+## 产物与中间文件
+
+host 工具链下：
+
+| type | 产物 | 命令 |
+| --- | --- | --- |
+| `exe` | `out/NAME` | `cc -o out/NAME objs... libs...` |
+| `staticlib` | `out/libNAME.a` | `ar rcs -o out/libNAME.a objs...` |
+| `sharedlib` | `out/libNAME.so` | `cc -shared -o out/libNAME.so objs... libs...` |
+
+链接时 `deps` 里的库自动加到命令行。
+
+生成的图在 `.heddle/TARGET.graph`，缓存和指纹也在 `.heddle/`。
+
+## 测试
+
+```sh
+bash tests/run.sh
+```
+
+## 源码
+
+```
+xmake.lua                heddle 和 loom 两个 target
+include/heddle/          heddle 头文件
+include/core/            loom 头文件
+src/heddle/              heddle 主体
+src/core/                loom 引擎
+heddle/tests/            测试工程和脚本
+build.txt                loom 自身的构建图，用于自举
+```

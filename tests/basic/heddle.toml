@@ -1,0 +1,28 @@
+[build]
+dir = "out"
+toolchain = "auto"
+
+[toolchain.host]
+cc = "cc"
+cflags = ["-O2", "-Wall"]
+
+[toolchain.debug]
+based_on = "host"
+cflags = ["-O0", "-g", "-Wall"]
+
+[target.util]
+type = "staticlib"
+src = ["src/util/util.c"]
+inc = ["src/util"]
+
+[target.math]
+type = "staticlib"
+src = ["src/math/add.c"]
+inc = ["src/util", "src/math"]
+deps = ["util"]
+
+[target.app]
+type = "exe"
+src = ["app/main.c"]
+inc = ["src/math"]
+deps = ["math", "util"]
