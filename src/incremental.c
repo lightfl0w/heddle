@@ -105,6 +105,15 @@ int incr_plan(INCR_DB *db, char *active) {
     return count;
 }
 
+void incr_record(INCR_DB *db, int node) {
+    const NODE *nd = &db->g->nodes[node];
+
+    db->states[node].cmd_hash = nd->cmd_hash;
+    db->states[node].in_hash  = node_input_hash(nd, &db->files);
+    db->states[node].out_hash = node_output_hash(nd, &db->files);
+    db->states[node].valid    = 1;
+}
+
 void incr_commit(INCR_DB *db, const char *active) {
     const GRAPH *g = db->g;
 

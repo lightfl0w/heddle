@@ -41,6 +41,9 @@ xmake
 | `--cwd DIR` | 命令执行目录 |
 | `--logdir DIR` | 日志与指纹 DB 目录，默认 `.build` |
 | `--stop` | 失败后停止调度（默认 keep-going） |
+| `--cache DIR` | CAS 与动作缓存根目录，默认与 `--logdir` 相同 |
+| `--remote URL` | 远程 CAS：本地目录或 `http(s)://` |
+| `--no-cache` | 关闭缓存查找与写入 |
 
 ## build.txt 格式
 

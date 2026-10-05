@@ -188,11 +188,6 @@ static int scan_node(GRAPH *g, int node) {
     return 0;
 }
 
-int deps_scan_node(GRAPH *g, int node, const char *cwd) {
-    (void)cwd;
-    return scan_node(g, node);
-}
-
 int deps_scan(GRAPH *g, const char *cwd, HASH_DB *files) {
     (void)cwd;
 

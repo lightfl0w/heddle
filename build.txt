@@ -1,10 +1,11 @@
 0: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/build.c -o build/build.o
-1: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/deps.c -o build/deps.o
-2: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/graph.c -o build/graph.o
-3: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/hash.c -o build/hash.o
-4: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/incremental.c -o build/incremental.o
-5: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/main.c -o build/main.o
-6: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/proc.c -o build/proc.o
-7: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/scheduler.c -o build/scheduler.o
-8: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/thread.c -o build/thread.o
-9: cc -pthread build/build.o build/deps.o build/graph.o build/hash.o build/incremental.o build/main.o build/proc.o build/scheduler.o build/thread.o -o loom < 0 1 2 3 4 5 6 7 8
+1: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/cas.c -o build/cas.o
+2: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/deps.c -o build/deps.o
+3: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/graph.c -o build/graph.o
+4: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/hash.c -o build/hash.o
+5: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/incremental.c -o build/incremental.o
+6: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/main.c -o build/main.o
+7: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/proc.c -o build/proc.o
+8: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/scheduler.c -o build/scheduler.o
+9: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/thread.c -o build/thread.o
+10: cc -pthread build/build.o build/cas.o build/deps.o build/graph.o build/hash.o build/incremental.o build/main.o build/proc.o build/scheduler.o build/thread.o -o loom < 0 1 2 3 4 5 6 7 8 9
