@@ -150,8 +150,11 @@ int pkg_target_resolve(TARGET_PROFILE *t, char *err, size_t errsz) {
 
     if (!t->fpu) {
         char buf[256];
+        int  has_fpu = a->fpu_soft[0] || a->fpu_hard[0];
 
-        if (t->float_k && !strcmp(t->float_k, "soft"))
+        if (!has_fpu)
+            buf[0] = 0;
+        else if (t->float_k && !strcmp(t->float_k, "soft"))
             snprintf(buf, sizeof(buf), "-mfloat-abi=soft");
         else if (t->float_k && !strcmp(t->float_k, "hard"))
             snprintf(buf, sizeof(buf), "%s -mfloat-abi=hard", a->fpu_hard);
@@ -221,6 +224,14 @@ static void load_section(const TOML *t, const char *section, PKG_KIND kind,
     }
 }
 
+static int has_recipe(const char *dir) {
+    char *cfg = path_join(dir, "package.toml");
+    int   ok  = cfg && exists(cfg);
+
+    free(cfg);
+    return ok;
+}
+
 static void resolve_store(PKG_MANIFEST *m) {
     for (int pass = 0; pass < 2; pass++) {
         PKG_LIST *l = pass == 0 ? &m->tools : &m->deps;
@@ -233,6 +244,8 @@ static void resolve_store(PKG_MANIFEST *m) {
             char *p = path_join3(m->store, kind_dir(s->kind), s->name);
 
             s->store_path = p ? path_join(p, s->version) : NULL;
+
+            s->recipe = has_recipe(s->store_path);
 
             free(p);
         }
@@ -972,19 +985,6 @@ char **pkg_env(const PKG_MANIFEST *m, int *out_n) {
     return v;
 }
 
-char *pkg_store_path(const PKG_MANIFEST *m, const PKG_SPEC *s) {
-    if (s->store_path) return sys_dup(s->store_path);
-
-    char *p = path_join3(m->store, kind_dir(s->kind), s->name);
-
-    if (!p) return NULL;
-
-    char *q = path_join(p, s->version);
-
-    free(p);
-    return q;
-}
-
 int pkg_prepend_path(PKG_MANIFEST *m) {
     char  prefix[8192];
     int   plen = 0;
@@ -1019,4 +1019,26 @@ int pkg_prepend_path(PKG_MANIFEST *m) {
 
     free(full);
     return 0;
+}
+
+char *pkg_variant_key(const TARGET_PROFILE *t, const TOOLCHAIN *tc,
+                      char *out, size_t cap) {
+    unsigned long long h = HASH_FNV_OFFSET;
+
+    const char *parts[] = {
+        t->arch, t->abi, t->float_k, t->cpu, t->fpu,
+        tc->cc, tc->platform,
+    };
+
+    for (size_t i = 0; i < sizeof(parts) / sizeof(parts[0]); i++)
+        if (parts[i]) h = hash_text(h, parts[i]);
+
+    for (int i = 0; i < tc->ncflags; i++)
+        h = hash_text(h, tc->cflags[i]);
+
+    snprintf(out, cap, "%s-%s-%016llx",
+             t->arch ? t->arch : "host",
+             tc->name ? tc->name : "cc", h);
+
+    return out;
 }

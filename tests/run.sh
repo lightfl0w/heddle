@@ -273,4 +273,66 @@ check_rc "verify tarball store" $? 0
 rm -rf "$TARREG" "$HERE/pkg/out" "$HERE/pkg/.heddle" "$HERE/pkg/heddle.lock"
 echo
 
+echo "recipe (source package):"
+cd "$HERE/recipe"
+rm -rf out .heddle heddle.lock
+export HEDDLE_REGISTRY="$HERE/recipe/registry"
+
+$HEDDLE tool install >/dev/null 2>&1
+check_rc "source package install" $? 0
+[ -f .heddle/store/library/greet/1.0/package.toml ]     && ok "recipe copied to store" || bad "recipe missing from store"
+
+rm -rf out .heddle/app.graph
+$HEDDLE app >/dev/null 2>&1
+check_rc "source package build" $? 0
+check_eq "c + asm linked" "$(./out/app)" "102"
+
+graph=$(cat .heddle/app.graph)
+case "$graph" in
+    *"gcc -c"*"greet.c"*) ok "c source compiled in graph" ;;
+    *)                    bad "c source not in graph: $graph" ;;
+esac
+case "$graph" in
+    *"nasm -f elf64"*"level.asm"*) ok "asm source compiled in graph (elf64)" ;;
+    *)                             bad "asm source not in graph: $graph" ;;
+esac
+case "$graph" in
+    *"ar rcs"*"libgreet.a"*) ok "recipe artifact archived in graph" ;;
+    *)                       bad "recipe archive missing: $graph" ;;
+esac
+
+rm -rf out .heddle/app.graph
+out=$($HEDDLE -v app 2>&1)
+expect_err "source package rebuild hits CAS" "$out" "5 cached"
+
+v1=$($HEDDLE -v app 2>&1 | grep -o 'variant=[^ ]*')
+cp heddle.toml heddle.toml.orig
+cat > heddle.toml <<EOF
+[build]
+dir = "out"
+
+[toolchain.host]
+cc = "cc"
+cflags = ["-DVARIANT_PROBE=1"]
+
+[target]
+arch = "x86_64"
+
+[dependencies]
+greet = "1.0"
+
+[target.app]
+type = "exe"
+src = ["src/main.c"]
+EOF
+v2=$($HEDDLE -v app 2>&1 | grep -o 'variant=[^ ]*')
+mv heddle.toml.orig heddle.toml
+[ -n "$v1" ] && [ "$v1" != "$v2" ] \
+    && ok "variant changes with toolchain flags" \
+    || bad "variant did not change ($v1 vs $v2)"
+
+rm -rf out .heddle heddle.lock
+unset HEDDLE_REGISTRY
+echo
+
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"

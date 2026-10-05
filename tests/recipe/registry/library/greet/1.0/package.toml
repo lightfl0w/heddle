@@ -1,0 +1,8 @@
+[package]
+name = "greet"
+version = "1.0"
+
+[build]
+sources = ["src/*.c", "src/*.asm"]
+include_dirs = ["include"]
+defines = ["GREET_LEVEL=2"]

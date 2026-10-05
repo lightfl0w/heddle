@@ -224,6 +224,16 @@ char *emit_artifact(const PROJECT *p, const TARGET *t) {
     return out;
 }
 
+static const char *asm_format(const PROJECT *p) {
+    const char *arch = p->pkg.target.arch;
+
+    if (!arch) return "elf";
+    if (!strcmp(arch, "x86_64") || !strcmp(arch, "aarch64")) return "elf64";
+    if (!strcmp(arch, "i686")) return "elf32";
+
+    return "elf";
+}
+
 static void put_incs(const TARGET *t, char *buf, size_t cap, int *len) {
     for (int i = 0; i < t->ninc; i++)
         addf(buf, cap, len, " -I%s", t->inc[i]);
@@ -252,7 +262,7 @@ static void put_dep_ldflags(const PROJECT *p, char *buf, size_t cap, int *len) {
     for (int i = 0; i < p->pkg.deps.n; i++) {
         const PKG_SPEC *s = &p->pkg.deps.items[i];
 
-        if (!s->store_path) continue;
+        if (!s->store_path || s->recipe) continue;
 
         char *lib = project_path(s->store_path, "lib");
 
@@ -481,7 +491,7 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
 
             char cmd[16384];
 
-            build_cmd(p, t, lg, t->src[k], obj, incs, flags, "elf",
+            build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p),
                       cmd, sizeof(cmd));
 
             STEP *st = plan_add(pl, cmd);

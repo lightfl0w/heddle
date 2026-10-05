@@ -1,6 +1,6 @@
 # 工具链与依赖
 
-`[toolchain]` 声明工具链包，`[dependencies]` 声明库，`heddle tool install` 一次把两者装好。
+`[toolchain]` 声明工具链包，`[dependencies]` 声明库。两者都由 `heddle tool install` 安装。
 
 ## 清单
 
@@ -69,15 +69,73 @@ heddle: plan
 
 ```
 <registry>/
-  toolchain/<名字>/<版本>/          # 目录，含 bin/、include/、lib/
-  library/<名字>/<版本>/            # 目录，含 include/、lib/
+  toolchain/<名字>/<版本>/          # 目录，含 bin/
+  library/<名字>/<版本>/            # 目录，含 include/、lib/，或 package.toml
   <kind>/<名字>/<版本>.tar.gz       # 或打包形式
 ```
 
 目录形式直接拷贝。tar.gz 解包后，如果顶层只有一个包裹目录（如 `10.5.1/`）会自动展开；
 `bin/`、`include/`、`lib/`、`src/` 这类结构目录不会被展开。
 
-工具链的 `bin/` 在构建时前置到 `PATH`，库的 `include/`、`lib/` 进入命令行（`-I`、`-L`、`-l`）。
+工具链的 `bin/` 在构建时前置到 `PATH`。二进制库的 `include/`、`lib/` 拼成 `-I`、`-L`、`-l`。
+
+## 源码包
+
+库目录里放 `package.toml` 就是源码包。`tool install` 把源码取进 store，编译在构建时进行。
+
+```toml
+[package]
+name = "freertos"
+version = "10.5.1"
+
+[source]
+url = "https://github.com/FreeRTOS/FreeRTOS-Kernel.git"
+tag = "V10.5.1"
+
+[build]
+sources = ["src/*.c", "port/*.asm"]
+include_dirs = ["include"]
+defines = ["configUSE_PREEMPTION=1"]
+cflags = ["-Os"]
+```
+
+| 键 | 含义 |
+| --- | --- |
+| `sources` | 源文件，支持 `*` 通配，按后缀选编译器 |
+| `include_dirs` | 头文件目录，相对包根 |
+| `defines` | 追加 `-D<名字>` |
+| `cflags` | 追加到编译命令 |
+
+源码包不含 `include/`、`lib/`，产物由构建生成。
+
+### 多语言
+
+`sources` 里可以同时有 C 和汇编，按后缀分派：
+
+```
+0: gcc  -c ... -o out/greet_greet.o .heddle/store/library/greet/1.0/src/greet.c
+1: nasm -f elf64 ... -o out/greet_level.o .heddle/store/library/greet/1.0/src/level.asm
+2: ar rcs -o out/libgreet.a out/greet_greet.o out/greet_level.o
+3: gcc -o out/app out/app_main.o out/libgreet.a
+```
+
+需要新语言就在 `heddle.toml` 里声明 `[lang.xxx]`，见 [语言插件](language-plugins.md)。
+
+### 依赖进构建图
+
+`[dependencies]` 里的源码包会变成构建图里的一个 `staticlib` 目标，和手写的
+`[target.*]` 没有区别：进同一条 DAG，按内容哈希决定是否重编。
+
+`type = "exe"` 和 `type = "sharedlib"` 的目标自动依赖这些包，不用写 `deps`。
+其他类型的目标要用就得自己写。
+
+## 变体
+
+`[target]` 和工具链一起算出一个变体 key，格式是 `arch-工具链-十六进制`：
+
+```
+heddle: toolchain=arm-none-eabi platform=cross-arm-none-eabi variant=armv7em-arm-none-eabi-3f2a1c9d0e4b7a86
+```
 
 ## 锁文件
 
@@ -168,7 +226,7 @@ sysroot = "/opt/arm/sysroot"
 
 1. 由 `[target]` 推出前缀和 cflags；
 2. 把 store 里工具链的 `bin/` 前置到 `PATH`，工具链探测就能选中 `arm-none-eabi-gcc` 而不是宿主 `gcc`；
-3. 把依赖的 `include/`、`lib/` 加进编译链接命令；
+3. 源码包变成构建图里的目标，二进制依赖的 `include/`、`lib/` 加进命令行；
 4. 子进程继承叠加后的 `PATH`、`CFLAGS`、`LDFLAGS`、`CPATH`。
 
 声明了工具链但未安装时报错，不回退到宿主编译器：

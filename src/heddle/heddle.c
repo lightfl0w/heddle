@@ -113,9 +113,14 @@ static int build_target(const HEDDLE_OPTS *o, PROJECT *p, char *err) {
         return 1;
     }
 
-    if (o->verbose)
-        fprintf(stderr, "heddle: toolchain=%s platform=%s\n",
-                p->tc.name, p->tc.platform);
+    if (o->verbose) {
+        char variant[256];
+
+        pkg_variant_key(&p->pkg.target, &p->tc, variant, sizeof(variant));
+
+        fprintf(stderr, "heddle: toolchain=%s platform=%s variant=%s\n",
+                p->tc.name, p->tc.platform, variant);
+    }
 
     int rc  = build_run(e);
     int ran = 0;

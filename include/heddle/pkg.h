@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+#include "toolchain.h"
+
 typedef enum {
     PKG_KIND_TOOLCHAIN,
     PKG_KIND_LIBRARY
@@ -22,6 +24,7 @@ typedef struct {
     PKG_SOURCE  source;
     char       *hash;
     char       *store_path;
+    int         recipe;
 } PKG_SPEC;
 
 typedef struct {
@@ -59,7 +62,9 @@ int  pkg_install(PKG_MANIFEST *m, int offline, int verbose, char *err, size_t er
 int  pkg_verify(PKG_MANIFEST *m, int verbose, char *err, size_t errsz);
 void pkg_plan(const PKG_MANIFEST *m);
 char **pkg_env(const PKG_MANIFEST *m, int *out_n);
-char *pkg_store_path(const PKG_MANIFEST *m, const PKG_SPEC *s);
 int  pkg_prepend_path(PKG_MANIFEST *m);
+
+char *pkg_variant_key(const TARGET_PROFILE *t, const TOOLCHAIN *tc,
+                      char *out, size_t cap);
 
 #endif

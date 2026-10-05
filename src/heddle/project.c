@@ -1,5 +1,6 @@
 #include "lang.h"
 #include "project.h"
+#include "recipe.h"
 #include "sys.h"
 
 #include <stdio.h>
@@ -202,6 +203,57 @@ static int target_fill(TARGET *t, const TOML *cfg,
     return 0;
 }
 
+static int deps_has(const PROJECT *p, const char *name) {
+    for (int i = 0; i < p->ntargets; i++)
+        if (!strcmp(p->targets[i].name, name)) return 1;
+
+    return 0;
+}
+
+static int load_recipe_target(PROJECT *p, RECIPE *r, const char *src_dir,
+                              char *err, size_t errsz) {
+    if (deps_has(p, r->pkg.name)) return 0;
+
+    TARGET *t = target_add(p, r->pkg.name, src_dir);
+
+    if (!t || !t->name || !t->dir) {
+        snprintf(err, errsz, "out of memory");
+        return -1;
+    }
+
+    t->type = TARGET_STATICLIB;
+
+    if (r->build.type && parse_type(r->build.type, &t->type) != 0) {
+        snprintf(err, errsz, "%s: unknown build type '%s'",
+                 r->pkg.name, r->build.type);
+        return -1;
+    }
+
+    for (int i = 0; i < r->build.nfile; i++)
+        vec_add(&t->src, &t->nsrc, r->build.files[i]);
+
+    for (int i = 0; i < r->build.ninc; i++) {
+        char *full = prefixed(src_dir, r->build.include_dirs[i]);
+
+        if (full) {
+            vec_add(&t->inc, &t->ninc, full);
+            free(full);
+        }
+    }
+
+    for (int i = 0; i < r->build.ndef; i++) {
+        char d[1024];
+
+        snprintf(d, sizeof(d), "-D%s", r->build.defines[i]);
+        vec_add(&t->cflags, &t->ncflags, d);
+    }
+
+    for (int i = 0; i < r->build.ncflags; i++)
+        vec_add(&t->cflags, &t->ncflags, r->build.cflags[i]);
+
+    return 0;
+}
+
 static const char *norm_dir(const char *d) {
     while (d[0] == '.' && d[1] == '/') d += 2;
 
@@ -290,6 +342,55 @@ fail:
     return -1;
 }
 
+static int load_store_recipes(PROJECT *p, char *err, size_t errsz) {
+    for (int i = 0; i < p->pkg.deps.n; i++) {
+        PKG_SPEC *s = &p->pkg.deps.items[i];
+
+        if (!s->store_path || !recipe_match(s->store_path)) continue;
+
+        RECIPE r;
+
+        if (recipe_load(&r, s->store_path, err, errsz) != 0) return -1;
+
+        int rc = load_recipe_target(p, &r, s->store_path, err, errsz);
+
+        recipe_free(&r);
+
+        if (rc != 0) return -1;
+    }
+
+    return 0;
+}
+
+static int auto_depends(PROJECT *p, char *err, size_t errsz) {
+    for (int i = 0; i < p->pkg.deps.n; i++) {
+        const char *name = p->pkg.deps.items[i].name;
+
+        if (!project_target(p, name)) continue;
+
+        for (int k = 0; k < p->ntargets; k++) {
+            TARGET *t = &p->targets[k];
+
+            if (t->type != TARGET_EXE && t->type != TARGET_SHAREDLIB) continue;
+            if (!strcmp(t->name, name)) continue;
+
+            int have = 0;
+
+            for (int d = 0; d < t->ndeps; d++)
+                if (!strcmp(t->deps[d], name)) have = 1;
+
+            if (have) continue;
+
+            if (vec_add(&t->deps, &t->ndeps, name) != 0) {
+                snprintf(err, errsz, "out of memory");
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
 int project_load(PROJECT *p, const char *root, const char *toolchain,
                  char *err, size_t errsz) {
     memset(p, 0, sizeof(*p));
@@ -357,6 +458,16 @@ int project_load(PROJECT *p, const char *root, const char *toolchain,
     if (!dir_exists(p->build_dir)) sys_mkpath(p->build_dir);
 
     if (load_package(p, norm_dir(p->root), 0, err, errsz) != 0) {
+        project_free(p);
+        return -1;
+    }
+
+    if (load_store_recipes(p, err, errsz) != 0) {
+        project_free(p);
+        return -1;
+    }
+
+    if (auto_depends(p, err, errsz) != 0) {
         project_free(p);
         return -1;
     }
