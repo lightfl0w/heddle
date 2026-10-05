@@ -232,54 +232,63 @@ static int deps_key(INCR_DB *db, int node, unsigned long long *out) {
     return 0;
 }
 
+static int deps_ready(BUILD_ENGINE *e, int node) {
+    NODE *nd = &e->db.g->nodes[node];
+
+    for (int i = 0; i < nd->ndeps; i++)
+        if (e->active[nd->deps[i]]) return 0;
+
+    return 1;
+}
+
 static void cache_restore(BUILD_ENGINE *e, int *dirty) {
     INCR_DB *db = &e->db;
 
-    for (int pass = 0; pass < 2; pass++) {
-        for (int i = 0; i < db->n; i++) {
-            if (!e->active[i]) continue;
+    for (int i = 0; i < db->n; i++) {
+        if (!e->active[i]) continue;
 
-            NODE *nd = &db->g->nodes[i];
+        NODE *nd = &db->g->nodes[i];
 
-            if (nd->nouts == 0) continue;
+        if (nd->nouts == 0) continue;
 
-            unsigned long long intrinsic = 0;
-            unsigned long long dyn       = 0;
+        if (!deps_ready(e, i)) continue;
 
-            node_last_input(db, i, &intrinsic);
-            deps_key(db, i, &dyn);
+        unsigned long long intrinsic = 0;
+        unsigned long long dyn       = 0;
 
-            unsigned long long key = hash_u64(intrinsic, dyn);
-            key = hash_u64(key, tool_hash(nd->argv[0]));
+        node_last_input(db, i, &intrinsic);
+        deps_key(db, i, &dyn);
 
-            AC_ENTRY *ent = ac_find(&e->ac, key);
+        unsigned long long key = hash_u64(intrinsic, dyn);
+        key = hash_u64(key, tool_hash(nd->argv[0]));
 
-            int hit = ent != NULL;
+        AC_ENTRY *ent = ac_find(&e->ac, key);
 
-            for (int k = 0; hit && k < ent->nouts; k++)
-                if (!cas_has(e->cas, ent->outs[k].hash)) hit = 0;
+        int hit = ent != NULL;
 
-            if (!hit) continue;
+        for (int k = 0; hit && k < ent->nouts; k++)
+            if (!cas_has(e->cas, ent->outs[k].hash)) hit = 0;
 
-            int restored = 1;
+        if (!hit) continue;
 
-            for (int k = 0; k < ent->nouts; k++)
-                if (cas_get_file(e->cas, ent->outs[k].hash, nd->outs[k]) != 0)
-                    restored = 0;
+        int restored = 1;
 
-            if (!restored) continue;
+        for (int k = 0; k < ent->nouts; k++)
+            if (cas_get_file(e->cas, ent->outs[k].hash, nd->outs[k]) != 0)
+                restored = 0;
 
-            for (int k = 0; k < ent->nouts; k++) {
-                struct stat st;
-                if (stat(nd->outs[k], &st) == 0)
-                    chmod(nd->outs[k], (mode_t)ent->outs[k].mode);
-            }
+        if (!restored) continue;
 
-            incr_record(db, i);
-            e->active[i] = 0;
-            e->cached++;
-            (*dirty)--;
+        for (int k = 0; k < ent->nouts; k++) {
+            struct stat st;
+            if (stat(nd->outs[k], &st) == 0)
+                chmod(nd->outs[k], (mode_t)ent->outs[k].mode);
         }
+
+        incr_record(db, i);
+        e->active[i] = 0;
+        e->cached++;
+        (*dirty)--;
     }
 }
 
