@@ -81,6 +81,8 @@ static int build_target(const HEDDLE_OPTS *o, PROJECT *p, char *err) {
     bo.cache_dir  = o->cache;
     bo.remote     = o->remote;
     bo.no_cache   = o->no_cache;
+    bo.env        = p->tc.env;
+    bo.nenv       = p->tc.nenv;
 
     BUILD_ENGINE *e = build_open(&bo, err, sizeof(err));
 

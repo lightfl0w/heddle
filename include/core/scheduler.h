@@ -11,6 +11,9 @@ typedef struct {
     int          retry;
     int          keep_going;
     const char  *active;
+
+    char *const *env;
+    int          nenv;
 } SCHED_OPTS;
 
 int sched_run(const SCHED_OPTS *opts);

@@ -32,6 +32,9 @@ typedef struct {
     const char  *active;
     const char  *cwd;
     const char  *logdir;
+
+    char *const *env;
+    int          nenv;
 } SCHED_STATE;
 
 static void intq_init(INTQ *q, int cap) {
@@ -117,7 +120,8 @@ static void *worker(void *arg) {
 
         PROC_RESULT r;
 
-        if (proc_run(s->g->nodes[node].argv, s->cwd, logpath, &r) != 0) {
+        if (proc_run(s->g->nodes[node].argv, s->cwd, logpath,
+                     s->env, s->nenv, &r) != 0) {
             r.exit_code = -1;
             r.signaled  = 0;
             r.signal    = 0;
@@ -244,6 +248,8 @@ int sched_run(const SCHED_OPTS *o) {
     s.cwd         = o->cwd;
     s.logdir      = o->logdir;
     s.retry_count = o->retry;
+    s.env         = o->env;
+    s.nenv        = o->nenv;
 
     mutex_init(&s.mtx);
     cond_init(&s.cv_ready);

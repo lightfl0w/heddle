@@ -1,6 +1,7 @@
 #include "toolchain.h"
-#include "toml.h"
 #include "sys.h"
+#include "toml.h"
+#include "vswhere.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,6 +73,23 @@ static int on_path(const char *prog) {
     return found;
 }
 
+void tc_add_env(TOOLCHAIN *tc, const char *fmt, ...) {
+    char    buf[4096];
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    char **next = (char **)realloc(tc->env, sizeof(char *) * (size_t)(tc->nenv + 1));
+    if (!next) return;
+
+    tc->env = next;
+    tc->env[tc->nenv] = sys_dup(buf);
+
+    if (tc->env[tc->nenv]) tc->nenv++;
+}
+
 static const TC_PRESET *preset_of(const char *name) {
     for (int i = 0; i < (int)(sizeof(g_presets) / sizeof(g_presets[0])); i++)
         if (!strcmp(g_presets[i].name, name)) return &g_presets[i];
@@ -79,10 +97,54 @@ static const TC_PRESET *preset_of(const char *name) {
     return NULL;
 }
 
+static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
+    char install[1024];
+    char toolset[1024];
+    char inc[2048];
+    char lib[2048];
+    char cl[1200];
+
+    if (vs_install(install, sizeof(install)) != 0) return -1;
+    if (vs_toolset(install, want, toolset, sizeof(toolset)) != 0) return -1;
+
+    if (vs_sdk(arch, inc, sizeof(inc), lib, sizeof(lib)) != 0)
+        inc[0] = lib[0] = 0;
+
+    snprintf(cl, sizeof(cl), "%s\\bin\\Host%s\\%s\\cl.exe",
+             toolset, arch, arch);
+
+    free(tc->cc);
+    free(tc->cxx);
+    free(tc->ar);
+    free(tc->ld);
+
+    tc->cc  = sys_dup(cl);
+    tc->cxx = sys_dup(cl);
+    tc->ld  = sys_dup(cl);
+    tc->ar  = sys_dup("lib");
+
+    char *sys_path = getenv("PATH");
+
+    tc_add_env(tc, "PATH=%s\\bin\\Host%s\\%s;%s",
+               toolset, arch, arch, sys_path ? sys_path : "");
+    tc_add_env(tc, "INCLUDE=%s;%s\\include", inc, toolset);
+    tc_add_env(tc, "LIB=%s;%s\\lib\\%s", lib, toolset, arch);
+
+    return 0;
+}
+
 int tc_probe(const char *preset) {
     const TC_PRESET *p = preset_of(preset);
 
-    return p && on_path(p->cc);
+    if (!p) return 0;
+
+    if (!strcmp(preset, "msvc")) {
+        char install[1024];
+
+        return vs_install(install, sizeof(install)) == 0;
+    }
+
+    return on_path(p->cc);
 }
 
 const char *tc_preset_cc(const char *preset) {
@@ -170,28 +232,36 @@ static void read_flags(const char *dir, TOOLCHAIN *tc, const char *user) {
     toml_free(&t);
 }
 
-static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
-    int n = (int)(sizeof(g_auto) / sizeof(g_auto[0]));
+static void load_preset(TOOLCHAIN *tc, const TC_PRESET *p) {
+    tc->name     = sys_dup(p->name);
+    tc->cc       = sys_dup(p->cc);
+    tc->cxx      = sys_dup(p->cxx);
+    tc->as       = sys_dup(p->as);
+    tc->ar       = sys_dup(p->ar);
+    tc->ld       = sys_dup(p->cc);
+    tc->objext   = sys_dup(p->objext);
+    tc->binext   = sys_dup(p->binext);
+    tc->libext   = sys_dup(p->libext);
+    tc->dllpre   = sys_dup(p->dllpre);
+    tc->dllext   = sys_dup(p->dllext);
+    tc->soflag   = sys_dup(p->soflag);
+    tc->platform = sys_dup(p->name);
+}
 
-    for (int i = 0; i < n; i++) {
+static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
+    for (int i = 0; i < tc_auto_count(); i++) {
         const TC_PRESET *p = preset_of(g_auto[i]);
 
-        if (!p || !on_path(p->cc)) continue;
+        if (!p || !tc_probe(g_auto[i])) continue;
 
+        load_preset(tc, p);
 
-        tc->name     = sys_dup(p->name);
-        tc->cc       = sys_dup(p->cc);
-        tc->cxx      = sys_dup(p->cxx);
-        tc->as       = sys_dup(p->as);
-        tc->ar       = sys_dup(p->ar);
-        tc->ld       = sys_dup(p->cc);
-        tc->objext   = sys_dup(p->objext);
-        tc->binext   = sys_dup(p->binext);
-        tc->libext   = sys_dup(p->libext);
-        tc->dllpre   = sys_dup(p->dllpre);
-        tc->dllext   = sys_dup(p->dllext);
-        tc->soflag   = sys_dup(p->soflag);
-        tc->platform = sys_dup(p->name);
+        if (!strcmp(p->name, "msvc")) {
+            free(tc->cc);
+            tc->cc = NULL;
+
+            if (msvc_fill(tc, "x64", NULL) != 0) continue;
+        }
 
         read_flags(dir, tc, user);
         return 0;
@@ -234,6 +304,10 @@ int tc_load(TOOLCHAIN *tc, const char *dir, const char *name,
         return -1;
     }
 
+    if (!strcmp(p->name, "msvc"))
+        msvc_fill(tc, or_default(&t, sect, "arch", "x64"),
+                  or_default(&t, sect, "toolset", NULL));
+
     tc->name     = sys_dup(name);
     tc->cc       = dup_or(&t, sect, "cc", p->cc);
     tc->cxx      = dup_or(&t, sect, "cxx", p->cxx);
@@ -275,9 +349,11 @@ void tc_free(TOOLCHAIN *tc) {
 
     for (int i = 0; i < tc->ncflags; i++) free(tc->cflags[i]);
     for (int i = 0; i < tc->nldflags; i++) free(tc->ldflags[i]);
+    for (int i = 0; i < tc->nenv; i++) free(tc->env[i]);
 
     free(tc->cflags);
     free(tc->ldflags);
+    free(tc->env);
 
     memset(tc, 0, sizeof(*tc));
 }

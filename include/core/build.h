@@ -14,6 +14,9 @@ typedef struct {
     const char *cache_dir;
     const char *remote;
     int         no_cache;
+
+    char *const *env;
+    int          nenv;
 } BUILD_OPTS;
 
 typedef struct BUILD_ENGINE BUILD_ENGINE;

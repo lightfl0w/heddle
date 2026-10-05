@@ -375,6 +375,8 @@ int build_run(BUILD_ENGINE *e) {
     so.retry      = e->opts.retry;
     so.keep_going = e->opts.keep_going;
     so.active     = e->active;
+    so.env        = e->opts.env;
+    so.nenv       = e->opts.nenv;
 
     e->ran = dirty;
 

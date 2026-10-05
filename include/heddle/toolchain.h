@@ -2,6 +2,7 @@
 #define TOOLCHAIN_H
 
 #include <stddef.h>
+#include <stdarg.h>
 
 typedef struct TOOLCHAIN {
     char *name;
@@ -27,12 +28,17 @@ typedef struct TOOLCHAIN {
     char *as;
 
     char *platform;
+
+    char **env;
+    int    nenv;
 } TOOLCHAIN;
 
 int  tc_load(TOOLCHAIN *tc, const char *dir, const char *name,
              char *err, size_t errsz);
 
 void tc_free(TOOLCHAIN *tc);
+
+void tc_add_env(TOOLCHAIN *tc, const char *fmt, ...);
 
 int tc_auto_count(void);
 

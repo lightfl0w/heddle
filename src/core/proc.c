@@ -1,5 +1,6 @@
 #include "proc.h"
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,8 +48,61 @@ static void append_arg(char *buf, size_t cap, size_t *len, const char *arg) {
     if (*len < cap) buf[*len] = 0;
 }
 
-int proc_run(char *const *argv, const char *cwd,
-             const char *log_path, PROC_RESULT *out) {
+static int env_name_eq(const char *a, const char *b) {
+    while (*a && *b && *a != '=' && *b != '=') {
+        char x = (char)toupper((unsigned char)*a++);
+        char y = (char)toupper((unsigned char)*b++);
+
+        if (x != y) return 0;
+    }
+
+    return *a == '=' && *b == '=';
+}
+
+static int env_over(char *const *env, int nenv, const char *entry) {
+    for (int i = 0; i < nenv; i++)
+        if (env_name_eq(entry, env[i])) return 1;
+
+    return 0;
+}
+
+static char *env_merge(char *const *env, int nenv) {
+    char  *parent = GetEnvironmentStringsA();
+    size_t n = 1;
+
+    for (char *p = parent; *p; p += strlen(p) + 1)
+        if (!env_over(env, nenv, p)) n += strlen(p) + 1;
+
+    for (int i = 0; i < nenv; i++)
+        n += strlen(env[i]) + 1;
+
+    char *block = (char *)calloc(n + 1, 1);
+    if (!block) {
+        FreeEnvironmentStringsA(parent);
+        return NULL;
+    }
+
+    char *w = block;
+
+    for (char *p = parent; *p; p += strlen(p) + 1) {
+        if (env_over(env, nenv, p)) continue;
+
+        memcpy(w, p, strlen(p) + 1);
+        w += strlen(p) + 1;
+    }
+
+    FreeEnvironmentStringsA(parent);
+
+    for (int i = 0; i < nenv; i++) {
+        memcpy(w, env[i], strlen(env[i]) + 1);
+        w += strlen(env[i]) + 1;
+    }
+
+    return block;
+}
+
+int proc_run(char *const *argv, const char *cwd, const char *log_path,
+             char *const *env, int nenv, PROC_RESULT *out) {
     out->exit_code = -1;
     out->signaled  = 0;
     out->signal    = 0;
@@ -95,8 +149,12 @@ int proc_run(char *const *argv, const char *cwd,
     PROCESS_INFORMATION pi;
     ZeroMemory(&pi, sizeof(pi));
 
-    BOOL ok = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL,
-                             cwd, &si, &pi);
+    char *block = env_merge(env, nenv);
+
+    BOOL ok = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE,
+                             CREATE_UNICODE_ENVIRONMENT, block, cwd, &si, &pi);
+
+    free(block);
 
     free(cmdline);
     CloseHandle(hlog);
@@ -122,8 +180,8 @@ int proc_run(char *const *argv, const char *cwd,
 #include <sys/wait.h>
 #include <unistd.h>
 
-int proc_run(char *const *argv, const char *cwd,
-             const char *log_path, PROC_RESULT *out) {
+int proc_run(char *const *argv, const char *cwd, const char *log_path,
+             char *const *env, int nenv, PROC_RESULT *out) {
     out->exit_code = -1;
     out->signaled  = 0;
     out->signal    = 0;
@@ -132,6 +190,9 @@ int proc_run(char *const *argv, const char *cwd,
     if (pid < 0) return -1;
 
     if (pid == 0) {
+        for (int i = 0; i < nenv; i++)
+            putenv(env[i]);
+
         if (cwd && chdir(cwd) != 0) _exit(127);
 
         int fd = open(log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);

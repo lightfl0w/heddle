@@ -10,6 +10,8 @@ typedef struct {
 int proc_run(char *const *argv,
              const char *cwd,
              const char *log_path,
+             char *const *env,
+             int nenv,
              PROC_RESULT *out);
 
 #endif
