@@ -1,0 +1,27 @@
+[build]
+dir = "out"
+
+[install]
+prefix = "/opt/myos"
+
+[target]
+arch = "x86_64"
+
+[target.kernel]
+type = "exe"
+src = ["src/kernel.c"]
+
+[target.kernel.install]
+bin = "out/kernel"
+
+[target.mylib]
+type = "staticlib"
+src = ["src/mylib.c"]
+inc = ["include"]
+
+[target.mylib.install]
+lib = "out/libmylib.a"
+include = ["include/**/*.h"]
+share = ["resources/*.md"]
+etc = ["rootfs/etc/*.conf"]
+rootfs = "rootfs"

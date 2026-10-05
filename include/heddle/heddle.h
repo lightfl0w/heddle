@@ -12,6 +12,11 @@ typedef struct {
     int         no_cache;
     int         offline;
     const char *registry;
+
+    /* install */
+    const char *prefix;
+    const char *destdir;
+    int         dry_run;
 } HEDDLE_OPTS;
 
 int heddle_run(const HEDDLE_OPTS *o);
@@ -28,5 +33,8 @@ int heddle_tool_plan(const HEDDLE_OPTS *o);
 int heddle_env_verify(const HEDDLE_OPTS *o);
 
 int heddle_ldconv(int argc, char **argv);
+
+int heddle_install(const HEDDLE_OPTS *o);
+int heddle_uninstall(const HEDDLE_OPTS *o);
 
 #endif

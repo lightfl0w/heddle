@@ -28,6 +28,8 @@ heddle toolchains     # 列出探测到的工具链
 heddle tool install   # 恢复工具链 + 依赖，写/修 heddle.lock
 heddle tool plan      # 只打印包解析计划
 heddle env verify     # 校验环境与锁文件完全一致
+heddle install        # 安装构建产物
+heddle uninstall      # 卸载
 ```
 
 工程根目录默认是当前目录，用 `-C` 切换：
@@ -50,6 +52,9 @@ heddle -C /path/to/proj app
 | `--no-cache` | 关闭缓存 |
 | `--registry DIR\|URL` | 包 registry，默认 `$HEDDLE_REGISTRY` |
 | `--offline` | 禁止访问 registry |
+| `--prefix DIR` | 安装前缀 |
+| `--destdir DIR` | 安装暂存目录 |
+| `--dry-run` | 只打印安装计划 |
 
 ## 工具链与依赖的统一管理
 
@@ -292,6 +297,53 @@ host 工具链下：
 链接时 `deps` 里的库自动加到命令行。
 
 生成的图在 `.heddle/TARGET.graph`，缓存和指纹也在 `.heddle/`。
+
+## 安装
+
+在 target 上声明安装意图，不写脚本：
+
+```toml
+[target.kernel]
+type = "exe"
+src = ["src/kernel.c"]
+
+[target.kernel.install]
+bin = "out/kernel"
+
+[target.mylib.install]
+lib = "out/libmylib.a"
+include = ["include/**/*.h"]
+share = ["resources/*.md"]
+etc = ["rootfs/etc/*.conf"]
+rootfs = "rootfs"
+```
+
+```sh
+heddle install                      # 用 [install] prefix
+heddle install --prefix=/opt/myos   # 指定前缀
+heddle install --destdir=./pkg      # 暂存到 ./pkg，不碰系统
+heddle install kernel               # 只装一个 target
+heddle install --dry-run            # 只打印计划
+heddle uninstall --destdir=./pkg    # 按安装日志删
+```
+
+| 键 | 目标位置 |
+| --- | --- |
+| `bin` | `<prefix>/bin/`，取文件名 |
+| `lib` | `<prefix>/lib/`，取文件名 |
+| `include` | `<prefix>/include/`，保留通配基准目录下的相对路径 |
+| `share` | `<prefix>/share/<target>/`，取文件名 |
+| `etc` | `<prefix>/etc/<target>/`，取文件名 |
+| `rootfs` | 把整个目录树镜像到 `<prefix>/rootfs/` |
+| `sysroot_lib` | `<sysroot>/lib/`，sysroot 取 `[target] sysroot` |
+| `sysroot_include` | `<sysroot>/include/` |
+
+`--destdir DIR` 时全部落在 `DIR` 下（`DIR/<prefix>/...`），不动系统。
+不写 `--prefix` 也不写 `[install] prefix` 会直接报错，不会默认装到 `/usr/local`。
+
+安装会写一份日志到 `.heddle/install/<hash>.log`，记录装了哪些文件。
+`heddle uninstall` 只删日志里的文件，日志按 `destdir + prefix` 区分，
+所以卸 A 目录不会碰 B 目录。
 
 ## 测试
 

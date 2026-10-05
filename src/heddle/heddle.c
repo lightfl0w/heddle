@@ -2,9 +2,11 @@
 
 #include "build.h"
 #include "emit.h"
+#include "install.h"
 #include "ldconv.h"
 #include "pkg.h"
 #include "project.h"
+#include "toml.h"
 #include "sys.h"
 
 #include <stdio.h>
@@ -314,4 +316,145 @@ int heddle_ldconv(int argc, char **argv) {
     }
 
     return 0;
+}
+
+static int resolve_prefix(const HEDDLE_OPTS *o, PROJECT *p, char *out,
+                          size_t cap, char *err, size_t errsz) {
+    if (o->prefix && o->prefix[0]) {
+        snprintf(out, cap, "%s", o->prefix);
+        return 0;
+    }
+
+    char cfg[4096];
+    snprintf(cfg, sizeof(cfg), "%s/heddle.toml", p->root);
+
+    TOML t;
+    toml_init(&t);
+
+    if (toml_parse(&t, cfg, err, errsz) == 0) {
+        const char *pf = toml_str(&t, "install", "prefix");
+
+        if (pf && pf[0]) {
+            snprintf(out, cap, "%s", pf);
+            toml_free(&t);
+            return 0;
+        }
+
+        toml_free(&t);
+    }
+
+    snprintf(err, errsz,
+             "no install prefix; pass --prefix DIR or set [install] prefix");
+    return -1;
+}
+
+int heddle_install(const HEDDLE_OPTS *o) {
+    char    err[512] = {0};
+    PROJECT p;
+
+    if (load(o, &p, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        return 1;
+    }
+
+    INSTALL_SET set;
+    memset(&set, 0, sizeof(set));
+
+    if (install_load(&set, &p, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        project_free(&p);
+        return 1;
+    }
+
+    if (!install_has_any(&set)) {
+        fprintf(stderr, "heddle: no [target.*.install] rules to install\n");
+        install_free(&set);
+        project_free(&p);
+        return 1;
+    }
+
+    char prefix[4096];
+
+    if (resolve_prefix(o, &p, prefix, sizeof(prefix), err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        install_free(&set);
+        project_free(&p);
+        return 1;
+    }
+
+    if (o->target && !project_target(&p, o->target)) {
+        fprintf(stderr, "heddle: unknown target '%s'\n", o->target);
+        install_free(&set);
+        project_free(&p);
+        return 1;
+    }
+
+    INSTALL_PLAN pl;
+    memset(&pl, 0, sizeof(pl));
+
+    if (install_plan(&set, &p, o->target, prefix, o->destdir, &pl,
+                     err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        install_plan_free(&pl);
+        install_free(&set);
+        project_free(&p);
+        return 1;
+    }
+
+    if (o->dry_run) {
+        install_dry_run(&pl);
+        install_plan_free(&pl);
+        install_free(&set);
+        project_free(&p);
+        return 0;
+    }
+
+    char log[4096];
+
+    install_log_path(log, sizeof(log), p.root, o->destdir, prefix);
+
+    if (install_run(&pl, log, o->verbose, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        install_plan_free(&pl);
+        install_free(&set);
+        project_free(&p);
+        return 1;
+    }
+
+    printf("heddle: installed %d file%s to %s%s\n", pl.n, pl.n == 1 ? "" : "s",
+           o->destdir ? o->destdir : "", prefix);
+    printf("heddle: log %s\n", log);
+
+    install_plan_free(&pl);
+    install_free(&set);
+    project_free(&p);
+    return 0;
+}
+
+int heddle_uninstall(const HEDDLE_OPTS *o) {
+    char    err[512] = {0};
+    PROJECT p;
+
+    if (load(o, &p, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        return 1;
+    }
+
+    char prefix[4096];
+
+    if (resolve_prefix(o, &p, prefix, sizeof(prefix), err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        project_free(&p);
+        return 1;
+    }
+
+    char log[4096];
+    install_log_path(log, sizeof(log), p.root, o->destdir, prefix);
+
+    int rc = install_uninstall(log, o->verbose, err, sizeof(err));
+
+    if (rc != 0) fprintf(stderr, "heddle: %s\n", err);
+
+    project_free(&p);
+    return rc == 0 ? 0 : 1;
 }

@@ -14,6 +14,8 @@ typedef struct {
     int         tool_install;
     int         tool_plan;
     int         env_verify;
+    int         do_install;
+    int         do_uninstall;
 } ARGS;
 
 static int usage(const char *prog) {
@@ -25,6 +27,8 @@ static int usage(const char *prog) {
             "       %s tool install        restore toolchain + dependencies\n"
             "       %s tool plan           print the resolved package plan\n"
             "       %s env verify          verify the environment matches the lock\n"
+            "       %s install [TARGET]    install build products\n"
+            "       %s uninstall           remove what install wrote\n"
             "\n"
             "options:\n"
             "  -C DIR            project root (default .)\n"
@@ -35,8 +39,11 @@ static int usage(const char *prog) {
             "  --remote URL      remote CAS, dir or http(s)://\n"
             "  --no-cache        disable cache\n"
             "  --registry DIR|URL  package registry (default $HEDDLE_REGISTRY)\n"
-            "  --offline         never contact the registry\n",
-            prog, prog, prog, prog, prog, prog, prog);
+            "  --offline         never contact the registry\n"
+            "  --prefix DIR      install prefix (required for install)\n"
+            "  --destdir DIR     stage under DIR, do not touch the system\n"
+            "  --dry-run         print the install plan only\n",
+            prog, prog, prog, prog, prog, prog, prog, prog, prog);
     return 2;
 }
 
@@ -51,6 +58,12 @@ static int take(const char *arg, const char *name, int argc, char **argv,
         }
 
         *out = argv[++*i];
+        return 1;
+    }
+
+    if (name[0] == '-' && name[1] == '-' && !strncmp(arg, name, n) &&
+        arg[n] == '=' && arg[n + 1]) {
+        *out = arg + n + 1;
         return 1;
     }
 
@@ -104,6 +117,9 @@ static int parse(int argc, char **argv, ARGS *a) {
 
         else if (!strcmp(arg, "toolchains"))  a->list_tools = 1;
         else if (!strcmp(arg, "check"))       a->check_only = 1;
+        else if (!strcmp(arg, "install"))     a->do_install = 1;
+        else if (!strcmp(arg, "uninstall"))   a->do_uninstall = 1;
+        else if (!strcmp(arg, "--dry-run"))   o->dry_run = 1;
 
         else if (!strcmp(arg, "tool"))        sub = 1;
         else if (!strcmp(arg, "env"))         sub = 2;
@@ -129,6 +145,12 @@ static int parse(int argc, char **argv, ARGS *a) {
         else if ((t = take(arg, "--registry", argc, argv, &i, &v)) < 0) return 2;
         else if (t) o->registry = v;
 
+        else if ((t = take(arg, "--prefix", argc, argv, &i, &v)) < 0) return 2;
+        else if (t) o->prefix = v;
+
+        else if ((t = take(arg, "--destdir", argc, argv, &i, &v)) < 0) return 2;
+        else if (t) o->destdir = v;
+
         else if (arg[0] == '-') {
             fprintf(stderr, "heddle: unknown option '%s'\n", arg);
             return 2;
@@ -146,7 +168,7 @@ static int parse(int argc, char **argv, ARGS *a) {
     }
 
     if (a->list_tools || a->check_only || a->tool_install || a->tool_plan ||
-        a->env_verify)
+        a->env_verify || a->do_install || a->do_uninstall)
         return 0;
 
     if (!o->target) return usage(argv[0]);
@@ -169,6 +191,8 @@ int main(int argc, char **argv) {
     if (rc) return rc;
     if (a.list_tools)   return heddle_toolchains();
     if (a.check_only)   return heddle_check(&a.o);
+    if (a.do_install)   return heddle_install(&a.o);
+    if (a.do_uninstall) return heddle_uninstall(&a.o);
     if (a.tool_install) return heddle_tool_install(&a.o);
     if (a.tool_plan)    return heddle_tool_plan(&a.o);
     if (a.env_verify)   return heddle_env_verify(&a.o);

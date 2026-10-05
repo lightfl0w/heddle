@@ -421,4 +421,65 @@ unset PATH
 export PATH="$ORIG_PATH"
 echo
 
+echo "install:"
+cd "$HERE/inst"
+rm -rf out .heddle stage
+
+$HEDDLE kernel >/dev/null 2>&1
+$HEDDLE mylib >/dev/null 2>&1
+
+out=$($HEDDLE install --destdir=./stage --dry-run 2>&1)
+check_rc "install dry-run" $? 0
+expect_err "dry-run lists bin" "$out" "bin/kernel"
+expect_err "dry-run keeps include subtree" "$out" "include/net/mylib.h"
+expect_err "dry-run maps share" "$out" "share/mylib/README.md"
+expect_err "dry-run maps etc" "$out" "etc/mylib/app.conf"
+[ -d stage ] && bad "dry-run wrote to disk" || ok "dry-run leaves no files"
+
+$HEDDLE install --destdir=./stage >/dev/null 2>&1
+check_rc "install" $? 0
+
+for f in bin/kernel lib/libmylib.a include/net/mylib.h \
+         share/mylib/README.md etc/mylib/app.conf \
+         rootfs/usr/bin/app rootfs/etc/app.conf; do
+    [ -f "stage/opt/myos/$f" ] && ok "installed $f" || bad "missing $f"
+done
+
+rm -rf stage2 .heddle
+$HEDDLE install mylib --destdir=./stage2 >/dev/null 2>&1
+check_rc "install single target" $? 0
+[ -f stage2/opt/myos/lib/libmylib.a ] && ok "single target lib" || bad "single target lib"
+[ ! -f stage2/opt/myos/bin/kernel ]   && ok "single target skips others" || bad "single target leaked"
+
+cp heddle.toml heddle.notprefix.toml
+grep -v '^prefix' heddle.notprefix.toml | grep -v '^\[install\]' > heddle.toml
+out=$($HEDDLE install --dry-run 2>&1)
+check_rc "missing prefix is refused" $? 1
+expect_err "missing prefix message" "$out" "no install prefix"
+mv heddle.notprefix.toml heddle.toml
+
+rm -rf stage .heddle
+$HEDDLE install --destdir=./stage >/dev/null 2>&1
+$HEDDLE install --destdir=./stage2 >/dev/null 2>&1
+$HEDDLE uninstall --destdir=./stage >/dev/null 2>&1
+check_rc "uninstall" $? 0
+[ "$(find stage -type f 2>/dev/null | wc -l)" = "0" ] \
+    && ok "uninstall cleared its destdir" || bad "uninstall left files"
+[ -f stage2/opt/myos/bin/kernel ] \
+    && ok "uninstall left the other destdir" || bad "uninstall crossed destdirs"
+
+rm -rf stage .heddle
+cp heddle.toml heddle.keep.toml
+sed -e 's#arch = "x86_64"#arch = "x86_64"\nsysroot = "/opt/sysroot"#' \
+    -e 's#^\[target.mylib.install\]#[target.mylib.install]\nsysroot_lib = "out/libmylib.a"\nsysroot_include = ["include/**/*.h"]#' \
+    heddle.keep.toml > heddle.toml
+$HEDDLE install --destdir=./stage >/dev/null 2>&1
+check_rc "sysroot install" $? 0
+[ -f stage/opt/sysroot/lib/libmylib.a ]       && ok "sysroot lib" || bad "sysroot lib"
+[ -f stage/opt/sysroot/include/net/mylib.h ]  && ok "sysroot include" || bad "sysroot include"
+mv heddle.keep.toml heddle.toml
+
+rm -rf out .heddle stage stage2
+echo
+
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"
