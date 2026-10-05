@@ -155,6 +155,16 @@ static void node_scan(NODE *nd) {
     for (int i = 1; i < nd->argc; i++) {
         const char *arg = nd->argv[i];
 
+        if (!strcmp(arg, "-I") && i + 1 < nd->argc) {
+            list_add(&nd->incdirs, &nd->nincdirs, nd->argv[++i]);
+            continue;
+        }
+
+        if (!strncmp(arg, "-I", 2) && arg[2] != 0) {
+            list_add(&nd->incdirs, &nd->nincdirs, arg + 2);
+            continue;
+        }
+
         if (!strcmp(arg, "-o")) {
             i++;
             continue;
@@ -178,8 +188,14 @@ static void node_free(NODE *nd) {
 
     for (int j = 0; j < nd->nouts; j++) free(nd->outs[j]);
 
+    for (int j = 0; j < nd->nincdirs; j++) free(nd->incdirs[j]);
+
+    for (int j = 0; j < nd->ndyn; j++) free(nd->dyn[j]);
+
     free(nd->ins);
     free(nd->outs);
+    free(nd->incdirs);
+    free(nd->dyn);
     free(nd->deps);
     free(nd->rdeps);
 }
@@ -263,6 +279,67 @@ static int detect_cycle(const GRAPH *g, char *err, size_t errsz) {
     }
 
     return 0;
+}
+
+static int node_has_dep(const NODE *nd, int d) {
+    for (int i = 0; i < nd->ndeps; i++)
+        if (nd->deps[i] == d) return 1;
+
+    return 0;
+}
+
+static int node_add_dep(NODE *nd, int d) {
+    if (node_has_dep(nd, d)) return 0;
+
+    int *deps = (int *)realloc(nd->deps, sizeof(int) * (size_t)(nd->ndeps + 1));
+    if (!deps) return -1;
+
+    nd->deps = deps;
+    nd->deps[nd->ndeps++] = d;
+    return 0;
+}
+
+static int node_produces(const NODE *nd, const char *path) {
+    for (int i = 0; i < nd->nouts; i++)
+        if (!strcmp(nd->outs[i], path)) return 1;
+
+    return 0;
+}
+
+static void free_rdeps(GRAPH *g) {
+    for (int i = 0; i < g->n; i++) {
+        free(g->nodes[i].rdeps);
+        g->nodes[i].rdeps  = NULL;
+        g->nodes[i].nrdeps = 0;
+    }
+}
+
+int graph_finalize(GRAPH *g, char *err, size_t errsz) {
+    for (int i = 0; i < g->n; i++) {
+        NODE *nd = &g->nodes[i];
+
+        nd->ndeps = nd->ndeps_static;
+
+        for (int k = 0; k < nd->ndyn; k++)
+            for (int j = 0; j < g->n; j++) {
+                if (j == i) continue;
+                if (!node_produces(&g->nodes[j], nd->dyn[k])) continue;
+
+                if (node_add_dep(nd, j) != 0) {
+                    set_err(err, errsz, "oom");
+                    return -1;
+                }
+            }
+    }
+
+    free_rdeps(g);
+
+    for (int i = 0; i < g->n; i++)
+        g->nodes[i].indeg = g->nodes[i].ndeps;
+
+    if (build_rdeps(g, err, errsz) != 0) return -1;
+
+    return detect_cycle(g, err, errsz);
 }
 
 int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
@@ -358,6 +435,8 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
             return -1;
         }
 
+        nd->ndeps_static = nd->ndeps;
+
         node_scan(nd);
 
         g->n++;
@@ -374,6 +453,27 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
     if (build_rdeps(g, err, errsz) != 0) return -1;
 
     return detect_cycle(g, err, errsz);
+}
+
+int graph_node_add_dyn(NODE *nd, const char *path) {
+    if (graph_node_has_dyn(nd, path)) return 0;
+
+    return list_add(&nd->dyn, &nd->ndyn, path);
+}
+
+int graph_node_has_dyn(const NODE *nd, const char *path) {
+    for (int i = 0; i < nd->ndyn; i++)
+        if (!strcmp(nd->dyn[i], path)) return 1;
+
+    return 0;
+}
+
+void graph_node_clear_dyn(NODE *nd) {
+    for (int i = 0; i < nd->ndyn; i++) free(nd->dyn[i]);
+
+    free(nd->dyn);
+    nd->dyn = NULL;
+    nd->ndyn = 0;
 }
 
 void graph_free(GRAPH *g) {

@@ -19,15 +19,11 @@ typedef struct {
 } INCR_DB;
 
 void incr_init(INCR_DB *db, const GRAPH *g);
-
 void incr_free(INCR_DB *db);
-
 int incr_load(INCR_DB *db, const char *path);
-
 int incr_save(const INCR_DB *db, const char *path);
-
 int incr_plan(INCR_DB *db, char *active);
-
 void incr_commit(INCR_DB *db, const char *active);
 
 #endif
+

@@ -20,21 +20,14 @@ typedef struct {
 } HASH_DB;
 
 void hash_db_init(HASH_DB *db);
-
 void hash_db_free(HASH_DB *db);
-
 unsigned long long hash_bytes(unsigned long long seed, const void *p, size_t n);
-
 unsigned long long hash_text(unsigned long long seed, const char *s);
-
 unsigned long long hash_u64(unsigned long long seed, unsigned long long v);
-
 unsigned long long hash_read_file(HASH_DB *db, const char *path);
-
 int hash_db_load(HASH_DB *db, const char *path);
-
 int hash_db_save(const HASH_DB *db, const char *path);
-
 HASH_ENTRY *hash_db_find(HASH_DB *db, const char *path);
 
 #endif
+

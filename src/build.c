@@ -1,4 +1,5 @@
 #include "build.h"
+#include "deps.h"
 #include "graph.h"
 #include "hash.h"
 #include "incremental.h"
@@ -28,6 +29,7 @@ struct BUILD_ENGINE {
 
     char state_path[1024];
     char hash_path[1024];
+    char deps_path[1024];
 };
 
 static char *read_file(const char *path) {
@@ -76,6 +78,7 @@ static void db_load(BUILD_ENGINE *e) {
     hash_db_init(&e->db.files);
     hash_db_load(&e->db.files, e->hash_path);
     incr_load(&e->db, e->state_path);
+    deps_load(&e->graph, e->deps_path);
 
     e->loaded = 1;
 }
@@ -95,6 +98,7 @@ BUILD_ENGINE *build_open(const BUILD_OPTS *o, char *err, size_t errsz) {
 
     snprintf(e->state_path, sizeof(e->state_path), "%s/loom.db", o->logdir);
     snprintf(e->hash_path, sizeof(e->hash_path), "%s/loom.hash", o->logdir);
+    snprintf(e->deps_path, sizeof(e->deps_path), "%s/loom.deps", o->logdir);
 
     incr_init(&e->db, &e->graph);
     e->active = (char *)calloc((size_t)(e->graph.n ? e->graph.n : 1), 1);
@@ -114,6 +118,15 @@ void build_close(BUILD_ENGINE *e) {
 int build_run(BUILD_ENGINE *e) {
     db_load(e);
 
+    char err[512] = {0};
+
+    deps_scan(&e->graph, e->opts.cwd, &e->db.files);
+
+    if (graph_finalize(&e->graph, err, sizeof(err)) != 0) {
+        fprintf(stderr, "error: %s\n", err);
+        return 1;
+    }
+
     int dirty = incr_plan(&e->db, e->active);
     if (dirty == 0) return 0;
 
@@ -132,6 +145,7 @@ int build_run(BUILD_ENGINE *e) {
         incr_commit(&e->db, e->active);
         hash_db_save(&e->db.files, e->hash_path);
         incr_save(&e->db, e->state_path);
+        deps_save(&e->graph, e->deps_path);
     }
 
     return rc;

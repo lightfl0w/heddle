@@ -9,6 +9,7 @@ typedef struct {
 
     int   *deps;
     int    ndeps;
+    int    ndeps_static;
     int   *rdeps;
     int    nrdeps;
     int    indeg;
@@ -17,6 +18,14 @@ typedef struct {
     int    nins;
     char **outs;
     int    nouts;
+
+    char **incdirs;
+    int    nincdirs;
+
+    char **dyn;
+    int    ndyn;
+
+    unsigned long long scan_hash;
 
     unsigned long long cmd_hash;
 } NODE;
@@ -27,7 +36,11 @@ typedef struct {
 } GRAPH;
 
 int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz);
-
 void graph_free(GRAPH *g);
+int graph_finalize(GRAPH *g, char *err, size_t errsz);
+int graph_node_add_dyn(NODE *nd, const char *path);
+int graph_node_has_dyn(const NODE *nd, const char *path);
+void graph_node_clear_dyn(NODE *nd);
 
 #endif
+

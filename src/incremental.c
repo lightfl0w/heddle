@@ -23,6 +23,9 @@ static unsigned long long node_input_hash(const NODE *nd, HASH_DB *files) {
     for (int i = 0; i < nd->nins; i++)
         h = hash_u64(h, hash_read_file(files, nd->ins[i]));
 
+    for (int i = 0; i < nd->ndyn; i++)
+        h = hash_u64(h, hash_read_file(files, nd->dyn[i]));
+
     return h;
 }
 
