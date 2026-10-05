@@ -10,6 +10,7 @@ typedef struct {
     int          jobs;
     int          retry;
     int          keep_going;
+    const char  *active;
 } SCHED_OPTS;
 
 int sched_run(const SCHED_OPTS *opts);

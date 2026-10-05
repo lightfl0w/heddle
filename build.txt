@@ -1,6 +1,9 @@
-0: cc -std=c11 -O2 -Wall -pthread -Isrc -Iinclude -c src/graph.c -o build/graph.o
-1: cc -std=c11 -O2 -Wall -pthread -Isrc -Iinclude -c src/main.c -o build/main.o
-2: cc -std=c11 -O2 -Wall -pthread -Isrc -Iinclude -c src/proc.c -o build/proc.o
-3: cc -std=c11 -O2 -Wall -pthread -Isrc -Iinclude -c src/scheduler.c -o build/scheduler.o
-4: cc -std=c11 -O2 -Wall -pthread -Isrc -Iinclude -c src/thread.c -o build/thread.o
-5: cc -pthread build/graph.o build/main.o build/proc.o build/scheduler.o build/thread.o -o build/loom < 0 1 2 3 4
+0: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/build.c -o build/build.o
+1: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/graph.c -o build/graph.o
+2: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/hash.c -o build/hash.o
+3: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/incremental.c -o build/incremental.o
+4: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/main.c -o build/main.o
+5: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/proc.c -o build/proc.o
+6: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/scheduler.c -o build/scheduler.o
+7: cc -std=c11 -O2 -Wall -Wextra -pthread -Isrc -Iinclude -c src/thread.c -o build/thread.o
+8: cc -pthread build/build.o build/graph.o build/hash.o build/incremental.o build/main.o build/proc.o build/scheduler.o build/thread.o -o loom < 0 1 2 3 4 5 6 7

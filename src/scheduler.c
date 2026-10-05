@@ -29,6 +29,7 @@ typedef struct {
     int          shutdown;
     int          retry_count;
     const GRAPH *g;
+    const char  *active;
     const char  *cwd;
     const char  *logdir;
 } SCHED_STATE;
@@ -36,7 +37,7 @@ typedef struct {
 static void intq_init(INTQ *q, int cap) {
     if (cap < 8) cap = 8;
 
-    q->data = (int *)malloc(sizeof(int) * cap);
+    q->data = (int *)malloc(sizeof(int) * (size_t)cap);
     q->head = 0;
     q->tail = 0;
     q->cap  = cap;
@@ -47,7 +48,9 @@ static void intq_free(INTQ *q) {
     q->data = NULL;
 }
 
-static int intq_empty(const INTQ *q) { return q->head == q->tail; }
+static int intq_empty(const INTQ *q) {
+    return q->head == q->tail;
+}
 
 static void intq_push(INTQ *q, int v) {
     int next = (q->tail + 1) % q->cap;
@@ -55,13 +58,14 @@ static void intq_push(INTQ *q, int v) {
     if (next == q->head) {
         int  oldcap = q->cap;
         int  newcap = oldcap * 2;
-        int *nd     = (int *)malloc(sizeof(int) * newcap);
+        int *nd     = (int *)malloc(sizeof(int) * (size_t)newcap);
         int  k      = 0;
 
         for (int i = q->head; i != q->tail; i = (i + 1) % oldcap)
             nd[k++] = q->data[i];
 
         free(q->data);
+
         q->data = nd;
         q->head = 0;
         q->tail = k;
@@ -82,8 +86,8 @@ static int intq_pop(INTQ *q) {
 static void push_done(SCHED_STATE *s, int node, const PROC_RESULT *r) {
     if (s->done_n == s->done_cap) {
         s->done_cap = s->done_cap ? s->done_cap * 2 : 32;
-        s->done = (DONE_EVENT *)realloc(s->done,
-                                        sizeof(DONE_EVENT) * s->done_cap);
+        s->done = (DONE_EVENT *)realloc(
+            s->done, sizeof(DONE_EVENT) * (size_t)s->done_cap);
     }
 
     s->done[s->done_n].node   = node;
@@ -124,6 +128,7 @@ static void *worker(void *arg) {
         cond_signal(&s->cv_done);
         mutex_unlock(&s->mtx);
     }
+
     return NULL;
 }
 
@@ -132,25 +137,19 @@ static void block_push(int **stack, int *n, int *cap, int v) {
         *cap *= 2;
         *stack = (int *)realloc(*stack, sizeof(int) * (size_t)*cap);
     }
+
     (*stack)[(*n)++] = v;
 }
 
 static int block_descendants(const GRAPH *g, int start,
-                             char *blocked, char *done) {
+                             char *blocked, const char *active) {
     int  cap   = 32;
     int  n     = 0;
     int  count = 0;
-    int *stack = (int *)malloc(sizeof(int) * cap);
+    int *stack = (int *)malloc(sizeof(int) * (size_t)cap);
 
-    for (int i = 0; i < g->nodes[start].nrdeps; i++) {
-        int d = g->nodes[start].rdeps[i];
-
-        if (blocked[d] || done[d]) continue;
-
-        block_push(&stack, &n, &cap, d);
-        blocked[d] = 1;
-        count++;
-    }
+    block_push(&stack, &n, &cap, start);
+    blocked[start] = 1;
 
     while (n > 0) {
         int cur = stack[--n];
@@ -158,7 +157,7 @@ static int block_descendants(const GRAPH *g, int start,
         for (int i = 0; i < g->nodes[cur].nrdeps; i++) {
             int d = g->nodes[cur].rdeps[i];
 
-            if (blocked[d] || done[d]) continue;
+            if (blocked[d] || !active[d]) continue;
 
             block_push(&stack, &n, &cap, d);
             blocked[d] = 1;
@@ -172,6 +171,8 @@ static int block_descendants(const GRAPH *g, int start,
 
 static void complete_node(SCHED_STATE *s, int nd, int *indeg,
                           char *done, char *blocked, int *remaining) {
+    if (blocked[nd]) return;
+
     done[nd] = 1;
     (*remaining)--;
 
@@ -182,7 +183,7 @@ static void complete_node(SCHED_STATE *s, int nd, int *indeg,
     for (int k = 0; k < g->nodes[nd].nrdeps; k++) {
         int d = g->nodes[nd].rdeps[k];
 
-        if (blocked[d] || done[d]) continue;
+        if (blocked[d] || done[d] || !s->active[d]) continue;
 
         indeg[d]--;
 
@@ -193,8 +194,10 @@ static void complete_node(SCHED_STATE *s, int nd, int *indeg,
     mutex_unlock(&s->mtx);
 }
 
-static void fail_node(SCHED_STATE *s, int nd, int *tries, int *indeg,
-                      char *done, char *blocked, int *remaining, int *failed) {
+static void fail_node(SCHED_STATE *s, int nd, int *tries, char *blocked,
+                      int *remaining, int *failed) {
+    if (blocked[nd]) return;
+
     tries[nd]++;
 
     if (tries[nd] <= s->retry_count) {
@@ -208,50 +211,78 @@ static void fail_node(SCHED_STATE *s, int nd, int *tries, int *indeg,
     }
 
     *failed = 1;
-    blocked[nd] = 1;
     (*remaining)--;
-
-    *remaining -= block_descendants(s->g, nd, blocked, done);
+    *remaining -= block_descendants(s->g, nd, blocked, s->active);
 }
 
 int sched_run(const SCHED_OPTS *o) {
     int n = o->g->n;
 
+    char *all_active = NULL;
+    const char *active = o->active;
+
+    if (!active) {
+        all_active = (char *)malloc((size_t)(n ? n : 1));
+        memset(all_active, 1, (size_t)n);
+        active = all_active;
+    }
+
+    int total = 0;
+    for (int i = 0; i < n; i++)
+        total += active[i] != 0;
+
+    if (total == 0) {
+        free(all_active);
+        return 0;
+    }
+
     SCHED_STATE s;
     memset(&s, 0, sizeof(s));
 
-    s.g = o->g;
-    s.cwd = o->cwd;
-    s.logdir = o->logdir;
+    s.g           = o->g;
+    s.active      = active;
+    s.cwd         = o->cwd;
+    s.logdir      = o->logdir;
     s.retry_count = o->retry;
 
     mutex_init(&s.mtx);
     cond_init(&s.cv_ready);
     cond_init(&s.cv_done);
-    intq_init(&s.ready, n + 2);
+    intq_init(&s.ready, total + 2);
 
-    int *tries    = (int *)calloc(n ? n : 1, sizeof(int));
-    char *done    = (char *)calloc(n ? n : 1, 1);
-    char *blocked = (char *)calloc(n ? n : 1, 1);
-    int *indeg    = (int *)malloc(sizeof(int) * (n ? n : 1));
+    int  *tries   = (int *)calloc((size_t)(n ? n : 1), sizeof(int));
+    char *done    = (char *)calloc((size_t)(n ? n : 1), 1);
+    char *blocked = (char *)calloc((size_t)(n ? n : 1), 1);
+    int  *indeg   = (int *)malloc(sizeof(int) * (size_t)(n ? n : 1));
 
-    for (int i = 0; i < n; i++) indeg[i] = o->g->nodes[i].indeg;
+    for (int i = 0; i < n; i++) {
+        done[i]  = (char)!active[i];
+        indeg[i] = o->g->nodes[i].indeg;
+    }
+
+    for (int i = 0; i < n; i++) {
+        if (active[i]) continue;
+
+        for (int k = 0; k < o->g->nodes[i].nrdeps; k++) {
+            int d = o->g->nodes[i].rdeps[k];
+            if (active[d]) indeg[d]--;
+        }
+    }
+
     for (int i = 0; i < n; i++)
-        if (indeg[i] == 0) intq_push(&s.ready, i);
+        if (active[i] && indeg[i] == 0) intq_push(&s.ready, i);
 
     int nthreads = o->jobs;
-
     if (nthreads < 1) nthreads = 1;
-    if (nthreads > n && n > 0) nthreads = n;
-    if (n == 0) nthreads = 0;
+    if (nthreads > total) nthreads = total;
 
-    THREAD *threads =
-        (THREAD *)malloc(sizeof(THREAD) * (nthreads ? nthreads : 1));
+    THREAD *threads = (THREAD *)malloc(
+        sizeof(THREAD) * (size_t)(nthreads ? nthreads : 1));
 
     for (int i = 0; i < nthreads; i++)
         thread_create(&threads[i], worker, &s);
 
-    int remaining = n;
+    int remaining = total;
     int failed    = 0;
 
     while (remaining > 0) {
@@ -262,8 +293,9 @@ int sched_run(const SCHED_OPTS *o) {
 
         int cnt = s.done_n;
 
-        DONE_EVENT *local = (DONE_EVENT *)malloc(sizeof(DONE_EVENT) * cnt);
-        memcpy(local, s.done, sizeof(DONE_EVENT) * cnt);
+        DONE_EVENT *local = (DONE_EVENT *)malloc(
+            sizeof(DONE_EVENT) * (size_t)cnt);
+        memcpy(local, s.done, sizeof(DONE_EVENT) * (size_t)cnt);
 
         s.done_n = 0;
         mutex_unlock(&s.mtx);
@@ -275,22 +307,23 @@ int sched_run(const SCHED_OPTS *o) {
             if (r->exit_code == 0 && !r->signaled)
                 complete_node(&s, nd, indeg, done, blocked, &remaining);
             else
-                fail_node(&s, nd, tries, indeg, done, blocked,
-                          &remaining, &failed);
+                fail_node(&s, nd, tries, blocked, &remaining, &failed);
         }
 
         free(local);
 
         if (failed && !o->keep_going) {
             for (int i = 0; i < n; i++)
-                if (!done[i] && !blocked[i]) blocked[i] = 1;
+                if (active[i] && !done[i] && !blocked[i]) blocked[i] = 1;
+
             break;
         }
     }
 
     mutex_lock(&s.mtx);
 
-    while (!intq_empty(&s.ready)) intq_pop(&s.ready);
+    while (!intq_empty(&s.ready))
+        intq_pop(&s.ready);
 
     s.shutdown = 1;
     cond_broadcast(&s.cv_ready);
@@ -311,5 +344,6 @@ int sched_run(const SCHED_OPTS *o) {
     cond_destroy(&s.cv_done);
     mutex_destroy(&s.mtx);
 
+    free(all_active);
     return failed ? 1 : 0;
 }

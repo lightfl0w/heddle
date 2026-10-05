@@ -1,4 +1,7 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "graph.h"
+#include "hash.h"
 
 #include <ctype.h>
 #include <stdarg.h>
@@ -39,10 +42,14 @@ static char **split_ws(const char *s, int *outn) {
             cap *= 2;
 
             char **nv = (char **)realloc(v, sizeof(char *) * (cap + 1));
-            if (!nv) { free(tok); goto fail; }
+            if (!nv) {
+                free(tok);
+                goto fail;
+            }
 
             v = nv;
         }
+
         v[n++] = tok;
     }
 
@@ -52,6 +59,7 @@ static char **split_ws(const char *s, int *outn) {
 
 fail:
     for (int i = 0; i < n; i++) free(v[i]);
+
     free(v);
     return NULL;
 }
@@ -83,6 +91,7 @@ static int parse_deps(NODE *nd, const char *deps_str, int node_idx,
 
     if (!nd->deps) {
         for (int i = 0; i < dn; i++) free(dtoks[i]);
+
         free(dtoks);
         return -1;
     }
@@ -94,23 +103,95 @@ static int parse_deps(NODE *nd, const char *deps_str, int node_idx,
 
         if (d < 0 || d >= node_idx) {
             set_err(err, errsz, "line %d: bad dependency %d", lineno, d);
+
             for (int k = 0; k < dn; k++) free(dtoks[k]);
+
             free(dtoks);
             return -1;
         }
+
         nd->deps[nd->ndeps++] = d;
     }
 
     for (int i = 0; i < dn; i++) free(dtoks[i]);
+
     free(dtoks);
     return 0;
+}
+
+static int list_add(char ***v, int *n, const char *s) {
+    char **nv = (char **)realloc(*v, sizeof(char *) * (size_t)(*n + 1));
+    if (!nv) return -1;
+
+    nv[*n] = strdup(s);
+    if (!nv[*n]) return -1;
+
+    *v = nv;
+    (*n)++;
+    return 0;
+}
+
+static int looks_like_path(const char *s) {
+    return s[0] != '-' && (strchr(s, '.') || strchr(s, '/'));
+}
+
+static int is_own_output(const NODE *nd, const char *s) {
+    for (int i = 0; i < nd->nouts; i++)
+        if (!strcmp(nd->outs[i], s)) return 1;
+
+    return 0;
+}
+
+static void node_scan(NODE *nd) {
+    nd->cmd_hash = HASH_FNV_OFFSET;
+
+    for (int i = 0; i < nd->argc; i++)
+        nd->cmd_hash = hash_text(nd->cmd_hash, nd->argv[i]);
+
+    for (int i = 1; i < nd->argc; i++)
+        if (!strcmp(nd->argv[i], "-o") && i + 1 < nd->argc)
+            list_add(&nd->outs, &nd->nouts, nd->argv[++i]);
+
+    for (int i = 1; i < nd->argc; i++) {
+        const char *arg = nd->argv[i];
+
+        if (!strcmp(arg, "-o")) {
+            i++;
+            continue;
+        }
+
+        if (!looks_like_path(arg)) continue;
+        if (is_own_output(nd, arg)) continue;
+
+        list_add(&nd->ins, &nd->nins, arg);
+    }
+}
+
+static void node_free(NODE *nd) {
+    if (nd->argv) {
+        for (int j = 0; j < nd->argc; j++) free(nd->argv[j]);
+
+        free(nd->argv);
+    }
+
+    for (int j = 0; j < nd->nins; j++) free(nd->ins[j]);
+
+    for (int j = 0; j < nd->nouts; j++) free(nd->outs[j]);
+
+    free(nd->ins);
+    free(nd->outs);
+    free(nd->deps);
+    free(nd->rdeps);
 }
 
 static int build_rdeps(GRAPH *g, char *err, size_t errsz) {
     size_t n_alloc = g->n > 0 ? (size_t)g->n : 1;
 
     int *rcap = (int *)calloc(n_alloc, sizeof(int));
-    if (!rcap) { set_err(err, errsz, "oom"); return -1; }
+    if (!rcap) {
+        set_err(err, errsz, "oom");
+        return -1;
+    }
 
     for (int i = 0; i < g->n; i++)
         for (int j = 0; j < g->nodes[i].ndeps; j++)
@@ -125,6 +206,7 @@ static int build_rdeps(GRAPH *g, char *err, size_t errsz) {
             set_err(err, errsz, "oom");
             return -1;
         }
+
         g->nodes[i].nrdeps = 0;
     }
 
@@ -179,6 +261,7 @@ static int detect_cycle(const GRAPH *g, char *err, size_t errsz) {
         set_err(err, errsz, "cycle detected in DAG");
         return -1;
     }
+
     return 0;
 }
 
@@ -200,12 +283,15 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
         size_t linelen  = eol ? (size_t)(eol - p) : strlen(p);
 
         char *line = (char *)malloc(linelen + 1);
-        if (!line) { set_err(err, errsz, "oom"); return -1; }
+        if (!line) {
+            set_err(err, errsz, "oom");
+            return -1;
+        }
 
         memcpy(line, p, linelen);
         line[linelen] = 0;
 
-        char *s   = line;
+        char *s = line;
         while (*s && isspace((unsigned char)*s)) s++;
 
         char *end = s + strlen(s);
@@ -224,6 +310,7 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
             free(line);
             return -1;
         }
+
         *colon = 0;
 
         int declared = atoi(s);
@@ -238,7 +325,10 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
         char *lt   = strchr(rest, '<');
         char *deps_str = NULL;
 
-        if (lt) { *lt = 0; deps_str = lt + 1; }
+        if (lt) {
+            *lt = 0;
+            deps_str = lt + 1;
+        }
 
         int    argc = 0;
         char **argv = split_ws(rest, &argc);
@@ -268,6 +358,8 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
             return -1;
         }
 
+        node_scan(nd);
+
         g->n++;
         node_idx++;
 
@@ -280,22 +372,15 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
         g->nodes[i].indeg = g->nodes[i].ndeps;
 
     if (build_rdeps(g, err, errsz) != 0) return -1;
+
     return detect_cycle(g, err, errsz);
 }
 
 void graph_free(GRAPH *g) {
     if (!g->nodes) return;
 
-    for (int i = 0; i < g->n; i++) {
-        NODE *nd = &g->nodes[i];
-
-        if (nd->argv) {
-            for (int j = 0; j < nd->argc; j++) free(nd->argv[j]);
-            free(nd->argv);
-        }
-        free(nd->deps);
-        free(nd->rdeps);
-    }
+    for (int i = 0; i < g->n; i++)
+        node_free(&g->nodes[i]);
 
     free(g->nodes);
     g->nodes = NULL;

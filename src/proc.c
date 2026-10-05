@@ -19,7 +19,10 @@ static void append_arg(char *buf, size_t cap, size_t *len, const char *arg) {
     int need = 0;
 
     for (const char *p = arg; *p; p++)
-        if (*p == ' ' || *p == '\t' || *p == '"') { need = 1; break; }
+        if (*p == ' ' || *p == '\t' || *p == '"') {
+            need = 1;
+            break;
+        }
 
     if (!need) {
         size_t n = strlen(arg);
@@ -29,6 +32,7 @@ static void append_arg(char *buf, size_t cap, size_t *len, const char *arg) {
             *len += n;
             buf[*len] = 0;
         }
+
         return;
     }
 
@@ -50,7 +54,8 @@ int proc_run(char *const *argv, const char *cwd,
     out->signal    = 0;
 
     size_t cap = 4096;
-    for (int i = 0; argv[i]; i++) cap += strlen(argv[i]) * 2 + 4;
+    for (int i = 0; argv[i]; i++)
+        cap += strlen(argv[i]) * 2 + 4;
 
     char *cmdline = (char *)malloc(cap);
     if (!cmdline) return -1;
@@ -61,6 +66,7 @@ int proc_run(char *const *argv, const char *cwd,
 
     for (int i = 0; argv[i]; i++) {
         if (i) append_arg(cmdline, cap, &len, " ");
+
         append_arg(cmdline, cap, &len, argv[i]);
     }
 
@@ -72,7 +78,10 @@ int proc_run(char *const *argv, const char *cwd,
     HANDLE hlog = CreateFileA(log_path, GENERIC_WRITE,
                               FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hlog == INVALID_HANDLE_VALUE) { free(cmdline); return -1; }
+    if (hlog == INVALID_HANDLE_VALUE) {
+        free(cmdline);
+        return -1;
+    }
 
     STARTUPINFOA si;
     ZeroMemory(&si, sizeof(si));
@@ -150,6 +159,7 @@ int proc_run(char *const *argv, const char *cwd,
         out->signaled  = 1;
         out->signal    = WTERMSIG(status);
     }
+
     return 0;
 }
 

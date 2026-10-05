@@ -1,22 +1,8 @@
-#include "graph.h"
-#include "scheduler.h"
+#include "build.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-
-#include <direct.h>
-#define MKDIR(p) _mkdir(p)
-
-#else
-
-#include <sys/stat.h>
-#include <sys/types.h>
-#define MKDIR(p) mkdir((p), 0755)
-
-#endif
 
 typedef struct {
     const char *file;
@@ -26,24 +12,6 @@ typedef struct {
     int         retry;
     int         keep_going;
 } OPTIONS;
-
-static char *read_file(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return NULL;
-
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    char *buf = (char *)malloc((size_t)len + 1);
-    if (!buf) { fclose(f); return NULL; }
-
-    size_t got = fread(buf, 1, (size_t)len, f);
-    buf[got] = 0;
-
-    fclose(f);
-    return buf;
-}
 
 static void usage(const char *prog) {
     fprintf(stderr,
@@ -106,34 +74,24 @@ int main(int argc, char **argv) {
 
     if (o.jobs < 1) o.jobs = 1;
 
-    char *text = read_file(o.file);
-    if (!text) {
-        fprintf(stderr, "error: cannot read %s\n", o.file);
-        return 1;
-    }
+    BUILD_OPTS bo;
+    bo.graph_file = o.file;
+    bo.cwd        = o.cwd;
+    bo.logdir     = o.logdir;
+    bo.jobs       = o.jobs;
+    bo.retry      = o.retry;
+    bo.keep_going = o.keep_going;
 
-    GRAPH g;
-    char  err[512] = {0};
+    char err[512] = {0};
 
-    if (graph_parse(text, &g, err, sizeof(err)) != 0) {
+    BUILD_ENGINE *e = build_open(&bo, err, sizeof(err));
+    if (!e) {
         fprintf(stderr, "error: %s\n", err);
-        free(text);
         return 1;
     }
-    free(text);
 
-    MKDIR(o.logdir);
+    int rc = build_run(e);
 
-    SCHED_OPTS so;
-    so.g          = &g;
-    so.cwd        = o.cwd;
-    so.logdir     = o.logdir;
-    so.jobs       = o.jobs;
-    so.retry      = o.retry;
-    so.keep_going = o.keep_going;
-
-    int rc = sched_run(&so);
-
-    graph_free(&g);
+    build_close(e);
     return rc;
 }
