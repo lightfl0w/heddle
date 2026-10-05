@@ -1,4 +1,3 @@
-
 #include "heddle.h"
 
 #include "build.h"

@@ -1,4 +1,3 @@
-
 #include "deps.h"
 #include "sys.h"
 
@@ -133,25 +132,30 @@ static int scan_file(GRAPH *g, int node, const char *path, STRSET *visited) {
     while (fgets(line, sizeof(line), f)) {
         char *s = trim(line);
 
-        if (strncmp(s, "#", 1) != 0) continue;
+        if (s[0] != '#' && s[0] != '%') continue;
 
         s = trim(s + 1);
+
         if (strncmp(s, "include", 7) != 0) continue;
 
         s = trim(s + 7);
-        if (*s != '"' && *s != '<') continue;
 
-        char close = (*s == '"') ? '"' : '>';
+        if (*s != '"' && *s != '<' && *s != '\'') continue;
+
+        char close = (*s == '<') ? '>' : *s;
         char *end  = strchr(s + 1, close);
+
         if (!end) continue;
 
         *end = 0;
 
-        char *name = s + 1;
+        char *name   = s + 1;
+        int   angled = (*s == '<');
+
         char *resolved = NULL;
 
         if (!resolve_include(&g->nodes[node], dir ? dir : ".",
-                             name, *s == '<', &resolved))
+                             name, angled, &resolved))
             continue;
 
         graph_node_add_dyn(&g->nodes[node], resolved);

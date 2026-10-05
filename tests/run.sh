@@ -2,7 +2,7 @@
 set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-ROOT=$(cd "$HERE/../.." && pwd)
+ROOT=$(cd "$HERE/.." && pwd)
 
 HEDDLE=${HEDDLE:-$ROOT/build/linux/x86_64/release/heddle}
 
@@ -159,6 +159,38 @@ expect_err "check reports targets" "$out" "3 targets ok"
 rm -rf out .heddle
 
 echo
-printf '总计: %d passed, %d failed\n' "$pass" "$fail"
-
 [ "$fail" -eq 0 ]
+
+# ---------- os (nasm + raw + linker_script + custom) ----------
+echo "os:"
+cd "$HERE/os"
+rm -rf out .heddle
+
+if command -v nasm >/dev/null 2>&1; then
+    $HEDDLE image >/dev/null 2>&1
+    check_rc "os image build" $? 0
+
+    sig=$(xxd -s 510 -l 2 -p out/mbr.bin 2>/dev/null)
+    check_eq "boot signature" "$sig" "55aa"
+
+    check_eq "kernel is ELF32" \
+        "$(readelf -h out/kernel 2>/dev/null | awk '/Class:/ {print $2}')" "ELF32"
+
+    head_ok=$(cmp -n 512 out/mbr.bin out/os.img >/dev/null 2>&1 && echo yes || echo no)
+    check_eq "image starts with mbr" "$head_ok" "yes"
+
+    $HEDDLE image >/dev/null 2>&1
+    out=$($HEDDLE image -v 2>&1)
+    expect_err "os noop" "$out" "0 ran"
+
+    sleep 1
+    printf '%%define PAD %s\n' "$$" > src/mbr.inc
+    out=$($HEDDLE image -v 2>&1)
+    expect_err "os rebuilds on .inc change" "$out" "2 ran"
+else
+    echo "  skip (nasm not found)"
+fi
+echo
+
+
+printf '总计: %d passed, %d failed\n' "$pass" "$fail"

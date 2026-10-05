@@ -1,4 +1,3 @@
-
 #include "toolchain.h"
 #include "toml.h"
 #include "sys.h"
@@ -19,6 +18,7 @@ typedef struct {
     const char *name;
     const char *cc;
     const char *cxx;
+    const char *as;
     const char *ar;
     const char *objext;
     const char *binext;
@@ -29,14 +29,15 @@ typedef struct {
 } TC_PRESET;
 
 static const TC_PRESET g_presets[] = {
-    { "host",  "cc",    "c++",     "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared" },
-    { "linux", "cc",    "c++",     "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared" },
-    { "gcc",   "gcc",   "g++",     "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared" },
-    { "clang", "clang", "clang++", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared" },
-    { "macos", "cc",    "c++",     "ar",  ".o",   "",     ".a",   "lib", ".dylib", "-dynamiclib" },
+    { "host",  "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
+    { "linux", "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
+    { "gcc",   "gcc",   "g++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
+    { "clang", "clang", "clang++", "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
+    { "macos", "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".dylib", "-dynamiclib" },
     { "mingw", "x86_64-w64-mingw32-gcc", "x86_64-w64-mingw32-g++",
-               "x86_64-w64-mingw32-ar",  ".obj", ".exe", ".a",   "lib", ".dll",   "-shared" },
-    { "msvc",  "cl",    "cl",      "lib", ".obj", ".exe", ".lib", "",    ".dll",   "-shared" },
+               "x86_64-w64-mingw32-nasm", "x86_64-w64-mingw32-ar",
+               ".obj", ".exe", ".a", "lib", ".dll", "-shared" },
+    { "msvc",  "cl",    "cl",      "nasm", "lib", ".obj", ".exe", ".lib", "", ".dll", "-shared" },
 };
 
 static const char *const g_auto[] = { "gcc", "clang", "tcc", "msvc" };
@@ -136,7 +137,7 @@ static int is_auto(const char *name) {
     return !name || !*name || !strcmp(name, "auto") || !strcmp(name, "native");
 }
 
-static void read_flags(const char *dir, TOOLCHAIN *tc) {
+static void read_flags(const char *dir, TOOLCHAIN *tc, const char *user) {
     char path[2048];
     snprintf(path, sizeof(path), "%s/heddle.toml", dir);
 
@@ -147,7 +148,7 @@ static void read_flags(const char *dir, TOOLCHAIN *tc) {
 
     if (toml_parse(&t, path, err, sizeof(err)) == 0) {
         char sect[256];
-        snprintf(sect, sizeof(sect), "toolchain.%s", tc->name);
+        snprintf(sect, sizeof(sect), "toolchain.%s", user);
 
         const char *cc = toml_str(&t, sect, "cc");
 
@@ -156,13 +157,20 @@ static void read_flags(const char *dir, TOOLCHAIN *tc) {
             tc->cc = sys_dup(cc);
         }
 
+        const char *as = toml_str(&t, sect, "as");
+
+        if (as) {
+            free(tc->as);
+            tc->as = sys_dup(as);
+        }
+
         add_flags(&t, sect, "cflags", &tc->cflags, &tc->ncflags);
     }
 
     toml_free(&t);
 }
 
-static int apply_auto(TOOLCHAIN *tc, const char *dir) {
+static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
     int n = (int)(sizeof(g_auto) / sizeof(g_auto[0]));
 
     for (int i = 0; i < n; i++) {
@@ -174,6 +182,7 @@ static int apply_auto(TOOLCHAIN *tc, const char *dir) {
         tc->name     = sys_dup(p->name);
         tc->cc       = sys_dup(p->cc);
         tc->cxx      = sys_dup(p->cxx);
+        tc->as       = sys_dup(p->as);
         tc->ar       = sys_dup(p->ar);
         tc->ld       = sys_dup(p->cc);
         tc->objext   = sys_dup(p->objext);
@@ -184,7 +193,7 @@ static int apply_auto(TOOLCHAIN *tc, const char *dir) {
         tc->soflag   = sys_dup(p->soflag);
         tc->platform = sys_dup(p->name);
 
-        read_flags(dir, tc);
+        read_flags(dir, tc, user);
         return 0;
     }
 
@@ -196,7 +205,7 @@ int tc_load(TOOLCHAIN *tc, const char *dir, const char *name,
     memset(tc, 0, sizeof(*tc));
 
     if (is_auto(name)) {
-        if (apply_auto(tc, dir) == 0) return 0;
+        if (apply_auto(tc, dir, "host") == 0) return 0;
 
         snprintf(err, errsz,
                  "no C compiler found on PATH; "
@@ -230,6 +239,7 @@ int tc_load(TOOLCHAIN *tc, const char *dir, const char *name,
     tc->cxx      = dup_or(&t, sect, "cxx", p->cxx);
     tc->ar       = dup_or(&t, sect, "ar", p->ar);
     tc->ld       = dup_or(&t, sect, "ld", p->cc);
+    tc->as       = dup_or(&t, sect, "as", p->as);
     tc->objext   = dup_or(&t, sect, "objext", p->objext);
     tc->binext   = dup_or(&t, sect, "binext", p->binext);
     tc->libext   = dup_or(&t, sect, "libext", p->libext);
@@ -245,8 +255,18 @@ int tc_load(TOOLCHAIN *tc, const char *dir, const char *name,
     return 0;
 }
 
+const char *tc_tool(const TOOLCHAIN *tc, const char *name) {
+    if (!strcmp(name, "cc"))  return tc->cc;
+    if (!strcmp(name, "c++")) return tc->cxx;
+    if (!strcmp(name, "nasm")) return tc->as;
+    if (!strcmp(name, "ar"))  return tc->ar;
+    if (!strcmp(name, "ld"))  return tc->ld;
+
+    return name;
+}
+
 void tc_free(TOOLCHAIN *tc) {
-    char *strs[] = { tc->name, tc->cc, tc->cxx, tc->ar, tc->ld, tc->objext,
+    char *strs[] = { tc->name, tc->cc, tc->cxx, tc->as, tc->ar, tc->ld, tc->objext,
                      tc->binext, tc->libext, tc->dllpre, tc->dllext,
                      tc->soflag, tc->platform };
 

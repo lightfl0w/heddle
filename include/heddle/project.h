@@ -9,7 +9,9 @@
 typedef enum {
     TARGET_EXE,
     TARGET_STATICLIB,
-    TARGET_SHAREDLIB
+    TARGET_SHAREDLIB,
+    TARGET_RAW,
+    TARGET_CUSTOM
 } TARGET_TYPE;
 
 typedef struct {
@@ -32,6 +34,12 @@ typedef struct {
 
     char **ldflags;
     int    nldflags;
+
+    char  *cmd;
+    char  *out;
+
+    char  *ldscript;
+    char  *format;
 } TARGET;
 
 typedef struct {
@@ -54,6 +62,8 @@ void project_free(PROJECT *p);
 TARGET *project_target(PROJECT *p, const char *name);
 
 const char *target_type_name(TARGET_TYPE t);
+
+char *project_path(const char *root, const char *rel);
 
 
 int project_check(const PROJECT *p, char *err, size_t errsz);

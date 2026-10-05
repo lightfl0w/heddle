@@ -1,0 +1,25 @@
+[build]
+dir = "out"
+
+[toolchain.host]
+cc = "cc"
+as = "nasm"
+cflags = ["-O2", "-ffreestanding", "-fno-pic", "-fno-stack-protector", "-m32", "-nostdlib"]
+
+[target.mbr]
+type = "raw"
+src = ["src/mbr.asm"]
+format = "bin"
+out = "out/mbr.bin"
+
+[target.kernel]
+type = "exe"
+src = ["src/boot.asm", "src/kernel.c"]
+linker_script = "src/kernel.ld"
+ldflags = ["-nostdlib", "-m32", "-Wl,--build-id=none"]
+
+[target.image]
+type = "custom"
+cmd = "cat out/mbr.bin out/kernel > out/os.img"
+out = "out/os.img"
+deps = ["mbr", "kernel"]

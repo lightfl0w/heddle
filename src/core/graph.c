@@ -1,4 +1,3 @@
-
 #include "graph.h"
 #include "hash.h"
 #include "sys.h"
@@ -28,15 +27,37 @@ static char **split_ws(const char *s, int *outn) {
         while (*s && isspace((unsigned char)*s)) s++;
         if (!*s) break;
 
-        const char *start = s;
-        while (*s && !isspace((unsigned char)*s)) s++;
+        char   buf[8192];
+        size_t len = 0;
 
-        size_t len = (size_t)(s - start);
-        char  *tok = (char *)malloc(len + 1);
+        while (*s && !isspace((unsigned char)*s)) {
+            char q = *s;
+
+            if (q != '"' && q != '\'') {
+                if (len + 1 < sizeof(buf)) buf[len++] = *s;
+                s++;
+                continue;
+            }
+
+            s++;
+
+            while (*s && *s != q) {
+                if (*s == '\\' && s[1]) s++;
+
+                if (len + 1 < sizeof(buf)) buf[len++] = *s;
+
+                s++;
+            }
+
+            if (*s == q) s++;
+        }
+
+        buf[len] = 0;
+
+        char *tok = (char *)malloc(len + 1);
         if (!tok) goto fail;
 
-        memcpy(tok, start, len);
-        tok[len] = 0;
+        memcpy(tok, buf, len + 1);
 
         if ((size_t)n == cap) {
             cap *= 2;
@@ -61,6 +82,26 @@ fail:
     for (int i = 0; i < n; i++) free(v[i]);
 
     free(v);
+    return NULL;
+}
+
+static char *find_unquoted(char *s, char c) {
+    char q = 0;
+
+    for (; *s; s++) {
+        if (q) {
+            if (*s == q) q = 0;
+            continue;
+        }
+
+        if (*s == '"' || *s == '\'') {
+            q = *s;
+            continue;
+        }
+
+        if (*s == c) return s;
+    }
+
     return NULL;
 }
 
@@ -140,6 +181,21 @@ static int is_own_output(const NODE *nd, const char *s) {
         if (!strcmp(nd->outs[i], s)) return 1;
 
     return 0;
+}
+
+static void list_add_words(char ***v, int *n, char *words, int skip_outs,
+                           const NODE *nd) {
+    int    k = 0;
+    char **tok = split_ws(words, &k);
+
+    for (int i = 0; tok && i < k; i++) {
+        if (!skip_outs || !is_own_output(nd, tok[i]))
+            list_add(v, n, tok[i]);
+
+        free(tok[i]);
+    }
+
+    free(tok);
 }
 
 static void node_scan(NODE *nd) {
@@ -399,12 +455,28 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
         }
 
         char *rest = colon + 1;
-        char *lt   = strchr(rest, '<');
+        char *lt   = find_unquoted(rest, '<');
         char *deps_str = NULL;
 
         if (lt) {
             *lt = 0;
             deps_str = lt + 1;
+        }
+
+        char *at = find_unquoted(rest, '@');
+        char *ins_str = NULL;
+
+        if (at) {
+            *at = 0;
+            ins_str = at + 1;
+        }
+
+        char *gt = find_unquoted(rest, '>');
+        char *outs_str = NULL;
+
+        if (gt) {
+            *gt = 0;
+            outs_str = gt + 1;
         }
 
         int    argc = 0;
@@ -438,6 +510,9 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
         nd->ndeps_static = nd->ndeps;
 
         node_scan(nd);
+
+        if (ins_str)  list_add_words(&nd->ins, &nd->nins, ins_str, 0, nd);
+        if (outs_str) list_add_words(&nd->outs, &nd->nouts, outs_str, 1, nd);
 
         g->n++;
         node_idx++;

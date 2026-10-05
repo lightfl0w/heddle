@@ -1,5 +1,5 @@
-
 #include "emit.h"
+#include "lang.h"
 #include "sys.h"
 
 #include <stdarg.h>
@@ -8,29 +8,8 @@
 #include <string.h>
 #include <sys/stat.h>
 
-static const char *ext_of(const char *path) {
-    const char *base = strrchr(path, '/');
-    base = base ? base + 1 : path;
-
-    const char *dot = strrchr(base, '.');
-    return dot && dot != base ? dot + 1 : "";
-}
-
-static int is_cxx(const char *src) {
-    const char *e = ext_of(src);
-
-    return !strcmp(e, "cc") || !strcmp(e, "cpp") || !strcmp(e, "cxx") ||
-           !strcmp(e, "c++");
-}
-
 static int is_supported(const char *src) {
-    const char *e = ext_of(src);
-
-    return !strcmp(e, "c") || is_cxx(src) || !strcmp(e, "S");
-}
-
-static const char *compiler_for(const PROJECT *p, const char *src) {
-    return is_cxx(src) ? p->tc.cxx : p->tc.cc;
+    return lang_for(src) != NULL;
 }
 
 static int have_src(const TARGET *t, const char *path) {
@@ -92,7 +71,7 @@ int project_check(const PROJECT *p, char *err, size_t errsz) {
                 return -1;
             }
 
-            if (d->type == TARGET_EXE) {
+            if (d->type == TARGET_EXE && t->type != TARGET_CUSTOM) {
                 snprintf(err, errsz,
                          "target '%s': cannot depend on executable '%s'",
                          t->name, d->name);
@@ -186,6 +165,18 @@ static int target_index(const PROJECT *p, const char *name) {
     return -1;
 }
 
+static void mark_closure(const PROJECT *p, int i, char *want) {
+    if (want[i]) return;
+
+    want[i] = 1;
+
+    for (int k = 0; k < p->targets[i].ndeps; k++) {
+        int d = target_index(p, p->targets[i].deps[k]);
+
+        if (d >= 0) mark_closure(p, d, want);
+    }
+}
+
 static char *object_of(const PROJECT *p, const TARGET *t, const char *src) {
     const char *base = strrchr(src, '/');
     base = base ? base + 1 : src;
@@ -193,9 +184,12 @@ static char *object_of(const PROJECT *p, const TARGET *t, const char *src) {
     const char *dot = strrchr(base, '.');
     size_t stem = dot && dot != base ? (size_t)(dot - base) : strlen(base);
 
+    const LANG *lg = lang_for(src);
+    const char *ext = lg && lg->outext ? lg->outext : p->tc.objext;
+
     char  name[1024];
     snprintf(name, sizeof(name), "%.*s_%.*s%s",
-             (int)strlen(t->name), t->name, (int)stem, base, p->tc.objext);
+             (int)strlen(t->name), t->name, (int)stem, base, ext);
 
     size_t n = strlen(p->build_dir) + strlen(name) + 2;
     char  *out = (char *)malloc(n);
@@ -206,6 +200,8 @@ static char *object_of(const PROJECT *p, const TARGET *t, const char *src) {
 }
 
 char *emit_artifact(const PROJECT *p, const TARGET *t) {
+    if (t->out) return project_path(p->root, t->out);
+
     const char *pre = "";
     const char *ext = p->tc.binext;
 
@@ -228,16 +224,72 @@ char *emit_artifact(const PROJECT *p, const TARGET *t) {
     return out;
 }
 
-static void put_flags(const PROJECT *p, const TARGET *t,
-                      char *buf, size_t cap, int *len) {
+static void put_incs(const TARGET *t, char *buf, size_t cap, int *len) {
     for (int i = 0; i < t->ninc; i++)
         addf(buf, cap, len, " -I%s", t->inc[i]);
+}
 
-    for (int i = 0; i < p->tc.ncflags; i++)
-        addf(buf, cap, len, " %s", p->tc.cflags[i]);
+static void subst_arg(const char *arg, const char *src, const char *out,
+                      const char *format, const char *root,
+                      char *dst, size_t cap) {
+    size_t len = 0;
 
-    for (int i = 0; i < t->ncflags; i++)
-        addf(buf, cap, len, " %s", t->cflags[i]);
+    for (const char *p = arg; *p && len + 1 < cap; ) {
+        if (!strncmp(p, "{src}", 5)) {
+            len += (size_t)snprintf(dst + len, cap - len, "%s", src);
+            p += 5;
+        } else if (!strncmp(p, "{out}", 5)) {
+            len += (size_t)snprintf(dst + len, cap - len, "%s", out);
+            p += 5;
+        } else if (!strncmp(p, "{format}", 8)) {
+            len += (size_t)snprintf(dst + len, cap - len, "%s", format);
+            p += 8;
+        } else if (!strncmp(p, "{root}", 6)) {
+            len += (size_t)snprintf(dst + len, cap - len, "%s", root);
+            p += 6;
+        } else {
+            dst[len++] = *p++;
+        }
+    }
+
+    dst[len] = 0;
+}
+
+static int lang_is_template(const LANG *lg) {
+    for (int a = 0; a < lg->nargs; a++)
+        if (strstr(lg->args[a], "{src}") || strstr(lg->args[a], "{out}") ||
+            strstr(lg->args[a], "{format}") || strstr(lg->args[a], "{root}"))
+            return 1;
+
+    return 0;
+}
+
+static void put_args(const LANG *lg, const char *src, const char *out,
+                     const char *format, const char *root,
+                     char *buf, size_t cap, int *len) {
+    for (int a = 0; a < lg->nargs; a++) {
+        char sub[2048];
+
+        subst_arg(lg->args[a], src, out, format, root, sub, sizeof(sub));
+        addf(buf, cap, len, " %s", sub);
+    }
+}
+
+static void build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg,
+                      const char *src, const char *out,
+                      const char *incs, const char *flags,
+                      const char *deffmt, char *cmd, size_t cap) {
+    const char *fmt = t->format ? t->format : deffmt;
+    int         len = 0;
+
+    addf(cmd, cap, &len, "%s", tc_tool(&p->tc, lg->cmd));
+    put_args(lg, src, out, fmt, p->root, cmd, cap, &len);
+
+    if (lg->fmt) addf(cmd, cap, &len, " -f %s", fmt);
+    if (lg->cflags) addf(cmd, cap, &len, "%s", flags);
+
+    if (!lang_is_template(lg))
+        addf(cmd, cap, &len, "%s -I%s -o %s %s", incs, p->root, out, src);
 }
 
 
@@ -311,23 +363,85 @@ static void step_dep(STEP *st, int id) {
 
 
 static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
-                        char *err, size_t errsz) {
+                        const char *want, char *err, size_t errsz) {
     for (int i = 0; i < p->ntargets; i++) {
+        if (!want[i]) continue;
+
         const TARGET *t = &p->targets[i];
+
+        char incs[8192];
+        int  ilen = 0;
+        incs[0] = 0;
+
+        put_incs(t, incs, sizeof(incs), &ilen);
 
         char flags[8192];
         int  flen = 0;
         flags[0] = 0;
 
-        put_flags(p, t, flags, sizeof(flags), &flen);
+        for (int k = 0; k < p->tc.ncflags; k++)
+            addf(flags, sizeof(flags), &flen, " %s", p->tc.cflags[k]);
+
+        for (int k = 0; k < t->ncflags; k++)
+            addf(flags, sizeof(flags), &flen, " %s", t->cflags[k]);
+
+        if (t->type == TARGET_CUSTOM) continue;
+
+        if (t->type == TARGET_RAW) {
+            if (t->nsrc != 1) {
+                snprintf(err, errsz,
+                         "target '%s': raw needs exactly one source", t->name);
+                return -1;
+            }
+
+            const LANG *lg = lang_for(t->src[0]);
+
+            if (!lg) {
+                snprintf(err, errsz, "target '%s': no language for '%s'",
+                         t->name, t->src[0]);
+                return -1;
+            }
+
+            char *bin = emit_artifact(p, t);
+            if (!bin) continue;
+
+            char cmd[16384];
+
+            build_cmd(p, t, lg, t->src[0], bin, incs, flags, "bin",
+                      cmd, sizeof(cmd));
+
+            STEP *st = plan_add(pl, cmd);
+
+            if (!st) {
+                free(bin);
+                snprintf(err, errsz, "out of memory");
+                return -1;
+            }
+
+            step_out(st, bin);
+
+            obj_of[i][0] = pl->n - 1;
+            free(bin);
+            continue;
+        }
 
         for (int k = 0; k < t->nsrc; k++) {
             char *obj = object_of(p, t, t->src[k]);
             if (!obj) continue;
 
+            const LANG *lg = lang_for(t->src[k]);
+
+            if (!lg) {
+                free(obj);
+                snprintf(err, errsz, "target '%s': no language for '%s'",
+                         t->name, t->src[k]);
+                return -1;
+            }
+
             char cmd[16384];
-            snprintf(cmd, sizeof(cmd), "%s%s -c %s -o %s",
-                     compiler_for(p, t->src[k]), flags, t->src[k], obj);
+
+            build_cmd(p, t, lg, t->src[k], obj, incs, flags, "elf",
+                      cmd, sizeof(cmd));
 
             STEP *st = plan_add(pl, cmd);
 
@@ -361,10 +475,20 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
 
     int n = p->ntargets;
 
+    char *want = (char *)calloc((size_t)n, 1);
+
+    if (!want) {
+        snprintf(err, errsz, "out of memory");
+        return -1;
+    }
+
+    mark_closure(p, root, want);
+
     int **obj_of = (int **)calloc((size_t)n, sizeof(int *));
     int  *art    = (int *)malloc(sizeof(int) * (size_t)n);
 
     if (!obj_of || !art) {
+        free(want);
         free(obj_of);
         free(art);
         snprintf(err, errsz, "out of memory");
@@ -376,7 +500,7 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
         art[i]    = -1;
     }
 
-    if (emit_objects(p, &pl, obj_of, err, errsz) != 0) goto fail;
+    if (emit_objects(p, &pl, obj_of, want, err, errsz) != 0) goto fail;
 
     int *order = (int *)malloc(sizeof(int) * (size_t)n);
     int  no = 0;
@@ -417,7 +541,14 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
     for (int oi = 0; oi < no; oi++) {
         int i = order[oi];
 
+        if (!want[i]) continue;
+
         const TARGET *t = &p->targets[i];
+
+        if (t->type == TARGET_RAW) {
+            art[i] = obj_of[i][0];
+            continue;
+        }
 
         char *out = emit_artifact(p, t);
         if (!out) continue;
@@ -426,7 +557,14 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
         int  len = 0;
         cmd[0] = 0;
 
-        if (t->type == TARGET_STATICLIB) {
+        if (t->type == TARGET_CUSTOM) {
+            len = snprintf(cmd, sizeof(cmd), "sh -c \"%s\"", t->cmd);
+
+            for (int k = 0; k < t->nsrc; k++)
+                addf(cmd, sizeof(cmd), &len, " %s", t->src[k]);
+
+            addf(cmd, sizeof(cmd), &len, " > %s", out);
+        } else if (t->type == TARGET_STATICLIB) {
             addf(cmd, sizeof(cmd), &len, "%s rcs -o %s", p->tc.ar, out);
 
             for (int k = 0; k < t->nsrc; k++) {
@@ -464,6 +602,9 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
                 free(lib);
             }
 
+            if (t->ldscript)
+                addf(cmd, sizeof(cmd), &len, " -T %s", t->ldscript);
+
             for (int k = 0; k < p->tc.nldflags; k++)
                 addf(cmd, sizeof(cmd), &len, " %s", p->tc.ldflags[k]);
 
@@ -492,8 +633,9 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
 
         STEP *st = &pl.steps[art[i]];
 
-        for (int k = 0; k < p->targets[i].nsrc; k++)
-            step_dep(st, obj_of[i][k]);
+        if (p->targets[i].type != TARGET_RAW)
+            for (int k = 0; k < p->targets[i].nsrc; k++)
+                step_dep(st, obj_of[i][k]);
 
         for (int k = 0; k < p->targets[i].ndeps; k++) {
             int d = target_index(p, p->targets[i].deps[k]);
@@ -543,6 +685,7 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
 
     free(obj_of);
     free(art);
+    free(want);
     plan_close(&pl);
     return 0;
 
@@ -551,6 +694,7 @@ fail:
 
     free(obj_of);
     free(art);
+    free(want);
     plan_close(&pl);
     return -1;
 }

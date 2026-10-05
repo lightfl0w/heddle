@@ -96,6 +96,61 @@ deps = ["util"]          # 依赖另一个目标，自动拓扑排序
 | `exe` | `executable` `bin` | 可执行文件 | `out/app`（ELF） | `out/app.exe` |
 | `staticlib` | `lib` | 静态库 | `out/libNAME.a` | `out/libNAME.a` |
 | `sharedlib` | `dylib` `so` | 动态库 | `out/libNAME.so` | `out/NAME.dll` |
+| `raw` | — | 单个源直接产出二进制，不链接 | `format = "bin"` 时是裸二进制 | 同 |
+| `custom` | — | 跑一条自定义命令 | 需 `cmd` 与 `out` | 同 |
+
+`raw` 用于引导扇区这类不需要链接的产物：
+
+```toml
+[target.mbr]
+type = "raw"
+src = ["src/mbr.asm"]
+format = "bin"
+out = "out/mbr.bin"
+```
+
+`custom` 用于执行自定义命令，`cmd` 里的命令交给 shell 执行：
+
+```toml
+[target.image]
+type = "custom"
+cmd = "cat out/mbr.bin out/kernel > out/os.img"
+out = "out/os.img"
+deps = ["mbr", "kernel"]
+```
+
+### 语言与插件
+
+源文件按扩展名选编译器，内置这些：
+
+| 扩展名 | 工具 | 说明 |
+| --- | --- | --- |
+| `.c` | `cc` | C |
+| `.cc` `.cpp` `.cxx` `.c++` | `cxx` | C++ |
+| `.asm` | `as` | NASM，默认 `-f elf` |
+| `.S` `.s` | `cc` | GAS |
+
+链接脚本用 `linker_script` 声明，改脚本会触发重链接：
+
+```toml
+[target.kernel]
+type = "exe"
+src = ["src/boot.asm", "src/kernel.c"]
+linker_script = "src/kernel.ld"
+ldflags = ["-nostdlib", "-m32"]
+```
+
+加一门新语言只需在配置里声明：
+
+```toml
+[lang.mine]
+ext = "mylang"
+cmd = "mycompiler"
+args = ["-O2", "{src}", "{out}"]
+out = ".o"
+```
+
+`args` 支持 `{src}` `{out}` `{format}` `{root}` 占位符。`out` 是对象后缀。
 
 ### 工具链
 
@@ -182,6 +237,11 @@ include/heddle/          heddle 头文件
 include/core/            loom 头文件
 src/heddle/              heddle 主体
 src/core/                loom 引擎
-heddle/tests/            测试工程和脚本
+tests/                   测试工程和脚本
+docs/                    文档
 build.txt                loom 自身的构建图，用于自举
 ```
+
+## 文档
+
+- [语言插件](docs/language-plugins.md)：内置语言、声明新语言、占位符、C 接口

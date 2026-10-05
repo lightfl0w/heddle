@@ -1,4 +1,4 @@
-
+#include "lang.h"
 #include "project.h"
 #include "sys.h"
 
@@ -18,7 +18,7 @@ static int dir_exists(const char *p) {
     return sys_isdir(p);
 }
 
-static char *str_join(const char *a, const char *b) {
+char *project_path(const char *a, const char *b) {
     if (!a || !a[0] || !strcmp(a, ".")) return sys_dup(b);
 
     size_t n = strlen(a) + strlen(b) + 2;
@@ -78,6 +78,11 @@ static void target_free(TARGET *t) {
     vec_free(t->cflags, t->ncflags);
     vec_free(t->ldflags, t->nldflags);
 
+    free(t->cmd);
+    free(t->out);
+    free(t->ldscript);
+    free(t->format);
+
     memset(t, 0, sizeof(*t));
 }
 
@@ -98,6 +103,16 @@ static int parse_type(const char *s, TARGET_TYPE *out) {
         return 0;
     }
 
+    if (!strcmp(s, "raw")) {
+        *out = TARGET_RAW;
+        return 0;
+    }
+
+    if (!strcmp(s, "custom")) {
+        *out = TARGET_CUSTOM;
+        return 0;
+    }
+
     return -1;
 }
 
@@ -105,7 +120,7 @@ static char *prefixed(const char *dir, const char *rel) {
     if (rel[0] == '/') return sys_dup(rel);
     if (!dir || !dir[0]) return sys_dup(rel);
 
-    return str_join(dir, rel);
+    return project_path(dir, rel);
 }
 
 static int load_strings(const TOML *cfg, const char *section, const char *key,
@@ -124,7 +139,7 @@ static int load_strings(const TOML *cfg, const char *section, const char *key,
     }
 }
 
-static int target_fill(PROJECT *p, TARGET *t, const TOML *cfg,
+static int target_fill(TARGET *t, const TOML *cfg,
                        const char *section, char *err, size_t errsz) {
     const char *type = toml_str(cfg, section, "type");
 
@@ -153,12 +168,37 @@ static int target_fill(PROJECT *p, TARGET *t, const TOML *cfg,
     if (load_strings(cfg, section, "ldflags", NULL, &t->ldflags, &t->nldflags) != 0)
         return -1;
 
-    if (t->nsrc == 0) {
+    if (t->type != TARGET_CUSTOM && t->nsrc == 0) {
         snprintf(err, errsz, "section [%s]: key 'src' is empty", section);
         return -1;
     }
 
-    (void)p;
+    const char *lds = toml_str(cfg, section, "linker_script");
+    const char *fmt = toml_str(cfg, section, "format");
+    const char *out = toml_str(cfg, section, "out");
+
+    t->ldscript = lds ? project_path(t->dir, lds) : NULL;
+    t->format   = fmt ? sys_dup(fmt) : NULL;
+    t->out      = out ? sys_dup(out) : NULL;
+
+    if (t->type == TARGET_CUSTOM) {
+        const char *cmd = toml_str(cfg, section, "cmd");
+
+        if (!cmd || !t->out) {
+            snprintf(err, errsz,
+                     "section [%s]: custom needs 'cmd' and 'out'", section);
+            return -1;
+        }
+
+        t->cmd = project_path(t->dir, cmd);
+    }
+
+    if (t->type == TARGET_RAW && !t->format) {
+        snprintf(err, errsz,
+                 "section [%s]: raw needs 'format' (e.g. bin, elf)", section);
+        return -1;
+    }
+
     return 0;
 }
 
@@ -175,11 +215,11 @@ static int load_package(PROJECT *p, const char *pkgdir, int depth,
         return -1;
     }
 
-    char cfg[2048];
-    snprintf(cfg, sizeof(cfg), "%s/heddle.toml", pkgdir);
+    char *cfg = project_path(pkgdir, "heddle.toml");
 
-    if (!path_exists(cfg)) {
-        snprintf(err, errsz, "cannot read %s", cfg);
+    if (!cfg || !path_exists(cfg)) {
+        snprintf(err, errsz, "cannot read %s/heddle.toml", pkgdir);
+        free(cfg);
         return -1;
     }
 
@@ -188,6 +228,7 @@ static int load_package(PROJECT *p, const char *pkgdir, int depth,
 
     if (toml_parse(&local, cfg, err, errsz) != 0) {
         toml_free(&local);
+        free(cfg);
         return -1;
     }
 
@@ -210,29 +251,34 @@ static int load_package(PROJECT *p, const char *pkgdir, int depth,
             goto fail;
         }
 
-        if (target_fill(p, t, &local, section, err, errsz) != 0) goto fail;
+        if (target_fill(t, &local, section, err, errsz) != 0) goto fail;
     }
 
     int pi = 0;
     const char *sub = NULL;
 
     while ((sub = toml_arr(&local, "package", "deps", pi++))) {
-        char   subdir[2048];
-        snprintf(subdir, sizeof(subdir), "%s/%s", norm_dir(pkgdir), sub);
+        char *subdir = project_path(norm_dir(pkgdir), sub);
 
-        if (!dir_exists(subdir)) {
+        if (!subdir || !dir_exists(subdir)) {
             snprintf(err, errsz, "%s: missing package directory '%s'",
                      cfg, sub);
+            free(subdir);
             goto fail;
         }
 
-        if (load_package(p, subdir, depth + 1, err, errsz) != 0) goto fail;
+        int rc = load_package(p, subdir, depth + 1, err, errsz);
+
+        free(subdir);
+
+        if (rc != 0) goto fail;
     }
 
     for (int i = 0; i < n; i++) free(names[i]);
 
     free(names);
     toml_free(&local);
+    free(cfg);
     return 0;
 
 fail:
@@ -240,6 +286,7 @@ fail:
 
     free(names);
     toml_free(&local);
+    free(cfg);
     return -1;
 }
 
@@ -269,8 +316,11 @@ int project_load(PROJECT *p, const char *root, const char *toolchain,
     const char *tc  = toolchain ? toolchain
                                 : toml_str(&top, "build", "toolchain");
 
-    p->build_dir      = str_join(p->root, dir ? dir : "build");
+    p->build_dir      = project_path(p->root, dir ? dir : "build");
     p->toolchain_name = sys_dup(tc ? tc : "auto");
+
+    lang_init_builtin();
+    lang_load_toml(&top);
 
     toml_free(&top);
 
@@ -306,8 +356,10 @@ void project_free(PROJECT *p) {
 const char *target_type_name(TARGET_TYPE t) {
     if (t == TARGET_EXE) return "exe";
     if (t == TARGET_STATICLIB) return "staticlib";
+    if (t == TARGET_SHAREDLIB) return "sharedlib";
+    if (t == TARGET_RAW) return "raw";
 
-    return "sharedlib";
+    return "custom";
 }
 
 TARGET *project_target(PROJECT *p, const char *name) {

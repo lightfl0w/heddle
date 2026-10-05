@@ -1,4 +1,3 @@
-
 #include "toml.h"
 #include "sys.h"
 
@@ -201,9 +200,37 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
             *close = 0;
 
             int idx = 0;
+            char *p = val + 1;
 
-            for (char *tok = strtok(val + 1, ","); tok; tok = strtok(NULL, ",")) {
-                char *item = unquote(tok, strlen(tok));
+            while (*p) {
+                while (*p == ' ' || *p == '\t') p++;
+
+                if (*p == ',') { p++; continue; }
+                if (*p == 0 || *p == ']') break;
+
+                const char *start;
+                size_t      len;
+
+                if (*p == '"') {
+                    start = p++;
+
+                    while (*p && *p != '"') p++;
+
+                    if (*p) p++;
+                } else {
+                    start = p;
+
+                    while (*p && *p != ',' && *p != ']') p++;
+
+                    len = (size_t)(p - start);
+                }
+
+                if (*p == '"')
+                    len = (size_t)(p - start);
+                else
+                    len = (size_t)(p - start);
+
+                char *item = unquote(start, len);
                 if (!item) {
                     snprintf(err, errsz, "out of memory");
                     fclose(f);
@@ -220,6 +247,9 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
                 }
 
                 free(item);
+
+                while (*p && *p != ',') p++;
+                if (*p == ',') p++;
             }
 
             continue;
