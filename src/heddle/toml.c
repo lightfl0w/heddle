@@ -24,8 +24,7 @@ static void table_free(TOML_TABLE *tab) {
 }
 
 void toml_free(TOML *t) {
-    for (int i = 0; i < t->count; i++)
-        table_free(&t->tables[i]);
+    for (int i = 0; i < t->count; i++) table_free(&t->tables[i]);
 
     free(t->tables);
     toml_init(t);
@@ -47,16 +46,14 @@ static TOML_TABLE *table_find(const TOML *t, const char *name) {
     return NULL;
 }
 
-static TOML_TABLE *table_add(TOML *t, const char *name,
-                             char *err, size_t errsz) {
+static TOML_TABLE *table_add(TOML *t, const char *name, char *err, size_t errsz) {
     TOML_TABLE *found = table_find(t, name);
     if (found) return found;
 
     if (t->count == t->cap) {
         int newcap = t->cap ? t->cap * 2 : 16;
 
-        TOML_TABLE *tables = (TOML_TABLE *)realloc(
-            t->tables, sizeof(TOML_TABLE) * (size_t)newcap);
+        TOML_TABLE *tables = (TOML_TABLE *)realloc(t->tables, sizeof(TOML_TABLE) * (size_t)newcap);
         if (!tables) {
             snprintf(err, errsz, "out of memory");
             return NULL;
@@ -78,8 +75,7 @@ static TOML_TABLE *table_add(TOML *t, const char *name,
     return tab;
 }
 
-static int table_put(TOML_TABLE *tab, const char *key, const char *val,
-                     char *err, size_t errsz) {
+static int table_put(TOML_TABLE *tab, const char *key, const char *val, char *err, size_t errsz) {
     for (int i = 0; i < tab->count; i++) {
         if (strcmp(tab->items[i].key, key)) continue;
 
@@ -92,8 +88,7 @@ static int table_put(TOML_TABLE *tab, const char *key, const char *val,
     if (tab->count == tab->cap) {
         int newcap = tab->cap ? tab->cap * 2 : 16;
 
-        TOML_KV *items = (TOML_KV *)realloc(
-            tab->items, sizeof(TOML_KV) * (size_t)newcap);
+        TOML_KV *items = (TOML_KV *)realloc(tab->items, sizeof(TOML_KV) * (size_t)newcap);
         if (!items) {
             snprintf(err, errsz, "out of memory");
             return -1;
@@ -106,8 +101,7 @@ static int table_put(TOML_TABLE *tab, const char *key, const char *val,
     tab->items[tab->count].key = sys_dup(key);
     tab->items[tab->count].val = sys_dup(val);
 
-    if (!tab->items[tab->count].key || !tab->items[tab->count].val)
-        return -1;
+    if (!tab->items[tab->count].key || !tab->items[tab->count].val) return -1;
 
     tab->count++;
     return 0;
@@ -115,7 +109,10 @@ static int table_put(TOML_TABLE *tab, const char *key, const char *val,
 
 static char *unquote(const char *s, size_t n) {
     while (n > 0 && isspace((unsigned char)s[n - 1])) n--;
-    while (n > 0 && isspace((unsigned char)*s)) { s++; n--; }
+    while (n > 0 && isspace((unsigned char)*s)) {
+        s++;
+        n--;
+    }
 
     if (n >= 2 && s[0] == '"' && s[n - 1] == '"') {
         s++;
@@ -125,8 +122,28 @@ static char *unquote(const char *s, size_t n) {
     char *out = (char *)malloc(n + 1);
     if (!out) return NULL;
 
-    memcpy(out, s, n);
-    out[n] = 0;
+    size_t w = 0;
+
+    for (size_t i = 0; i < n; i++) {
+        if (s[i] == '\\' && i + 1 < n) {
+            char e = s[++i];
+
+            switch (e) {
+            case 'n': out[w++] = '\n'; break;
+            case 't': out[w++] = '\t'; break;
+            case 'r': out[w++] = '\r'; break;
+            case '\\': out[w++] = '\\'; break;
+            case '"': out[w++] = '"'; break;
+            default: out[w++] = e; break;
+            }
+
+            continue;
+        }
+
+        out[w++] = s[i];
+    }
+
+    out[w] = 0;
     return out;
 }
 
@@ -161,7 +178,7 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
             }
 
             *close = 0;
-            cur = table_add(t, trim(s + 1), err, errsz);
+            cur    = table_add(t, trim(s + 1), err, errsz);
 
             if (!cur) {
                 fclose(f);
@@ -199,13 +216,16 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
 
             *close = 0;
 
-            int idx = 0;
-            char *p = val + 1;
+            int   idx = 0;
+            char *p   = val + 1;
 
             while (*p) {
                 while (*p == ' ' || *p == '\t') p++;
 
-                if (*p == ',') { p++; continue; }
+                if (*p == ',') {
+                    p++;
+                    continue;
+                }
                 if (*p == 0 || *p == ']') break;
 
                 const char *start;
@@ -214,9 +234,18 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
                 if (*p == '"') {
                     start = p++;
 
-                    while (*p && *p != '"') p++;
+                    while (*p) {
+                        if (*p == '\\' && p[1]) {
+                            p += 2;
+                            continue;
+                        }
+                        if (*p == '"') break;
+                        p++;
+                    }
 
                     if (*p) p++;
+
+                    len = (size_t)(p - start);
                 } else {
                     start = p;
 
@@ -224,11 +253,6 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
 
                     len = (size_t)(p - start);
                 }
-
-                if (*p == '"')
-                    len = (size_t)(p - start);
-                else
-                    len = (size_t)(p - start);
 
                 char *item = unquote(start, len);
                 if (!item) {
@@ -285,23 +309,20 @@ const char *toml_str(const TOML *t, const char *section, const char *key) {
     return NULL;
 }
 
-const char *toml_arr(const TOML *t, const char *section, const char *key,
-                     int index) {
+const char *toml_arr(const TOML *t, const char *section, const char *key, int index) {
     char norm[1024];
     snprintf(norm, sizeof(norm), "%s[%d]", key, index);
 
     return toml_str(t, section, norm);
 }
 
-int toml_int(const TOML *t, const char *section, const char *key,
-             int fallback) {
+int toml_int(const TOML *t, const char *section, const char *key, int fallback) {
     const char *v = toml_str(t, section, key);
 
     return v ? atoi(v) : fallback;
 }
 
-int toml_bool(const TOML *t, const char *section, const char *key,
-              int fallback) {
+int toml_bool(const TOML *t, const char *section, const char *key, int fallback) {
     const char *v = toml_str(t, section, key);
 
     if (!v) return fallback;

@@ -32,20 +32,19 @@ typedef struct {
 } TC_PRESET;
 
 static const TC_PRESET g_presets[] = {
-    { "host",  "gnu",  "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
-    { "linux", "gnu",  "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
-    { "gcc",   "gnu",  "gcc",   "g++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
-    { "clang", "gnu",  "clang", "clang++", "nasm", "ar",  ".o",   "",     ".a",   "lib", ".so",    "-shared"     },
-    { "macos", "gnu",  "cc",    "c++",     "nasm", "ar",  ".o",   "",     ".a",   "lib", ".dylib", "-dynamiclib" },
-    { "armcc", "armcc","armcc", "armcc",   "armasm", "armar", ".o", "",   ".lib", "",    ".dll",   ""            },
-    { "iar",   "iar",  "iccarm","iccarm",  "iasm",  "iarchive", ".o", "", ".a",   "",    ".dll",   ""            },
-    { "mingw", "gnu",  "x86_64-w64-mingw32-gcc", "x86_64-w64-mingw32-g++",
-               "x86_64-w64-mingw32-nasm", "x86_64-w64-mingw32-ar",
-               ".obj", ".exe", ".a", "lib", ".dll", "-shared" },
-    { "msvc",  "msvc", "cl",    "cl",      "nasm", "lib", ".obj", ".exe", ".lib", "", ".dll", "-shared" },
+    {"host", "gnu", "cc", "c++", "nasm", "ar", ".o", "", ".a", "lib", ".so", "-shared"},
+    {"linux", "gnu", "cc", "c++", "nasm", "ar", ".o", "", ".a", "lib", ".so", "-shared"},
+    {"gcc", "gnu", "gcc", "g++", "nasm", "ar", ".o", "", ".a", "lib", ".so", "-shared"},
+    {"clang", "gnu", "clang", "clang++", "nasm", "ar", ".o", "", ".a", "lib", ".so", "-shared"},
+    {"macos", "gnu", "cc", "c++", "nasm", "ar", ".o", "", ".a", "lib", ".dylib", "-dynamiclib"},
+    {"armcc", "armcc", "armcc", "armcc", "armasm", "armar", ".o", "", ".lib", "", ".dll", ""},
+    {"iar", "iar", "iccarm", "iccarm", "iasm", "iarchive", ".o", "", ".a", "", ".dll", ""},
+    {"mingw", "gnu", "x86_64-w64-mingw32-gcc", "x86_64-w64-mingw32-g++", "x86_64-w64-mingw32-nasm",
+     "x86_64-w64-mingw32-ar", ".obj", ".exe", ".a", "lib", ".dll", "-shared"},
+    {"msvc", "msvc", "cl", "cl", "nasm", "lib", ".obj", ".exe", ".lib", "", ".dll", "-shared"},
 };
 
-static const char *const g_auto[] = { "gcc", "clang", "tcc", "msvc" };
+static const char *const g_auto[] = {"gcc", "clang", "tcc", "msvc"};
 
 #if defined(_WIN32)
 #define DIR_SEP "\\"
@@ -77,11 +76,10 @@ static size_t dir_len(const char *dir) {
 }
 
 static int exec_try(const char *dir, const char *prog) {
-    char full[1024];
+    char   full[1024];
     size_t n = dir_len(dir);
 
-    const char *sep = (n && dir[n - 1] != '/' && dir[n - 1] != '\\')
-                          ? DIR_SEP : "";
+    const char *sep = (n && dir[n - 1] != '/' && dir[n - 1] != '\\') ? DIR_SEP : "";
 
     snprintf(full, sizeof(full), "%.*s%s%s", (int)n, dir, sep, prog);
 
@@ -89,8 +87,7 @@ static int exec_try(const char *dir, const char *prog) {
 
 #if defined(_WIN32)
     if (!has_ext(prog)) {
-        snprintf(full, sizeof(full), "%.*s%s%s.exe",
-                 (int)n, dir, sep, prog);
+        snprintf(full, sizeof(full), "%.*s%s%s.exe", (int)n, dir, sep, prog);
 
         if (EXEC_OK(full)) return 1;
     }
@@ -109,7 +106,7 @@ static int on_path(const char *prog) {
     if (!copy) return 0;
 
     int   found = 0;
-    char *dir  = copy;
+    char *dir   = copy;
 
     while (dir && !found) {
 #if defined(_WIN32)
@@ -119,7 +116,10 @@ static int on_path(const char *prog) {
 #endif
         char keep = 0;
 
-        if (sep) { keep = *sep; *sep = 0; }
+        if (sep) {
+            keep = *sep;
+            *sep = 0;
+        }
 
         if (dir[0]) found = exec_try(dir, prog);
 
@@ -137,7 +137,7 @@ void tc_add_env_raw(TOOLCHAIN *tc, const char *s) {
     char **next = (char **)realloc(tc->env, sizeof(char *) * (size_t)(tc->nenv + 1));
     if (!next) return;
 
-    tc->env = next;
+    tc->env           = next;
     tc->env[tc->nenv] = sys_dup(s);
 
     if (tc->env[tc->nenv]) tc->nenv++;
@@ -167,8 +167,7 @@ static const char *env_lookup(char **items, int n, const char *key) {
     size_t klen = strlen(key);
 
     for (int i = 0; i < n; i++) {
-        if (strncmp(items[i], key, klen) == 0 && items[i][klen] == '=')
-            return items[i] + klen + 1;
+        if (strncmp(items[i], key, klen) == 0 && items[i][klen] == '=') return items[i] + klen + 1;
     }
 
     return NULL;
@@ -184,11 +183,9 @@ static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
     if (vs_install(install, sizeof(install)) != 0) return -1;
     if (vs_toolset(install, want, toolset, sizeof(toolset)) != 0) return -1;
 
-    if (vs_sdk(arch, inc, sizeof(inc), lib, sizeof(lib)) != 0)
-        inc[0] = lib[0] = 0;
+    if (vs_sdk(arch, inc, sizeof(inc), lib, sizeof(lib)) != 0) inc[0] = lib[0] = 0;
 
-    snprintf(cl, sizeof(cl), "%s\\bin\\Host%s\\%s\\cl.exe",
-             toolset, arch, arch);
+    snprintf(cl, sizeof(cl), "%s\\bin\\Host%s\\%s\\cl.exe", toolset, arch, arch);
 
     {
         static char raw[131072];
@@ -197,8 +194,7 @@ static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
 
         if (vs_env_capture(install, arch, raw, sizeof(raw)) == 0 &&
             (n = vs_env_split(raw, items, 1024)) > 0) {
-            for (int i = 0; i < n; i++)
-                tc_add_env_raw(tc, items[i]);
+            for (int i = 0; i < n; i++) tc_add_env_raw(tc, items[i]);
 
             const char *vcdir = env_lookup(items, n, "VCToolsInstallDir");
             char        full[2048];
@@ -206,11 +202,10 @@ static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
             if (vcdir && vcdir[0]) {
                 size_t l = strlen(vcdir);
 
-                while (l > 0 && (vcdir[l - 1] == '\\' || vcdir[l - 1] == '/'))
-                    l--;
+                while (l > 0 && (vcdir[l - 1] == '\\' || vcdir[l - 1] == '/')) l--;
 
-                snprintf(full, sizeof(full), "%.*s\\bin\\Host%s\\%s\\cl.exe",
-                         (int)l, vcdir, arch, arch);
+                snprintf(full, sizeof(full), "%.*s\\bin\\Host%s\\%s\\cl.exe", (int)l, vcdir, arch,
+                         arch);
 
 #ifdef _WIN32
                 if (GetFileAttributesA(full) != INVALID_FILE_ATTRIBUTES)
@@ -246,8 +241,7 @@ static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
 
     char *sys_path = getenv("PATH");
 
-    tc_add_env(tc, "PATH=%s\\bin\\Host%s\\%s;%s",
-               toolset, arch, arch, sys_path ? sys_path : "");
+    tc_add_env(tc, "PATH=%s\\bin\\Host%s\\%s;%s", toolset, arch, arch, sys_path ? sys_path : "");
     tc_add_env(tc, "INCLUDE=%s;%s\\include", inc, toolset);
     tc_add_env(tc, "LIB=%s;%s\\lib\\%s", lib, toolset, arch);
 
@@ -284,15 +278,14 @@ const char *tc_auto_at(int i) {
     return g_auto[i];
 }
 
-static const char *or_default(const TOML *t, const char *sect,
-                              const char *key, const char *fallback) {
+static const char *or_default(const TOML *t, const char *sect, const char *key,
+                              const char *fallback) {
     const char *v = toml_str(t, sect, key);
 
     return v ? v : fallback;
 }
 
-static char *dup_or(const TOML *t, const char *sect,
-                    const char *key, const char *fallback) {
+static char *dup_or(const TOML *t, const char *sect, const char *key, const char *fallback) {
     return sys_dup(or_default(t, sect, key, fallback));
 }
 
@@ -300,14 +293,13 @@ static void add_flag(char ***arr, int *n, const char *v) {
     char **next = (char **)realloc(*arr, sizeof(char *) * (size_t)(*n + 1));
     if (!next) return;
 
-    *arr = next;
+    *arr       = next;
     (*arr)[*n] = sys_dup(v);
     (*n)++;
 }
 
-static void add_flags(TOML *t, const char *sect, const char *key,
-                      char ***arr, int *n) {
-    for (int i = 0; ; i++) {
+static void add_flags(TOML *t, const char *sect, const char *key, char ***arr, int *n) {
+    for (int i = 0;; i++) {
         const char *v = toml_arr(t, sect, key, i);
 
         if (!v) break;
@@ -361,8 +353,8 @@ static void host_fix(TOOLCHAIN *tc) {
             tc->binext = sys_dup(".exe");
         }
 
-        if (tc->soflag && !strcmp(tc->soflag, "-shared") &&
-            tc->dllpre && !strcmp(tc->dllpre, "lib")) {
+        if (tc->soflag && !strcmp(tc->soflag, "-shared") && tc->dllpre &&
+            !strcmp(tc->dllpre, "lib")) {
             free(tc->dllpre);
             tc->dllpre = sys_dup("");
         }
@@ -415,8 +407,7 @@ static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
     return -1;
 }
 
-int tc_load(TOOLCHAIN *tc, const char *dir, const char *name,
-            char *err, size_t errsz) {
+int tc_load(TOOLCHAIN *tc, const char *dir, const char *name, char *err, size_t errsz) {
     return tc_load_ex(tc, dir, name, NULL, NULL, NULL, err, errsz);
 }
 
@@ -433,10 +424,8 @@ static char *apply_prefix(const char *prefix, const char *tool) {
     return p;
 }
 
-int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name,
-               const char *prefix, const char *sysroot,
-               const char *extra_cflags,
-               char *err, size_t errsz) {
+int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *prefix,
+               const char *sysroot, const char *extra_cflags, char *err, size_t errsz) {
     memset(tc, 0, sizeof(*tc));
 
     if (is_auto(name)) {
@@ -494,8 +483,7 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name,
     }
 
     if (!strcmp(p->name, "msvc"))
-        msvc_fill(tc, or_default(&t, sect, "arch", "x64"),
-                  or_default(&t, sect, "toolset", NULL));
+        msvc_fill(tc, or_default(&t, sect, "arch", "x64"), or_default(&t, sect, "toolset", NULL));
 
     tc->name     = sys_dup(name);
     tc->family   = dup_or(&t, sect, "family", p->family);
@@ -529,10 +517,18 @@ overlay:
         free(tc->dllpre);
         tc->dllpre = sys_dup("lib");
 
-        n = apply_prefix(prefix, tc->cc);  free(tc->cc);  tc->cc  = n;
-        n = apply_prefix(prefix, tc->cxx); free(tc->cxx); tc->cxx = n;
-        n = apply_prefix(prefix, tc->ar);  free(tc->ar);  tc->ar  = n;
-        n = apply_prefix(prefix, tc->ld);  free(tc->ld);  tc->ld  = n;
+        n = apply_prefix(prefix, tc->cc);
+        free(tc->cc);
+        tc->cc = n;
+        n      = apply_prefix(prefix, tc->cxx);
+        free(tc->cxx);
+        tc->cxx = n;
+        n       = apply_prefix(prefix, tc->ar);
+        free(tc->ar);
+        tc->ar = n;
+        n      = apply_prefix(prefix, tc->ld);
+        free(tc->ld);
+        tc->ld = n;
 
         snprintf(buf, sizeof(buf), "cross-%s", prefix);
 
@@ -554,8 +550,7 @@ overlay:
         char *save = NULL;
         char *tok;
 
-        for (tok = sys_tok(copy, " \t", &save); tok;
-             tok = sys_tok(NULL, " \t", &save))
+        for (tok = sys_tok(copy, " \t", &save); tok; tok = sys_tok(NULL, " \t", &save))
             add_flag(&tc->cflags, &tc->ncflags, tok);
 
         free(copy);
@@ -564,11 +559,9 @@ overlay:
     return 0;
 }
 
-int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based,
-                 const char *cc, const char *family,
-                 const char *prefix, const char *sysroot,
-                 const char *extra_cflags,
-                 char *err, size_t errsz) {
+int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based, const char *cc,
+                 const char *family, const char *prefix, const char *sysroot,
+                 const char *extra_cflags, char *err, size_t errsz) {
     memset(tc, 0, sizeof(*tc));
 
     const TC_PRESET *p = preset_of(based && based[0] ? based : NULL);
@@ -622,10 +615,18 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based,
     if (prefix && prefix[0]) {
         char *n;
 
-        n = apply_prefix(prefix, tc->cc);  free(tc->cc);  tc->cc  = n;
-        n = apply_prefix(prefix, tc->cxx); free(tc->cxx); tc->cxx = n;
-        n = apply_prefix(prefix, tc->ar);  free(tc->ar);  tc->ar  = n;
-        n = apply_prefix(prefix, tc->ld);  free(tc->ld);  tc->ld  = n;
+        n = apply_prefix(prefix, tc->cc);
+        free(tc->cc);
+        tc->cc = n;
+        n      = apply_prefix(prefix, tc->cxx);
+        free(tc->cxx);
+        tc->cxx = n;
+        n       = apply_prefix(prefix, tc->ar);
+        free(tc->ar);
+        tc->ar = n;
+        n      = apply_prefix(prefix, tc->ld);
+        free(tc->ld);
+        tc->ld = n;
 
         free(tc->platform);
         tc->platform = sys_dup(p->name);
@@ -641,8 +642,7 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based,
         char *save = NULL;
         char *tok;
 
-        for (tok = sys_tok(copy, " \t", &save); tok;
-             tok = sys_tok(NULL, " \t", &save))
+        for (tok = sys_tok(copy, " \t", &save); tok; tok = sys_tok(NULL, " \t", &save))
             add_flag(&tc->cflags, &tc->ncflags, tok);
 
         free(copy);
@@ -653,11 +653,11 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based,
 }
 
 const char *tc_tool(const TOOLCHAIN *tc, const char *name) {
-    if (!strcmp(name, "cc"))  return tc->cc;
+    if (!strcmp(name, "cc")) return tc->cc;
     if (!strcmp(name, "c++")) return tc->cxx;
     if (!strcmp(name, "nasm")) return tc->as;
-    if (!strcmp(name, "ar"))  return tc->ar;
-    if (!strcmp(name, "ld"))  return tc->ld;
+    if (!strcmp(name, "ar")) return tc->ar;
+    if (!strcmp(name, "ld")) return tc->ld;
 
     return name;
 }
@@ -678,8 +678,7 @@ int tc_tool_ok(const TOOLCHAIN *tc, const char *tool) {
     char       *save = NULL;
     int         ok   = 0;
 
-    for (char *d = sys_tok(copy, ":;", &save); d && !ok;
-        d = sys_tok(NULL, ":;", &save))
+    for (char *d = sys_tok(copy, ":;", &save); d && !ok; d = sys_tok(NULL, ":;", &save))
         ok = exec_try(d, tool);
 
     free(copy);
@@ -687,12 +686,11 @@ int tc_tool_ok(const TOOLCHAIN *tc, const char *tool) {
 }
 
 void tc_free(TOOLCHAIN *tc) {
-    char *strs[] = { tc->name, tc->family, tc->cc, tc->cxx, tc->as, tc->ar, tc->ld, tc->objext,
-                     tc->binext, tc->libext, tc->dllpre, tc->dllext,
-                     tc->soflag, tc->platform };
+    char *strs[] = {tc->name,   tc->family, tc->cc,     tc->cxx,     tc->as,
+                    tc->ar,     tc->ld,     tc->objext, tc->binext,  tc->libext,
+                    tc->dllpre, tc->dllext, tc->soflag, tc->platform};
 
-    for (size_t i = 0; i < sizeof(strs) / sizeof(strs[0]); i++)
-        free(strs[i]);
+    for (size_t i = 0; i < sizeof(strs) / sizeof(strs[0]); i++) free(strs[i]);
 
     for (int i = 0; i < tc->ncflags; i++) free(tc->cflags[i]);
     for (int i = 0; i < tc->nldflags; i++) free(tc->ldflags[i]);

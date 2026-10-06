@@ -32,7 +32,7 @@ static void push(char ***v, int *n, const char *s) {
     char **next = (char **)realloc(*v, sizeof(char *) * (size_t)(*n + 1));
     if (!next) return;
 
-    *v = next;
+    *v       = next;
     (*v)[*n] = sys_dup(s);
 
     if ((*v)[*n]) (*n)++;
@@ -46,9 +46,8 @@ int recipe_match(const char *dir) {
     return ok;
 }
 
-static void load_list(const TOML *t, const char *sect, const char *key,
-                      char ***out, int *n) {
-    for (int i = 0; ; i++) {
+static void load_list(const TOML *t, const char *sect, const char *key, char ***out, int *n) {
+    for (int i = 0;; i++) {
         const char *v = toml_arr(t, sect, key, i);
 
         if (!v) break;
@@ -88,10 +87,10 @@ int recipe_load(RECIPE *r, const char *dir, char *err, size_t errsz) {
 
     r->build.type = dup_opt(toml_str(&t, "build", "type"));
 
-    load_list(&t, "build", "sources",      &r->build.patterns, &r->build.npat);
+    load_list(&t, "build", "sources", &r->build.patterns, &r->build.npat);
     load_list(&t, "build", "include_dirs", &r->build.include_dirs, &r->build.ninc);
-    load_list(&t, "build", "defines",      &r->build.defines, &r->build.ndef);
-    load_list(&t, "build", "cflags",       &r->build.cflags, &r->build.ncflags);
+    load_list(&t, "build", "defines", &r->build.defines, &r->build.ndef);
+    load_list(&t, "build", "cflags", &r->build.cflags, &r->build.ncflags);
 
     toml_free(&t);
     free(cfg);
@@ -137,10 +136,10 @@ void recipe_free(RECIPE *r) {
     free(r->source.tag);
     free(r->source.path);
 
-    for (int i = 0; i < r->build.npat; i++)    free(r->build.patterns[i]);
-    for (int i = 0; i < r->build.nfile; i++)   free(r->build.files[i]);
-    for (int i = 0; i < r->build.ninc; i++)    free(r->build.include_dirs[i]);
-    for (int i = 0; i < r->build.ndef; i++)    free(r->build.defines[i]);
+    for (int i = 0; i < r->build.npat; i++) free(r->build.patterns[i]);
+    for (int i = 0; i < r->build.nfile; i++) free(r->build.files[i]);
+    for (int i = 0; i < r->build.ninc; i++) free(r->build.include_dirs[i]);
+    for (int i = 0; i < r->build.ndef; i++) free(r->build.defines[i]);
     for (int i = 0; i < r->build.ncflags; i++) free(r->build.cflags[i]);
 
     free(r->build.patterns);

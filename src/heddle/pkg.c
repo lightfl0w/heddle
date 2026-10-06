@@ -50,8 +50,7 @@ static int list_push(PKG_LIST *l, const PKG_SPEC *s) {
     if (l->n == l->cap) {
         int newcap = l->cap ? l->cap * 2 : 8;
 
-        PKG_SPEC *items = (PKG_SPEC *)realloc(
-            l->items, sizeof(PKG_SPEC) * (size_t)newcap);
+        PKG_SPEC *items = (PKG_SPEC *)realloc(l->items, sizeof(PKG_SPEC) * (size_t)newcap);
         if (!items) return -1;
 
         l->items = items;
@@ -103,24 +102,24 @@ typedef struct {
 } ARCH_TEMPLATE;
 
 static const ARCH_TEMPLATE g_arch[] = {
-    { "armv6m",       "arm-none-eabi-",       "-mthumb -mcpu=cortex-m0",  "", "-mfpu=none"          },
-    { "armv7m",       "arm-none-eabi-",       "-mthumb -mcpu=cortex-m3",  "", "-mfpu=none"          },
-    { "armv7em",      "arm-none-eabi-",       "-mthumb -mcpu=cortex-m4",  "", "-mfpu=fpv4-sp-d16"   },
-    { "armv8m",       "arm-none-eabi-",       "-mthumb -mcpu=cortex-m33", "", "-mfpu=fpv5-sp-d16"   },
-    { "cortex-m4",    "arm-none-eabi-",       "-mthumb -mcpu=cortex-m4",  "", "-mfpu=fpv4-sp-d16"   },
-    { "cortex-m7",    "arm-none-eabi-",       "-mthumb -mcpu=cortex-m7",  "", "-mfpu=fpv5-d16"      },
-    { "armv7a",       "arm-none-eabi-",       "-mcpu=cortex-a7",          "", "-mfpu=neon-vfpv4"    },
-    { "aarch64",      "aarch64-none-elf-",    "-march=armv8-a",           "", ""                    },
-    { "riscv32imac",  "riscv64-unknown-elf-", "-march=rv32imac -mabi=ilp32", "", ""                 },
-    { "riscv32",      "riscv64-unknown-elf-", "-march=rv32i -mabi=ilp32", "", ""                    },
-    { "riscv64",      "riscv64-unknown-elf-", "-march=rv64imac -mabi=lp64", "", ""                  },
-    { "xtensa-lx106", "xtensa-esp32-elf-",    "-mlongcalls",              "", ""                    },
-    { "xtensa",       "xtensa-esp32-elf-",    "-mlongcalls",              "", ""                    },
-    { "msp430",       "msp430-elf-",          "-mmcu=msp430f5529",        "", ""                    },
-    { "avr",          "avr-",                 "-mmcu=atmega328p",         "", ""                    },
-    { "powerpc",      "powerpc-eabi-",        "-mcpu=e500mc",             "", ""                    },
-    { "x86_64",       "",                     "-m64",                     "", ""                    },
-    { "i686",         "",                     "-m32",                     "", ""                    },
+    {"armv6m", "arm-none-eabi-", "-mthumb -mcpu=cortex-m0", "", "-mfpu=none"},
+    {"armv7m", "arm-none-eabi-", "-mthumb -mcpu=cortex-m3", "", "-mfpu=none"},
+    {"armv7em", "arm-none-eabi-", "-mthumb -mcpu=cortex-m4", "", "-mfpu=fpv4-sp-d16"},
+    {"armv8m", "arm-none-eabi-", "-mthumb -mcpu=cortex-m33", "", "-mfpu=fpv5-sp-d16"},
+    {"cortex-m4", "arm-none-eabi-", "-mthumb -mcpu=cortex-m4", "", "-mfpu=fpv4-sp-d16"},
+    {"cortex-m7", "arm-none-eabi-", "-mthumb -mcpu=cortex-m7", "", "-mfpu=fpv5-d16"},
+    {"armv7a", "arm-none-eabi-", "-mcpu=cortex-a7", "", "-mfpu=neon-vfpv4"},
+    {"aarch64", "aarch64-none-elf-", "-march=armv8-a", "", ""},
+    {"riscv32imac", "riscv64-unknown-elf-", "-march=rv32imac -mabi=ilp32", "", ""},
+    {"riscv32", "riscv64-unknown-elf-", "-march=rv32i -mabi=ilp32", "", ""},
+    {"riscv64", "riscv64-unknown-elf-", "-march=rv64imac -mabi=lp64", "", ""},
+    {"xtensa-lx106", "xtensa-esp32-elf-", "-mlongcalls", "", ""},
+    {"xtensa", "xtensa-esp32-elf-", "-mlongcalls", "", ""},
+    {"msp430", "msp430-elf-", "-mmcu=msp430f5529", "", ""},
+    {"avr", "avr-", "-mmcu=atmega328p", "", ""},
+    {"powerpc", "powerpc-eabi-", "-mcpu=e500mc", "", ""},
+    {"x86_64", "", "-m64", "", ""},
+    {"i686", "", "-m32", "", ""},
 };
 
 static const ARCH_TEMPLATE *arch_find(const char *arch) {
@@ -135,8 +134,8 @@ static const ARCH_TEMPLATE *arch_find(const char *arch) {
 int pkg_target_resolve(TARGET_PROFILE *t, char *err, size_t errsz) {
     if (!t->arch || !t->arch[0]) {
         if (!t->prefix) t->prefix = sys_dup("");
-        if (!t->cpu)    t->cpu    = sys_dup("");
-        if (!t->fpu)    t->fpu    = sys_dup("");
+        if (!t->cpu) t->cpu = sys_dup("");
+        if (!t->fpu) t->fpu = sys_dup("");
         return 0;
     }
 
@@ -148,22 +147,20 @@ int pkg_target_resolve(TARGET_PROFILE *t, char *err, size_t errsz) {
     }
 
     if (!t->prefix) t->prefix = sys_dup(a->prefix);
-    if (!t->cpu)    t->cpu    = sys_dup(a->cpu);
+    if (!t->cpu) t->cpu = sys_dup(a->cpu);
 
     if (!t->fpu) {
         char buf[256];
         int  has_fpu = a->fpu_soft[0] || a->fpu_hard[0];
 
-        if (!has_fpu)
-            buf[0] = 0;
+        if (!has_fpu) buf[0] = 0;
         else if (t->float_k && !strcmp(t->float_k, "soft"))
             snprintf(buf, sizeof(buf), "-mfloat-abi=soft");
         else if (t->float_k && !strcmp(t->float_k, "hard"))
             snprintf(buf, sizeof(buf), "%s -mfloat-abi=hard", a->fpu_hard);
         else if (t->float_k && !strcmp(t->float_k, "softfp"))
             snprintf(buf, sizeof(buf), "%s -mfloat-abi=softfp", a->fpu_soft);
-        else
-            snprintf(buf, sizeof(buf), "%s", a->fpu_soft);
+        else snprintf(buf, sizeof(buf), "%s", a->fpu_soft);
 
         t->fpu = sys_dup(buf);
     }
@@ -179,8 +176,7 @@ static PKG_SOURCE parse_source(const char *s) {
     return PKG_SOURCE_AUTO;
 }
 
-static void load_section(const TOML *t, const char *section, PKG_KIND kind,
-                         PKG_LIST *out) {
+static void load_section(const TOML *t, const char *section, PKG_KIND kind, PKG_LIST *out) {
     const TOML_TABLE *tab = NULL;
 
     for (int i = 0; i < t->count; i++)
@@ -267,8 +263,8 @@ int pkg_manifest_finalize(PKG_MANIFEST *m, char *err, size_t errsz) {
     return 0;
 }
 
-void pkg_manifest_add(PKG_MANIFEST *m, PKG_KIND kind, const char *name,
-                      const char *version, const char *source) {
+void pkg_manifest_add(PKG_MANIFEST *m, PKG_KIND kind, const char *name, const char *version,
+                      const char *source) {
     PKG_SPEC s;
     memset(&s, 0, sizeof(s));
 
@@ -281,8 +277,7 @@ void pkg_manifest_add(PKG_MANIFEST *m, PKG_KIND kind, const char *name,
     list_push(kind == PKG_KIND_TOOLCHAIN ? &m->tools : &m->deps, &s);
 }
 
-static int pkg_manifest_load_star(PKG_MANIFEST *m, const char *star_path,
-                                 char *err, size_t errsz) {
+static int pkg_manifest_load_star(PKG_MANIFEST *m, const char *star_path, char *err, size_t errsz) {
     STAR_CFG cfg;
     memset(&cfg, 0, sizeof(cfg));
     cfg.root = sys_dup(m->root);
@@ -292,8 +287,7 @@ static int pkg_manifest_load_star(PKG_MANIFEST *m, const char *star_path,
         return -1;
     }
 
-    m->store = cfg.store ? path_join(m->root, cfg.store)
-                         : path_join3(m->root, ".heddle", "store");
+    m->store = cfg.store ? path_join(m->root, cfg.store) : path_join3(m->root, ".heddle", "store");
 
     const STAR_PLATFORM *plat = NULL;
 
@@ -305,24 +299,20 @@ static int pkg_manifest_load_star(PKG_MANIFEST *m, const char *star_path,
     m->target.arch    = dup_opt(plat && plat->arch ? plat->arch : cfg.arch);
     m->target.abi     = dup_opt(plat && plat->abi ? plat->abi : cfg.abi);
     m->target.float_k = dup_opt(plat && plat->flt ? plat->flt : cfg.flt);
-    m->target.sysroot = dup_opt(plat && plat->sysroot ? plat->sysroot
-                                                      : cfg.sysroot);
+    m->target.sysroot = dup_opt(plat && plat->sysroot ? plat->sysroot : cfg.sysroot);
 
     for (int i = 0; i < cfg.ntc; i++)
-        pkg_manifest_add(m, PKG_KIND_TOOLCHAIN, cfg.tc_name[i], NULL,
-                         cfg.tc_cc[i]);
+        pkg_manifest_add(m, PKG_KIND_TOOLCHAIN, cfg.tc_name[i], NULL, cfg.tc_cc[i]);
 
     for (int i = 0; i < cfg.ndep; i++)
-        pkg_manifest_add(m, PKG_KIND_LIBRARY, cfg.dep_name[i],
-                         cfg.dep_ver[i], cfg.dep_src[i]);
+        pkg_manifest_add(m, PKG_KIND_LIBRARY, cfg.dep_name[i], cfg.dep_ver[i], cfg.dep_src[i]);
 
     star_cfg_free(&cfg);
 
     return pkg_manifest_finalize(m, err, errsz);
 }
 
-int pkg_manifest_load(PKG_MANIFEST *m, const char *root,
-                      char *err, size_t errsz) {
+int pkg_manifest_load(PKG_MANIFEST *m, const char *root, char *err, size_t errsz) {
     memset(m, 0, sizeof(*m));
 
     m->root = sys_dup(root ? root : ".");
@@ -357,8 +347,7 @@ int pkg_manifest_load(PKG_MANIFEST *m, const char *root,
     }
 
     const char *store = toml_str(&t, "build", "store");
-    m->store = store ? path_join(m->root, store)
-                     : path_join3(m->root, ".heddle", "store");
+    m->store          = store ? path_join(m->root, store) : path_join3(m->root, ".heddle", "store");
 
     m->target.arch    = dup_opt(toml_str(&t, "target", "arch"));
     m->target.abi     = dup_opt(toml_str(&t, "target", "abi"));
@@ -421,9 +410,11 @@ static void strlist_push(STRLIST *l, char *s) {
     if (l->n == l->cap) {
         int newcap = l->cap ? l->cap * 2 : 16;
 
-        char **items = (char **)realloc(l->items,
-                                        sizeof(char *) * (size_t)newcap);
-        if (!items) { free(s); return; }
+        char **items = (char **)realloc(l->items, sizeof(char *) * (size_t)newcap);
+        if (!items) {
+            free(s);
+            return;
+        }
 
         l->items = items;
         l->cap   = newcap;
@@ -440,7 +431,7 @@ static int list_dir(const char *path, STRLIST *out) {
     snprintf(pat, sizeof(pat), "%s\\*", path);
 
     WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(pat, &fd);
+    HANDLE           h = FindFirstFileA(pat, &fd);
 
     if (h == INVALID_HANDLE_VALUE) return -1;
 
@@ -452,7 +443,11 @@ static int list_dir(const char *path, STRLIST *out) {
 
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             char *d = (char *)malloc(strlen(full) + 2);
-            if (d) { sprintf(d, "%s\\", full); free(full); full = d; }
+            if (d) {
+                sprintf(d, "%s\\", full);
+                free(full);
+                full = d;
+            }
         }
 
         strlist_push(out, full);
@@ -477,10 +472,14 @@ static int list_dir(const char *path, STRLIST *out) {
         if (!full) continue;
 
         if (sys_isdir(full)) {
-            size_t n = strlen(full) + 2;
+            size_t n  = strlen(full) + 2;
             char  *d2 = (char *)malloc(n);
 
-            if (d2) { snprintf(d2, n, "%s/", full); free(full); full = d2; }
+            if (d2) {
+                snprintf(d2, n, "%s/", full);
+                free(full);
+                full = d2;
+            }
         }
 
         strlist_push(out, full);
@@ -509,8 +508,7 @@ static int is_dir_name(const char *r) {
     return n > 0 && (r[n - 1] == '/' || r[n - 1] == '\\');
 }
 
-static unsigned long long hash_tree_rec(const char *dir, const char *base,
-                                        unsigned long long h) {
+static unsigned long long hash_tree_rec(const char *dir, const char *base, unsigned long long h) {
     STRLIST l;
     memset(&l, 0, sizeof(l));
 
@@ -559,14 +557,20 @@ static int copy_file(const char *src, const char *dst) {
     if (!in) return -1;
 
     FILE *out = fopen(dst, "wb");
-    if (!out) { fclose(in); return -1; }
+    if (!out) {
+        fclose(in);
+        return -1;
+    }
 
     char   buf[65536];
     size_t got;
     int    rc = 0;
 
     while ((got = fread(buf, 1, sizeof(buf), in)) > 0)
-        if (fwrite(buf, 1, got, out) != got) { rc = -1; break; }
+        if (fwrite(buf, 1, got, out) != got) {
+            rc = -1;
+            break;
+        }
 
     fclose(in);
     if (fclose(out) != 0) rc = -1;
@@ -591,10 +595,12 @@ static int copy_tree(const char *src, const char *dst) {
         const char *rel = rel_of(src, l.items[i]);
 
         char *d = path_join(dst, rel);
-        if (!d) { rc = -1; break; }
+        if (!d) {
+            rc = -1;
+            break;
+        }
 
-        rc = is_dir_name(rel) ? copy_tree(l.items[i], d)
-                              : copy_file(l.items[i], d);
+        rc = is_dir_name(rel) ? copy_tree(l.items[i], d) : copy_file(l.items[i], d);
 
         free(d);
     }
@@ -609,8 +615,7 @@ static void remove_tree(const char *path) {
 
     if (list_dir(path, &l) == 0) {
         for (int i = 0; i < l.n; i++)
-            is_dir_name(l.items[i]) ? remove_tree(l.items[i])
-                                    : (void)remove(l.items[i]);
+            is_dir_name(l.items[i]) ? remove_tree(l.items[i]) : (void)remove(l.items[i]);
 
         strlist_free(&l);
     }
@@ -626,8 +631,7 @@ static int sh(const char *fmt, const char *a, const char *b) {
 }
 
 static int is_payload_dir(const char *r) {
-    return !strcmp(r, "bin/") || !strcmp(r, "include/") ||
-           !strcmp(r, "lib/") || !strcmp(r, "src/");
+    return !strcmp(r, "bin/") || !strcmp(r, "include/") || !strcmp(r, "lib/") || !strcmp(r, "src/");
 }
 
 static void hoist(const char *dst, const char *wrap) {
@@ -655,8 +659,7 @@ static void hoist(const char *dst, const char *wrap) {
 static int unpack(const char *archive, const char *dst) {
     sys_mkpath(dst);
 
-    if (sh("tar -xzf '%s' -C '%s' >/dev/null 2>&1", archive, dst) != 0)
-        return -1;
+    if (sh("tar -xzf '%s' -C '%s' >/dev/null 2>&1", archive, dst) != 0) return -1;
 
     for (int guard = 0; guard < 8; guard++) {
         STRLIST l;
@@ -693,20 +696,17 @@ static int is_http(const char *u) {
     return !strncmp(u, "http://", 7) || !strncmp(u, "https://", 8);
 }
 
-static int fetch_pkg(const PKG_SPEC *s, const char *dst, int offline,
-                     char *err, size_t errsz) {
+static int fetch_pkg(const PKG_SPEC *s, const char *dst, int offline, char *err, size_t errsz) {
     const char *reg = registry();
 
     if (offline || !reg) {
-        snprintf(err, errsz, "%s %s@%s not in store and offline%s",
-                 kind_dir(s->kind), s->name, s->version,
-                 reg ? "" : " (no HEDDLE_REGISTRY)");
+        snprintf(err, errsz, "%s %s@%s not in store and offline%s", kind_dir(s->kind), s->name,
+                 s->version, reg ? "" : " (no HEDDLE_REGISTRY)");
         return -1;
     }
 
     char rel[1024];
-    snprintf(rel, sizeof(rel), "%s/%s/%s",
-             kind_dir(s->kind), s->name, s->version);
+    snprintf(rel, sizeof(rel), "%s/%s/%s", kind_dir(s->kind), s->name, s->version);
 
     if (is_http(reg)) {
         char url[2048];
@@ -734,7 +734,7 @@ static int fetch_pkg(const PKG_SPEC *s, const char *dst, int offline,
 
     if (dir) {
         size_t n = strlen(dir) + 8;
-        targz = (char *)malloc(n);
+        targz    = (char *)malloc(n);
         if (targz) snprintf(targz, n, "%s.tar.gz", dir);
     }
 
@@ -750,9 +750,9 @@ static int fetch_pkg(const PKG_SPEC *s, const char *dst, int offline,
         if (port && dir_exists(port))
             snprintf(err, errsz,
                      "vcpkg port '%s' needs a built tree; run "
-                     "'heddle vcpkg import' first", s->name);
-        else
-            snprintf(err, errsz, "vcpkg registry has no port '%s'", s->name);
+                     "'heddle vcpkg import' first",
+                     s->name);
+        else snprintf(err, errsz, "vcpkg registry has no port '%s'", s->name);
 
         free(port);
     } else {
@@ -764,8 +764,8 @@ static int fetch_pkg(const PKG_SPEC *s, const char *dst, int offline,
     return rc;
 }
 
-static const char *lock_lookup(const char *path, const char *kind,
-                               const char *name, const char *version) {
+static const char *lock_lookup(const char *path, const char *kind, const char *name,
+                               const char *version) {
     static char buf[256];
 
     FILE *f = fopen(path, "r");
@@ -806,8 +806,8 @@ static int lock_write(const PKG_MANIFEST *m, char *err, size_t errsz) {
 
         for (int i = 0; i < l->n; i++)
             if (l->items[i].hash)
-                fprintf(f, "%s %s %s %s\n", k, l->items[i].name,
-                        l->items[i].version, l->items[i].hash);
+                fprintf(f, "%s %s %s %s\n", k, l->items[i].name, l->items[i].version,
+                        l->items[i].hash);
     }
 
     fclose(f);
@@ -831,8 +831,8 @@ static void chmod_bin(const char *dir) {
     free(bin);
 }
 
-static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose,
-                        char *err, size_t errsz) {
+static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose, char *err,
+                        size_t errsz) {
     for (int i = 0; i < l->n; i++) {
         PKG_SPEC *s = &l->items[i];
 
@@ -843,9 +843,8 @@ static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose,
             return -1;
         }
 
-        char hex[64];
-        const char *want = lock_lookup(m->lock_path, kind_dir(s->kind),
-                                       s->name, s->version);
+        char        hex[64];
+        const char *want = lock_lookup(m->lock_path, kind_dir(s->kind), s->name, s->version);
 
         int drift = 0;
 
@@ -856,8 +855,7 @@ static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose,
 
         if (!dir_exists(dst) || drift) {
             if (drift && offline) {
-                snprintf(err, errsz,
-                         "%s %s@%s drifted and --offline forbids repair",
+                snprintf(err, errsz, "%s %s@%s drifted and --offline forbids repair",
                          kind_dir(s->kind), s->name, s->version);
                 free(dst);
                 return -1;
@@ -866,9 +864,8 @@ static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose,
             if (dir_exists(dst)) remove_tree(dst);
 
             if (verbose)
-                fprintf(stderr, "heddle: %s %s %s@%s\n",
-                        drift ? "repairing" : "fetching", kind_dir(s->kind),
-                        s->name, s->version);
+                fprintf(stderr, "heddle: %s %s %s@%s\n", drift ? "repairing" : "fetching",
+                        kind_dir(s->kind), s->name, s->version);
 
             if (fetch_pkg(s, dst, offline, err, errsz) != 0) {
                 free(dst);
@@ -884,9 +881,10 @@ static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose,
         hash_tree(dst, hex, sizeof(hex));
 
         if (want && strcmp(want, hex))
-            fprintf(stderr, "heddle: warning: %s %s@%s content changed "
-                    "(lock %s, store %s)\n", kind_dir(s->kind), s->name,
-                    s->version, want, hex);
+            fprintf(stderr,
+                    "heddle: warning: %s %s@%s content changed "
+                    "(lock %s, store %s)\n",
+                    kind_dir(s->kind), s->name, s->version, want, hex);
 
         free(s->hash);
         s->hash = sys_dup(hex);
@@ -899,11 +897,9 @@ static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose,
     return 0;
 }
 
-int pkg_install(PKG_MANIFEST *m, int offline, int verbose,
-                char *err, size_t errsz) {
+int pkg_install(PKG_MANIFEST *m, int offline, int verbose, char *err, size_t errsz) {
     if (!m->tools.n && !m->deps.n) {
-        if (verbose)
-            fprintf(stderr, "heddle: nothing to install\n");
+        if (verbose) fprintf(stderr, "heddle: nothing to install\n");
         return 0;
     }
 
@@ -911,19 +907,16 @@ int pkg_install(PKG_MANIFEST *m, int offline, int verbose,
 
     if (verbose) fprintf(stderr, "heddle: store %s\n", m->store);
 
-    if (install_list(m, &m->tools, offline, verbose, err, errsz) != 0)
-        return -1;
+    if (install_list(m, &m->tools, offline, verbose, err, errsz) != 0) return -1;
 
-    if (install_list(m, &m->deps, offline, verbose, err, errsz) != 0)
-        return -1;
+    if (install_list(m, &m->deps, offline, verbose, err, errsz) != 0) return -1;
 
     return lock_write(m, err, errsz);
 }
 
 int pkg_verify(PKG_MANIFEST *m, int verbose, char *err, size_t errsz) {
     if (!exists(m->lock_path)) {
-        snprintf(err, errsz, "no lockfile at %s; run 'heddle tool install'",
-                 m->lock_path);
+        snprintf(err, errsz, "no lockfile at %s; run 'heddle tool install'", m->lock_path);
         return -1;
     }
 
@@ -936,8 +929,8 @@ int pkg_verify(PKG_MANIFEST *m, int verbose, char *err, size_t errsz) {
             PKG_SPEC *s = &l->items[i];
 
             if (!dir_exists(s->store_path)) {
-                fprintf(stderr, "heddle: %s %s@%s: not installed\n",
-                        kind_dir(s->kind), s->name, s->version);
+                fprintf(stderr, "heddle: %s %s@%s: not installed\n", kind_dir(s->kind), s->name,
+                        s->version);
                 bad++;
                 continue;
             }
@@ -945,20 +938,18 @@ int pkg_verify(PKG_MANIFEST *m, int verbose, char *err, size_t errsz) {
             char hex[64];
             hash_tree(s->store_path, hex, sizeof(hex));
 
-            const char *want = lock_lookup(m->lock_path, kind_dir(s->kind),
-                                           s->name, s->version);
+            const char *want = lock_lookup(m->lock_path, kind_dir(s->kind), s->name, s->version);
 
             if (!want) {
-                fprintf(stderr, "heddle: %s %s@%s: missing from lockfile\n",
-                        kind_dir(s->kind), s->name, s->version);
+                fprintf(stderr, "heddle: %s %s@%s: missing from lockfile\n", kind_dir(s->kind),
+                        s->name, s->version);
                 bad++;
             } else if (strcmp(want, hex)) {
-                fprintf(stderr, "heddle: %s %s@%s: drift (lock %s, store %s)\n",
-                        kind_dir(s->kind), s->name, s->version, want, hex);
+                fprintf(stderr, "heddle: %s %s@%s: drift (lock %s, store %s)\n", kind_dir(s->kind),
+                        s->name, s->version, want, hex);
                 bad++;
             } else if (verbose) {
-                fprintf(stderr, "heddle: ok %s %s@%s\n",
-                        kind_dir(s->kind), s->name, s->version);
+                fprintf(stderr, "heddle: ok %s %s@%s\n", kind_dir(s->kind), s->name, s->version);
             }
         }
     }
@@ -983,10 +974,10 @@ void pkg_plan(const PKG_MANIFEST *m) {
 
     if (m->target.arch) {
         printf("  architecture: %s", m->target.arch);
-        if (m->target.abi)     printf(" abi=%s", m->target.abi);
+        if (m->target.abi) printf(" abi=%s", m->target.abi);
         if (m->target.float_k) printf(" float=%s", m->target.float_k);
-        printf("\n  prefix:       %s\n  cflags:      %s %s\n",
-               m->target.prefix, m->target.cpu, m->target.fpu);
+        printf("\n  prefix:       %s\n  cflags:      %s %s\n", m->target.prefix, m->target.cpu,
+               m->target.fpu);
     }
 
     for (int pass = 0; pass < 2; pass++) {
@@ -995,14 +986,14 @@ void pkg_plan(const PKG_MANIFEST *m) {
         for (int i = 0; i < l->n; i++) {
             const PKG_SPEC *s = &l->items[i];
 
-            printf("  %-10s %-16s %-10s %s\n", kind_dir(s->kind), s->name,
-                   s->version, source_name(s->source));
+            printf("  %-10s %-16s %-10s %s\n", kind_dir(s->kind), s->name, s->version,
+                   source_name(s->source));
         }
     }
 }
 
-static void join_flag(char *dst, size_t cap, int *len, const char *fmt,
-                      const char *a, const char *b) {
+static void join_flag(char *dst, size_t cap, int *len, const char *fmt, const char *a,
+                      const char *b) {
     *len += snprintf(dst + *len, cap - (size_t)*len, fmt, a, b);
 }
 
@@ -1021,19 +1012,16 @@ char **pkg_env(const PKG_MANIFEST *m, int *out_n) {
         char *bin = path_join(m->tools.items[i].store_path, "bin");
 
         if (bin && dir_exists(bin))
-            join_flag(path, sizeof(path), &plen, "%s%s",
-                      plen ? ":" : "", bin);
+            join_flag(path, sizeof(path), &plen, "%s%s", plen ? ":" : "", bin);
 
         free(bin);
     }
 
     const char *sys = getenv("PATH");
 
-    join_flag(path, sizeof(path), &plen, "%s%s", plen ? ":" : "",
-              sys ? sys : "");
+    join_flag(path, sizeof(path), &plen, "%s%s", plen ? ":" : "", sys ? sys : "");
 
-    join_flag(cflags, sizeof(cflags), &clen, "%s %s",
-              m->target.cpu, m->target.fpu);
+    join_flag(cflags, sizeof(cflags), &clen, "%s %s", m->target.cpu, m->target.fpu);
 
     for (int i = 0; i < m->deps.n; i++) {
         const PKG_SPEC *s = &m->deps.items[i];
@@ -1043,8 +1031,7 @@ char **pkg_env(const PKG_MANIFEST *m, int *out_n) {
 
         if (inc && dir_exists(inc)) {
             join_flag(cflags, sizeof(cflags), &clen, " -I%s", inc, "");
-            join_flag(cpath, sizeof(cpath), &cplen, "%s%s",
-                      cplen ? ":" : "", inc);
+            join_flag(cpath, sizeof(cpath), &cplen, "%s%s", cplen ? ":" : "", inc);
         }
 
         if (lib && dir_exists(lib)) {
@@ -1062,10 +1049,14 @@ char **pkg_env(const PKG_MANIFEST *m, int *out_n) {
     char buf[8300];
     int  n = 0;
 
-    snprintf(buf, sizeof(buf), "PATH=%s", path);        v[n++] = sys_dup(buf);
-    snprintf(buf, sizeof(buf), "CFLAGS=%s", cflags);    v[n++] = sys_dup(buf);
-    snprintf(buf, sizeof(buf), "CXXFLAGS=%s", cflags);  v[n++] = sys_dup(buf);
-    snprintf(buf, sizeof(buf), "LDFLAGS=%s", ldflags);  v[n++] = sys_dup(buf);
+    snprintf(buf, sizeof(buf), "PATH=%s", path);
+    v[n++] = sys_dup(buf);
+    snprintf(buf, sizeof(buf), "CFLAGS=%s", cflags);
+    v[n++] = sys_dup(buf);
+    snprintf(buf, sizeof(buf), "CXXFLAGS=%s", cflags);
+    v[n++] = sys_dup(buf);
+    snprintf(buf, sizeof(buf), "LDFLAGS=%s", ldflags);
+    v[n++] = sys_dup(buf);
 
     if (cpath[0]) {
         snprintf(buf, sizeof(buf), "CPATH=%s", cpath);
@@ -1077,8 +1068,8 @@ char **pkg_env(const PKG_MANIFEST *m, int *out_n) {
 }
 
 int pkg_prepend_path(PKG_MANIFEST *m) {
-    char  prefix[8192];
-    int   plen = 0;
+    char prefix[8192];
+    int  plen = 0;
 
     prefix[0] = 0;
 
@@ -1086,8 +1077,7 @@ int pkg_prepend_path(PKG_MANIFEST *m) {
         char *bin = path_join(m->tools.items[i].store_path, "bin");
 
         if (bin && dir_exists(bin))
-            join_flag(prefix, sizeof(prefix), &plen, "%s%s",
-                      plen ? ":" : "", bin);
+            join_flag(prefix, sizeof(prefix), &plen, "%s%s", plen ? ":" : "", bin);
 
         free(bin);
     }
@@ -1112,24 +1102,19 @@ int pkg_prepend_path(PKG_MANIFEST *m) {
     return 0;
 }
 
-char *pkg_variant_key(const TARGET_PROFILE *t, const TOOLCHAIN *tc,
-                      char *out, size_t cap) {
+char *pkg_variant_key(const TARGET_PROFILE *t, const TOOLCHAIN *tc, char *out, size_t cap) {
     unsigned long long h = HASH_FNV_OFFSET;
 
     const char *parts[] = {
-        t->arch, t->abi, t->float_k, t->cpu, t->fpu,
-        tc->cc, tc->platform,
+        t->arch, t->abi, t->float_k, t->cpu, t->fpu, tc->cc, tc->platform,
     };
 
     for (size_t i = 0; i < sizeof(parts) / sizeof(parts[0]); i++)
         if (parts[i]) h = hash_text(h, parts[i]);
 
-    for (int i = 0; i < tc->ncflags; i++)
-        h = hash_text(h, tc->cflags[i]);
+    for (int i = 0; i < tc->ncflags; i++) h = hash_text(h, tc->cflags[i]);
 
-    snprintf(out, cap, "%s-%s-%016llx",
-             t->arch ? t->arch : "host",
-             tc->name ? tc->name : "cc", h);
+    snprintf(out, cap, "%s-%s-%016llx", t->arch ? t->arch : "host", tc->name ? tc->name : "cc", h);
 
     return out;
 }
@@ -1142,9 +1127,9 @@ int pkg_copy_tree(const char *src, const char *dst) {
     return copy_tree(src, dst);
 }
 
-int pkg_lock_add(const char *lock, const char *kind, const char *name,
-                 const char *version, const char *hash, char *err, size_t errsz) {
-    FILE *in = fopen(lock, "r");
+int pkg_lock_add(const char *lock, const char *kind, const char *name, const char *version,
+                 const char *hash, char *err, size_t errsz) {
+    FILE *in  = fopen(lock, "r");
     FILE *out = NULL;
 
     char tmp[4096];
@@ -1181,8 +1166,7 @@ int pkg_lock_add(const char *lock, const char *kind, const char *name,
 
     if (in) fclose(in);
 
-    if (!written)
-        fprintf(out, "%s %s %s %s\n", kind, name, version, hash);
+    if (!written) fprintf(out, "%s %s %s %s\n", kind, name, version, hash);
 
     fclose(out);
 

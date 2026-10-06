@@ -28,15 +28,21 @@ typedef struct {
     int    nwarn;
 } MIG_SET;
 
-int  migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz);
-int  migrate_load_xmake(MIG_SET *s, const char *path, char *err, size_t errsz);
+int migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz);
+
+int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
+                    const char *config_hint,
+                    char **configure_args, int nconfigure_args,
+                    char *err, size_t errsz);
+
+int migrate_load_xmake(MIG_SET *s, const char *path, char *err, size_t errsz);
 
 void migrate_free(MIG_SET *s);
 
-int  migrate_write(const MIG_SET *s, const char *out, char *err, size_t errsz);
+int migrate_write(const MIG_SET *s, const char *out, char *err, size_t errsz);
 
 void migrate_print(const MIG_SET *s);
 
-int  heddle_migrate(int argc, char **argv);
+int heddle_migrate(int argc, char **argv);
 
 #endif

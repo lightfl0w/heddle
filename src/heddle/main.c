@@ -55,8 +55,8 @@ static int usage(const char *prog) {
     return 2;
 }
 
-static int take(const char *arg, const char *name, int argc, char **argv,
-                int *i, const char **out) {
+static int take(const char *arg, const char *name, int argc, char **argv, int *i,
+                const char **out) {
     size_t n = strlen(name);
 
     if (!strcmp(arg, name)) {
@@ -69,8 +69,7 @@ static int take(const char *arg, const char *name, int argc, char **argv,
         return 1;
     }
 
-    if (name[0] == '-' && name[1] == '-' && !strncmp(arg, name, n) &&
-        arg[n] == '=' && arg[n + 1]) {
+    if (name[0] == '-' && name[1] == '-' && !strncmp(arg, name, n) && arg[n] == '=' && arg[n + 1]) {
         *out = arg + n + 1;
         return 1;
     }
@@ -90,7 +89,7 @@ static int parse(int argc, char **argv, ARGS *a) {
 
     int sub = 0;
 
-    o->root = ".";
+    o->root     = ".";
     o->registry = getenv("HEDDLE_REGISTRY");
 
     for (int i = 1; i < argc; i++) {
@@ -99,9 +98,18 @@ static int parse(int argc, char **argv, ARGS *a) {
         if (sub == 1) {
             sub = 0;
 
-            if (!strcmp(arg, "install")) { a->tool_install = 1; continue; }
-            if (!strcmp(arg, "plan"))    { a->tool_plan    = 1; continue; }
-            if (!strcmp(arg, "list"))    { a->tool_plan    = 1; continue; }
+            if (!strcmp(arg, "install")) {
+                a->tool_install = 1;
+                continue;
+            }
+            if (!strcmp(arg, "plan")) {
+                a->tool_plan = 1;
+                continue;
+            }
+            if (!strcmp(arg, "list")) {
+                a->tool_plan = 1;
+                continue;
+            }
 
             fprintf(stderr, "heddle: unknown tool subcommand '%s'\n", arg);
             return 2;
@@ -110,7 +118,10 @@ static int parse(int argc, char **argv, ARGS *a) {
         if (sub == 2) {
             sub = 0;
 
-            if (!strcmp(arg, "verify")) { a->env_verify = 1; continue; }
+            if (!strcmp(arg, "verify")) {
+                a->env_verify = 1;
+                continue;
+            }
 
             fprintf(stderr, "heddle: unknown env subcommand '%s'\n", arg);
             return 2;
@@ -125,26 +136,26 @@ static int parse(int argc, char **argv, ARGS *a) {
             exit(0);
         }
 
-        if (!strcmp(arg, "--no-cache"))       o->no_cache = 1;
+        if (!strcmp(arg, "--no-cache")) o->no_cache = 1;
         else if (!strncmp(arg, "--compile-db", 12))
             o->compile_db = arg[12] == '=' ? arg + 13 : "compile_commands.json";
-        else if (!strcmp(arg, "--offline"))   o->offline = 1;
-        else if (!strcmp(arg, "-v"))          o->verbose = 1;
-        else if (!strcmp(arg, "--verbose"))    o->verbose = 1;
-        else if (!strcmp(arg, "-h"))          return usage(argv[0]);
-        else if (!strcmp(arg, "--help"))      return usage(argv[0]);
+        else if (!strcmp(arg, "--offline")) o->offline = 1;
+        else if (!strcmp(arg, "-v")) o->verbose = 1;
+        else if (!strcmp(arg, "--verbose")) o->verbose = 1;
+        else if (!strcmp(arg, "-h")) return usage(argv[0]);
+        else if (!strcmp(arg, "--help")) return usage(argv[0]);
 
-        else if (!strcmp(arg, "toolchains"))  a->list_tools = 1;
-        else if (!strcmp(arg, "check"))       a->check_only = 1;
-        else if (!strcmp(arg, "install"))     a->do_install = 1;
-        else if (!strcmp(arg, "uninstall"))   a->do_uninstall = 1;
-        else if (!strcmp(arg, "--dry-run"))   o->dry_run = 1;
+        else if (!strcmp(arg, "toolchains")) a->list_tools = 1;
+        else if (!strcmp(arg, "check")) a->check_only = 1;
+        else if (!strcmp(arg, "install")) a->do_install = 1;
+        else if (!strcmp(arg, "uninstall")) a->do_uninstall = 1;
+        else if (!strcmp(arg, "--dry-run")) o->dry_run = 1;
 
-        else if (!strcmp(arg, "tool"))        sub = 1;
-        else if (!strcmp(arg, "env"))         sub = 2;
+        else if (!strcmp(arg, "tool")) sub = 1;
+        else if (!strcmp(arg, "env")) sub = 2;
 
-        else if (!strcmp(arg, "build"))       continue;
-        else if (!strcmp(arg, "run"))         a->exec_after = 1;
+        else if (!strcmp(arg, "build")) continue;
+        else if (!strcmp(arg, "run")) a->exec_after = 1;
 
         else if ((t = take(arg, "-C", argc, argv, &i, &v)) < 0) return 2;
         else if (t) o->root = v;
@@ -186,8 +197,8 @@ static int parse(int argc, char **argv, ARGS *a) {
         return 2;
     }
 
-    if (a->list_tools || a->check_only || a->tool_install || a->tool_plan ||
-        a->env_verify || a->do_install || a->do_uninstall || o->compile_db)
+    if (a->list_tools || a->check_only || a->tool_install || a->tool_plan || a->env_verify ||
+        a->do_install || a->do_uninstall || o->compile_db)
         return 0;
 
     if (!o->target) return usage(argv[0]);
@@ -198,17 +209,13 @@ static int parse(int argc, char **argv, ARGS *a) {
 int main(int argc, char **argv) {
     ARGS a;
 
-    if (argc >= 3 && !strcmp(argv[1], "ldconv"))
-        return heddle_ldconv(argc, argv);
+    if (argc >= 3 && !strcmp(argv[1], "ldconv")) return heddle_ldconv(argc, argv);
 
-    if (argc >= 2 && !strcmp(argv[1], "init"))
-        return heddle_init(argc, argv);
+    if (argc >= 2 && !strcmp(argv[1], "init")) return heddle_init(argc, argv);
 
-    if (argc >= 2 && !strcmp(argv[1], "vcpkg"))
-        return heddle_vcpkg(argc, argv);
+    if (argc >= 2 && !strcmp(argv[1], "vcpkg")) return heddle_vcpkg(argc, argv);
 
-    if (argc >= 2 && !strcmp(argv[1], "migrate"))
-        return heddle_migrate(argc, argv);
+    if (argc >= 2 && !strcmp(argv[1], "migrate")) return heddle_migrate(argc, argv);
 
     emit_set_self(argv[0]);
 
@@ -217,15 +224,15 @@ int main(int argc, char **argv) {
     int rc = parse(argc, argv, &a);
 
     if (rc) return rc;
-    if (a.list_tools)   return heddle_toolchains();
-    if (a.check_only)   return heddle_check(&a.o);
+    if (a.list_tools) return heddle_toolchains();
+    if (a.check_only) return heddle_check(&a.o);
     if (a.o.compile_db) return heddle_compdb(&a.o);
-    if (a.do_install)   return heddle_install(&a.o);
+    if (a.do_install) return heddle_install(&a.o);
     if (a.do_uninstall) return heddle_uninstall(&a.o);
     if (a.tool_install) return heddle_tool_install(&a.o);
-    if (a.tool_plan)    return heddle_tool_plan(&a.o);
-    if (a.env_verify)   return heddle_env_verify(&a.o);
-    if (a.exec_after)   return heddle_exec(&a.o);
+    if (a.tool_plan) return heddle_tool_plan(&a.o);
+    if (a.env_verify) return heddle_env_verify(&a.o);
+    if (a.exec_after) return heddle_exec(&a.o);
 
     return heddle_run(&a.o);
 }

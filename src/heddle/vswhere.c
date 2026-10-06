@@ -10,8 +10,7 @@
 #endif
 
 static const char *skip_bom(const char *s) {
-    if ((unsigned char)s[0] == 0xEF && (unsigned char)s[1] == 0xBB &&
-        (unsigned char)s[2] == 0xBF)
+    if ((unsigned char)s[0] == 0xEF && (unsigned char)s[1] == 0xBB && (unsigned char)s[2] == 0xBF)
         return s + 3;
 
     return s;
@@ -81,8 +80,7 @@ static int run_capture(const char *cmd, char *out, size_t cap) {
 
     int rc = _pclose(f);
 
-    while (got > 0 && (out[got - 1] == '\n' || out[got - 1] == '\r'))
-        out[--got] = 0;
+    while (got > 0 && (out[got - 1] == '\n' || out[got - 1] == '\r')) out[--got] = 0;
 
     return rc == 0 ? 0 : -1;
 }
@@ -93,18 +91,13 @@ int vs_env_capture(const char *install, const char *arch, char *out, size_t cap)
     char arg[64];
 
     snprintf(arg, sizeof(arg), "%s", (arch && *arch) ? arch : "x64");
-    snprintf(script, sizeof(script),
-             "%s\\VC\\Auxiliary\\Build\\vcvarsall.bat", install);
+    snprintf(script, sizeof(script), "%s\\VC\\Auxiliary\\Build\\vcvarsall.bat", install);
 
-    if (GetFileAttributesA(script) == INVALID_FILE_ATTRIBUTES)
-        return -1;
+    if (GetFileAttributesA(script) == INVALID_FILE_ATTRIBUTES) return -1;
 
-    snprintf(cmd, sizeof(cmd),
-             "cmd /d /s /c \"\"%s\" %s >nul 2>nul && set\"",
-             script, arg);
+    snprintf(cmd, sizeof(cmd), "cmd /d /s /c \"\"%s\" %s >nul 2>nul && set\"", script, arg);
 
-    if (run_capture(cmd, out, cap) != 0)
-        return -1;
+    if (run_capture(cmd, out, cap) != 0) return -1;
 
     if (!out[0]) return -1;
 
@@ -112,7 +105,7 @@ int vs_env_capture(const char *install, const char *arch, char *out, size_t cap)
 }
 
 int vs_env_split(char *buf, char **items, int maxitems) {
-    int   n = 0;
+    int   n    = 0;
     char *line = buf;
 
     while (line && *line && n < maxitems) {
@@ -129,25 +122,23 @@ int vs_env_split(char *buf, char **items, int maxitems) {
     return n;
 }
 
-static int newest_dir(const char *base, const char *want,
-                      char *out, size_t cap) {
+static int newest_dir(const char *base, const char *want, char *out, size_t cap) {
     char pat[1400];
 
     snprintf(pat, sizeof(pat), "%s\\*", base);
 
     WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(pat, &fd);
+    HANDLE           h = FindFirstFileA(pat, &fd);
 
     if (h == INVALID_HANDLE_VALUE) return -1;
 
-    char best[64] = {0};
+    char best[260] = {0};
 
     do {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
         if (want && *want && strncmp(fd.cFileName, want, strlen(want))) continue;
 
-        if (vs_ver_cmp(fd.cFileName, best) > 0)
-            snprintf(best, sizeof(best), "%s", fd.cFileName);
+        if (vs_ver_cmp(fd.cFileName, best) > 0) snprintf(best, sizeof(best), "%s", fd.cFileName);
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
@@ -159,7 +150,7 @@ static int newest_dir(const char *base, const char *want,
 }
 
 int vs_install(char *out, size_t cap) {
-    const char *envs[] = { "ProgramFiles(x86)", "ProgramFiles" };
+    const char *envs[]   = {"ProgramFiles(x86)", "ProgramFiles"};
     char        vs[1024] = {0};
 
     for (int i = 0; i < 2 && !vs[0]; i++) {
@@ -167,8 +158,7 @@ int vs_install(char *out, size_t cap) {
 
         if (!root) continue;
 
-        snprintf(vs, sizeof(vs),
-                 "%s\\Microsoft Visual Studio\\Installer\\vswhere.exe", root);
+        snprintf(vs, sizeof(vs), "%s\\Microsoft Visual Studio\\Installer\\vswhere.exe", root);
 
         if (GetFileAttributesA(vs) == INVALID_FILE_ATTRIBUTES) vs[0] = 0;
     }
@@ -180,7 +170,8 @@ int vs_install(char *out, size_t cap) {
     snprintf(cmd, sizeof(cmd),
              "\"%s\" -latest -products * -prerelease "
              "-requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 "
-             "-property installationPath", vs);
+             "-property installationPath",
+             vs);
 
     return run_capture(cmd, out, cap);
 }
@@ -195,12 +186,11 @@ int vs_toolset(const char *install, const char *want, char *out, size_t cap) {
 
 int vs_sdk(const char *arch, char *inc, size_t icap, char *lib, size_t lcap) {
     char  root[1024] = {0};
-    DWORD n = sizeof(root);
-    HKEY  k = NULL;
+    DWORD n          = sizeof(root);
+    HKEY  k          = NULL;
 
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-                      "SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots",
-                      0, KEY_READ | KEY_WOW64_32KEY, &k) != ERROR_SUCCESS)
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots", 0,
+                      KEY_READ | KEY_WOW64_32KEY, &k) != ERROR_SUCCESS)
         return -1;
 
     RegQueryValueExA(k, "KitsRoot10", NULL, NULL, (BYTE *)root, &n);
@@ -217,12 +207,12 @@ int vs_sdk(const char *arch, char *inc, size_t icap, char *lib, size_t lcap) {
 
     const char *v = strrchr(ver, '\\') + 1;
 
-    snprintf(inc, icap, "%s\\Include\\%s\\ucrt;%s\\Include\\%s\\um;"
-                        "%s\\Include\\%s\\shared",
+    snprintf(inc, icap,
+             "%s\\Include\\%s\\ucrt;%s\\Include\\%s\\um;"
+             "%s\\Include\\%s\\shared",
              root, v, root, v, root, v);
 
-    snprintf(lib, lcap, "%s\\Lib\\%s\\ucrt\\%s;%s\\Lib\\%s\\um\\%s",
-             root, v, arch, root, v, arch);
+    snprintf(lib, lcap, "%s\\Lib\\%s\\ucrt\\%s;%s\\Lib\\%s\\um\\%s", root, v, arch, root, v, arch);
 
     return 0;
 }
@@ -230,27 +220,40 @@ int vs_sdk(const char *arch, char *inc, size_t icap, char *lib, size_t lcap) {
 #else
 
 int vs_install(char *out, size_t cap) {
-    (void)out; (void)cap;
+    (void)out;
+    (void)cap;
     return -1;
 }
 
 int vs_toolset(const char *install, const char *want, char *out, size_t cap) {
-    (void)install; (void)want; (void)out; (void)cap;
+    (void)install;
+    (void)want;
+    (void)out;
+    (void)cap;
     return -1;
 }
 
 int vs_sdk(const char *arch, char *inc, size_t icap, char *lib, size_t lcap) {
-    (void)arch; (void)inc; (void)icap; (void)lib; (void)lcap;
+    (void)arch;
+    (void)inc;
+    (void)icap;
+    (void)lib;
+    (void)lcap;
     return -1;
 }
 
 int vs_env_capture(const char *install, const char *arch, char *out, size_t cap) {
-    (void)install; (void)arch; (void)out; (void)cap;
+    (void)install;
+    (void)arch;
+    (void)out;
+    (void)cap;
     return -1;
 }
 
 int vs_env_split(char *buf, char **items, int maxitems) {
-    (void)buf; (void)items; (void)maxitems;
+    (void)buf;
+    (void)items;
+    (void)maxitems;
     return 0;
 }
 

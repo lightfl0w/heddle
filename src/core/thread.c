@@ -6,14 +6,14 @@
 
 typedef struct {
     void *(*fn)(void *);
-    void  *arg;
+    void *arg;
 } THREAD_START;
 
 static DWORD WINAPI thread_trampoline(LPVOID p) {
     THREAD_START *s = (THREAD_START *)p;
 
     void *(*fn)(void *) = s->fn;
-    void  *arg          = s->arg;
+    void *arg           = s->arg;
 
     free(s);
     fn(arg);

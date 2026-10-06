@@ -494,6 +494,16 @@ heddle migrate --star           # 生成 heddle.star
 
 （`--from cmake` / `--from xmake`。）生成的清单里已有的同名文件不会覆盖。
 
+### 导入 CMake
+
+```sh
+heddle migrate .                       # 自动：cmake api，失败回退文本解析
+heddle migrate . --cmake-build ./b     # 指定 File API 用的构建目录
+heddle migrate . --config Release      # 多配置生成器
+heddle migrate . --cmake-arg -G --cmake-arg Ninja   # 透传给cmake 的参数（可重复）
+heddle migrate . --no-cmake-api        # 强制文本解析
+```
+
 | CMake | XMake | heddle |
 | --- | --- | --- |
 | `add_executable(a ...)` | `set_kind("binary")` | `type = "exe"` |
@@ -511,6 +521,8 @@ heddle migrate --star           # 生成 heddle.star
 `target_link_libraries` 里不是本工程 target 的名字（`pthread`、`m`）会变成
 `-lpthread`、`-lm`。`-T` 会识别成语义化的 `linker_script`。
 
+> 注意：heddle 要求一个源文件只属于一个 target，而 CMake 允许同一源编进多个target。遇到这种文件，迁移会打印提示，你需要手动拆分（否则 `heddle check` 会拒绝）
+
 转不了的会列出来，不会静默丢掉（比如 xmake 的 `remove_files` 和全局的`include_directories`）。
 
 生成的清单可以直接 `heddle <target>` 构建，也可以 `heddle check`。
@@ -527,7 +539,7 @@ bash tests/run.sh
 xmake.lua                heddle 和 loom 两个 target
 include/heddle/          heddle 头文件
 include/core/            loom 头文件
-src/heddle/              heddle 主体
+src/heddle/              heddle 主体（cmake_api.c = CMake File API 导入）
 src/core/                loom 引擎
 tests/                   测试工程和脚本
 docs/                    文档

@@ -41,8 +41,7 @@ static int set_add(STRSET *s, const char *v) {
 }
 
 static void set_free(STRSET *s) {
-    for (int i = 0; i < s->count; i++)
-        free(s->items[i]);
+    for (int i = 0; i < s->count; i++) free(s->items[i]);
 
     free(s->items);
 }
@@ -87,8 +86,8 @@ static char *trim(char *s) {
     return s;
 }
 
-static int resolve_include(const NODE *nd, const char *from_dir,
-                           const char *name, int angled, char **out) {
+static int resolve_include(const NODE *nd, const char *from_dir, const char *name, int angled,
+                           char **out) {
     if (!angled) {
         char *cand = join_path(from_dir, name);
         if (cand && file_exists(cand)) {
@@ -142,8 +141,8 @@ static int scan_file(GRAPH *g, int node, const char *path, STRSET *visited) {
 
         if (*s != '"' && *s != '<' && *s != '\'') continue;
 
-        char close = (*s == '<') ? '>' : *s;
-        char *end  = strchr(s + 1, close);
+        char  close = (*s == '<') ? '>' : *s;
+        char *end   = strchr(s + 1, close);
 
         if (!end) continue;
 
@@ -154,9 +153,7 @@ static int scan_file(GRAPH *g, int node, const char *path, STRSET *visited) {
 
         char *resolved = NULL;
 
-        if (!resolve_include(&g->nodes[node], dir ? dir : ".",
-                             name, angled, &resolved))
-            continue;
+        if (!resolve_include(&g->nodes[node], dir ? dir : ".", name, angled, &resolved)) continue;
 
         graph_node_add_dyn(&g->nodes[node], resolved);
         scan_file(g, node, resolved, visited);
@@ -172,8 +169,7 @@ static int scan_file(GRAPH *g, int node, const char *path, STRSET *visited) {
 static unsigned long long input_key(const NODE *nd, HASH_DB *files) {
     unsigned long long k = nd->cmd_hash;
 
-    for (int i = 0; i < nd->nins; i++)
-        k = hash_u64(k, hash_read_file(files, nd->ins[i]));
+    for (int i = 0; i < nd->nins; i++) k = hash_u64(k, hash_read_file(files, nd->ins[i]));
 
     return k;
 }
@@ -185,8 +181,7 @@ static int scan_node(GRAPH *g, int node) {
 
     STRSET visited = {0};
 
-    for (int i = 0; i < nd->nins; i++)
-        scan_file(g, node, nd->ins[i], &visited);
+    for (int i = 0; i < nd->nins; i++) scan_file(g, node, nd->ins[i], &visited);
 
     set_free(&visited);
     return 0;
@@ -215,9 +210,9 @@ int deps_load(GRAPH *g, const char *path) {
     char line[4096];
 
     while (fgets(line, sizeof(line), f)) {
-        int node = -1;
-        unsigned long long key = 0;
-        char rest[4096] = {0};
+        int                node       = -1;
+        unsigned long long key        = 0;
+        char               rest[4096] = {0};
 
         if (sscanf(line, "D %d %llx %4095[^\n]", &node, &key, rest) < 2) continue;
         if (node < 0 || node >= g->n) continue;
@@ -248,8 +243,7 @@ int deps_save(GRAPH *g, const char *path) {
 
         fprintf(f, "D %d %llx", i, nd->scan_hash);
 
-        for (int k = 0; k < nd->ndyn; k++)
-            fprintf(f, " %s", nd->dyn[k]);
+        for (int k = 0; k < nd->ndyn; k++) fprintf(f, " %s", nd->dyn[k]);
 
         fputc('\n', f);
     }

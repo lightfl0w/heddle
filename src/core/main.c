@@ -21,7 +21,8 @@ static void usage(const char *prog) {
     fprintf(stderr,
             "usage: %s -f FILE [-j N] [--retry N] [--cwd DIR] "
             "[--logdir DIR] [--stop] [--cache DIR] [--remote URL] "
-            "[--no-cache]\n", prog);
+            "[--no-cache]\n",
+            prog);
 }
 
 static int opt_inline(const char *arg, const char *prefix, const char **out) {
@@ -50,8 +51,7 @@ static int parse_options(int argc, char **argv, OPTIONS *o) {
         if (!strcmp(argv[i], "--version") || !strcmp(argv[i], "-V")) {
             printf("loom %s\n", heddle_version_string());
             exit(0);
-        } else 
-        if (!strcmp(argv[i], "-f") && i + 1 < argc) {
+        } else if (!strcmp(argv[i], "-f") && i + 1 < argc) {
             o->file = argv[++i];
         } else if (opt_inline(argv[i], "-f", &value)) {
             o->file = value;
@@ -117,8 +117,7 @@ int main(int argc, char **argv) {
 
     build_stats(e, &ran, &hit);
 
-    if (hit)
-        fprintf(stderr, "loom: %d cached, %d ran\n", hit, ran);
+    if (hit) fprintf(stderr, "loom: %d cached, %d ran\n", hit, ran);
 
     build_close(e);
     return rc;

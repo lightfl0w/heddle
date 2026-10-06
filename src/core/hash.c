@@ -17,8 +17,7 @@ void hash_db_init(HASH_DB *db) {
 }
 
 void hash_db_free(HASH_DB *db) {
-    for (int i = 0; i < db->count; i++)
-        free(db->items[i].path);
+    for (int i = 0; i < db->count; i++) free(db->items[i].path);
 
     free(db->items);
     hash_db_init(db);
@@ -55,8 +54,7 @@ static HASH_ENTRY *db_insert(HASH_DB *db, const char *path) {
     if (db->count == db->cap) {
         int newcap = db->cap ? db->cap * 2 : 64;
 
-        HASH_ENTRY *items = (HASH_ENTRY *)realloc(
-            db->items, sizeof(HASH_ENTRY) * (size_t)newcap);
+        HASH_ENTRY *items = (HASH_ENTRY *)realloc(db->items, sizeof(HASH_ENTRY) * (size_t)newcap);
         if (!items) return NULL;
 
         db->items = items;
@@ -83,8 +81,7 @@ unsigned long long hash_read_file(HASH_DB *db, const char *path) {
     long long size = st.size;
 
     HASH_ENTRY *e = db ? hash_db_find(db, path) : NULL;
-    if (e && e->value && e->mtime_ns == mt && e->size == size)
-        return e->value;
+    if (e && e->value && e->mtime_ns == mt && e->size == size) return e->value;
 
     FILE *f = fopen(path, "rb");
     if (!f) return 0;
@@ -93,8 +90,7 @@ unsigned long long hash_read_file(HASH_DB *db, const char *path) {
     unsigned long long h = HASH_FNV_OFFSET;
     size_t             got;
 
-    while ((got = fread(buf, 1, sizeof(buf), f)) > 0)
-        h = hash_bytes(h, buf, got);
+    while ((got = fread(buf, 1, sizeof(buf), f)) > 0) h = hash_bytes(h, buf, got);
 
     fclose(f);
 
@@ -150,8 +146,7 @@ int hash_db_save(const HASH_DB *db, const char *path) {
     if (!f) return -1;
 
     for (int i = 0; i < db->count; i++)
-        fprintf(f, "H %016llx %lld %lld %s\n",
-                db->items[i].value, db->items[i].mtime_ns,
+        fprintf(f, "H %016llx %lld %lld %s\n", db->items[i].value, db->items[i].mtime_ns,
                 db->items[i].size, db->items[i].path);
 
     fclose(f);

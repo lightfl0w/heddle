@@ -68,13 +68,12 @@ static int env_over(char *const *env, int nenv, const char *entry) {
 
 static char *env_merge(char *const *env, int nenv) {
     char  *parent = GetEnvironmentStringsA();
-    size_t n = 1;
+    size_t n      = 1;
 
     for (char *p = parent; *p; p += strlen(p) + 1)
         if (!env_over(env, nenv, p)) n += strlen(p) + 1;
 
-    for (int i = 0; i < nenv; i++)
-        n += strlen(env[i]) + 1;
+    for (int i = 0; i < nenv; i++) n += strlen(env[i]) + 1;
 
     char *block = (char *)calloc(n + 1, 1);
     if (!block) {
@@ -101,15 +100,14 @@ static char *env_merge(char *const *env, int nenv) {
     return block;
 }
 
-int proc_run(char *const *argv, const char *cwd, const char *log_path,
-             char *const *env, int nenv, PROC_RESULT *out) {
+int proc_run(char *const *argv, const char *cwd, const char *log_path, char *const *env, int nenv,
+             PROC_RESULT *out) {
     out->exit_code = -1;
     out->signaled  = 0;
     out->signal    = 0;
 
     size_t cap = 4096;
-    for (int i = 0; argv[i]; i++)
-        cap += strlen(argv[i]) * 2 + 4;
+    for (int i = 0; argv[i]; i++) cap += strlen(argv[i]) * 2 + 4;
 
     char *cmdline = (char *)malloc(cap);
     if (!cmdline) return -1;
@@ -132,8 +130,7 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path,
     sa.lpSecurityDescriptor = NULL;
     sa.bInheritHandle       = TRUE;
 
-    HANDLE hlog = CreateFileA(log_path, GENERIC_WRITE,
-                              FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+    HANDLE hlog = CreateFileA(log_path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hlog == INVALID_HANDLE_VALUE) {
         free(cmdline);
@@ -154,8 +151,7 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path,
 
     char *block = env_merge(env, nenv);
 
-    BOOL ok = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE,
-                             0, block, cwd, &si, &pi);
+    BOOL ok = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, block, cwd, &si, &pi);
 
     free(block);
 
@@ -183,8 +179,8 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path,
 #include <sys/wait.h>
 #include <unistd.h>
 
-int proc_run(char *const *argv, const char *cwd, const char *log_path,
-             char *const *env, int nenv, PROC_RESULT *out) {
+int proc_run(char *const *argv, const char *cwd, const char *log_path, char *const *env, int nenv,
+             PROC_RESULT *out) {
     out->exit_code = -1;
     out->signaled  = 0;
     out->signal    = 0;
@@ -193,8 +189,7 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path,
     if (pid < 0) return -1;
 
     if (pid == 0) {
-        for (int i = 0; i < nenv; i++)
-            putenv(env[i]);
+        for (int i = 0; i < nenv; i++) putenv(env[i]);
 
         if (cwd && chdir(cwd) != 0) _exit(127);
 

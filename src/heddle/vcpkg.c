@@ -29,7 +29,7 @@ static void push(char ***v, int *n, const char *s) {
     char **next = (char **)realloc(*v, sizeof(char *) * (size_t)(*n + 1));
     if (!next) return;
 
-    *v = next;
+    *v       = next;
     (*v)[*n] = sys_dup(s);
 
     if ((*v)[*n]) (*n)++;
@@ -67,9 +67,9 @@ int vcpkg_port_load(VCPKG_PORT *v, const char *dir, char *err, size_t errsz) {
         return -1;
     }
 
-    v->name = sys_dup(name);
-    v->version = sys_dup(json_get(&j, "version"));
-    v->desc = sys_dup(json_get(&j, "description"));
+    v->name     = sys_dup(name);
+    v->version  = sys_dup(json_get(&j, "version"));
+    v->desc     = sys_dup(json_get(&j, "description"));
     v->homepage = sys_dup(json_get(&j, "homepage"));
 
     for (int i = 0;; i++) {
@@ -119,23 +119,23 @@ typedef struct {
 } TRIPLET_MAP;
 
 static const TRIPLET_MAP g_triplets[] = {
-    { "x64-linux",              "x86_64",      "",       ""     },
-    { "x86-linux",              "i686",        "",       ""     },
-    { "arm64-linux",            "aarch64",     "",       ""     },
-    { "arm-linux",              "armv7a",      "eabihf", "hard" },
-    { "x64-windows",            "x86_64",      "",       ""     },
-    { "x86-windows",            "i686",        "",       ""     },
-    { "x64-windows-static",     "x86_64",      "",       ""     },
-    { "x64-windows-static-md",  "x86_64",      "",       ""     },
-    { "x64-osx",                "x86_64",      "",       ""     },
-    { "arm64-osx",              "aarch64",     "",       ""     },
-    { "thumbv7m-none-eabi",     "armv7m",      "eabi",   "soft" },
-    { "thumbv7em-none-eabihf",  "armv7em",     "eabihf", "hard" },
-    { "arm-none-eabi",          "armv7m",      "eabi",   "soft" },
+    {"x64-linux", "x86_64", "", ""},
+    {"x86-linux", "i686", "", ""},
+    {"arm64-linux", "aarch64", "", ""},
+    {"arm-linux", "armv7a", "eabihf", "hard"},
+    {"x64-windows", "x86_64", "", ""},
+    {"x86-windows", "i686", "", ""},
+    {"x64-windows-static", "x86_64", "", ""},
+    {"x64-windows-static-md", "x86_64", "", ""},
+    {"x64-osx", "x86_64", "", ""},
+    {"arm64-osx", "aarch64", "", ""},
+    {"thumbv7m-none-eabi", "armv7m", "eabi", "soft"},
+    {"thumbv7em-none-eabihf", "armv7em", "eabihf", "hard"},
+    {"arm-none-eabi", "armv7m", "eabi", "soft"},
 };
 
-int vcpkg_triplet(const char *triplet, char *arch, size_t acap,
-                  char *abi, size_t bcap, char *flt, size_t fcap) {
+int vcpkg_triplet(const char *triplet, char *arch, size_t acap, char *abi, size_t bcap, char *flt,
+                  size_t fcap) {
     for (size_t i = 0; i < sizeof(g_triplets) / sizeof(g_triplets[0]); i++) {
         if (strcmp(g_triplets[i].triplet, triplet)) continue;
 
@@ -148,7 +148,7 @@ int vcpkg_triplet(const char *triplet, char *arch, size_t acap,
     return -1;
 }
 
-static const char *const g_payload[] = { "include", "lib", "bin", "share" };
+static const char *const g_payload[] = {"include", "lib", "bin", "share"};
 
 static const char *stem(const char *file, char *buf, size_t cap) {
     const char *b = strrchr(file, '/');
@@ -178,7 +178,10 @@ static int write_libs(const char *libdir, const char *meta) {
 
     FILE *f = fopen(meta, "w");
 
-    if (!f) { closedir(d); return -1; }
+    if (!f) {
+        closedir(d);
+        return -1;
+    }
 
     struct dirent *e;
 
@@ -195,14 +198,12 @@ static int write_libs(const char *libdir, const char *meta) {
     return 0;
 }
 
-int vcpkg_import(const VCPKG_PORT *v, const char *installed,
-                 const char *triplet, const char *store,
+int vcpkg_import(const VCPKG_PORT *v, const char *installed, const char *triplet, const char *store,
                  char *hash, size_t hcap, char *err, size_t errsz) {
     char *tree = join(installed, triplet);
 
     if (!tree || !sys_isdir(tree)) {
-        snprintf(err, errsz, "no installed tree at %s",
-                 tree ? tree : installed);
+        snprintf(err, errsz, "no installed tree at %s", tree ? tree : installed);
         free(tree);
         return -1;
     }
@@ -242,8 +243,7 @@ int vcpkg_import(const VCPKG_PORT *v, const char *installed,
     free(tree);
 
     if (!copied) {
-        snprintf(err, errsz,
-                 "installed tree %s has no include/lib/bin/share", triplet);
+        snprintf(err, errsz, "installed tree %s has no include/lib/bin/share", triplet);
         free(d3);
         return -1;
     }
@@ -277,7 +277,6 @@ int vcpkg_is_registry(const char *dir) {
     free(v);
     return ok;
 }
-
 
 static void usage(void) {
     printf("usage: heddle vcpkg <command> [options]\n"
@@ -317,11 +316,10 @@ static int cmd_show(const char *dir) {
     printf("name     %s\n", v.name);
     printf("version  %s\n", v.version ? v.version : "-");
 
-    if (v.desc)     printf("desc     %s\n", v.desc);
+    if (v.desc) printf("desc     %s\n", v.desc);
     if (v.homepage) printf("home     %s\n", v.homepage);
 
-    for (int i = 0; i < v.ndeps; i++)
-        printf("dep      %s\n", v.deps[i]);
+    for (int i = 0; i < v.ndeps; i++) printf("dep      %s\n", v.deps[i]);
 
     vcpkg_port_free(&v);
     return 0;
@@ -330,8 +328,7 @@ static int cmd_show(const char *dir) {
 static int cmd_triplet(const char *name) {
     char arch[64], abi[64], flt[64];
 
-    if (vcpkg_triplet(name, arch, sizeof(arch), abi, sizeof(abi),
-                      flt, sizeof(flt)) != 0) {
+    if (vcpkg_triplet(name, arch, sizeof(arch), abi, sizeof(abi), flt, sizeof(flt)) != 0) {
         fprintf(stderr, "heddle: unknown triplet '%s'\n", name);
         return 1;
     }
@@ -346,8 +343,7 @@ static int cmd_triplet(const char *name) {
 
 static int cmd_check(const char *dir) {
     if (!vcpkg_is_registry(dir)) {
-        fprintf(stderr, "heddle: %s is not a vcpkg registry\n",
-                dir ? dir : ".");
+        fprintf(stderr, "heddle: %s is not a vcpkg registry\n", dir ? dir : ".");
         return 1;
     }
 
@@ -357,11 +353,11 @@ static int cmd_check(const char *dir) {
 }
 
 static int cmd_import(int argc, char **argv) {
-    const char *port      = NULL;
-    const char *from      = opt(argc, argv, "--from");
-    const char *triplet   = opt(argc, argv, "--triplet");
-    const char *store     = opt(argc, argv, "--store");
-    const char *lock      = opt(argc, argv, "--lock");
+    const char *port    = NULL;
+    const char *from    = opt(argc, argv, "--from");
+    const char *triplet = opt(argc, argv, "--triplet");
+    const char *store   = opt(argc, argv, "--store");
+    const char *lock    = opt(argc, argv, "--lock");
 
     for (int i = 3; i < argc; i++) {
         if (!strncmp(argv[i], "--", 2)) {
@@ -404,8 +400,7 @@ static int cmd_import(int argc, char **argv) {
 
     char hash[64] = {0};
 
-    int rc = vcpkg_import(&v, from, triplet, store, hash, sizeof(hash),
-                          err, sizeof(err));
+    int rc = vcpkg_import(&v, from, triplet, store, hash, sizeof(hash), err, sizeof(err));
 
     free(def_from);
 
@@ -415,8 +410,7 @@ static int cmd_import(int argc, char **argv) {
         return 1;
     }
 
-    printf("heddle: imported %s %s (%s)\n", v.name,
-           v.version ? v.version : "-", triplet);
+    printf("heddle: imported %s %s (%s)\n", v.name, v.version ? v.version : "-", triplet);
     printf("heddle: store  %s/library/%s/%s\n", store, v.name,
            v.version && v.version[0] ? v.version : "0");
     printf("heddle: sha256 %s\n", hash);
@@ -435,9 +429,8 @@ static int cmd_import(int argc, char **argv) {
     if (lock) {
         char lerr[256] = {0};
 
-        if (pkg_lock_add(lock, "library", v.name,
-                         v.version && v.version[0] ? v.version : "0",
-                         hash, lerr, sizeof(lerr)) != 0) {
+        if (pkg_lock_add(lock, "library", v.name, v.version && v.version[0] ? v.version : "0", hash,
+                         lerr, sizeof(lerr)) != 0) {
             fprintf(stderr, "heddle: %s\n", lerr);
             free(def_lock);
             vcpkg_port_free(&v);
@@ -453,15 +446,21 @@ static int cmd_import(int argc, char **argv) {
 }
 
 int heddle_vcpkg(int argc, char **argv) {
-    if (argc < 3) { usage(); return 2; }
+    if (argc < 3) {
+        usage();
+        return 2;
+    }
 
     const char *cmd = argv[2];
 
-    if (!strcmp(cmd, "show"))    return cmd_show(argc >= 4 ? argv[3] : ".");
+    if (!strcmp(cmd, "show")) return cmd_show(argc >= 4 ? argv[3] : ".");
     if (!strcmp(cmd, "triplet")) return cmd_triplet(argc >= 4 ? argv[3] : "");
-    if (!strcmp(cmd, "check"))   return cmd_check(argc >= 4 ? argv[3] : ".");
-    if (!strcmp(cmd, "import"))  return cmd_import(argc, argv);
-    if (!strcmp(cmd, "-h") || !strcmp(cmd, "--help")) { usage(); return 0; }
+    if (!strcmp(cmd, "check")) return cmd_check(argc >= 4 ? argv[3] : ".");
+    if (!strcmp(cmd, "import")) return cmd_import(argc, argv);
+    if (!strcmp(cmd, "-h") || !strcmp(cmd, "--help")) {
+        usage();
+        return 0;
+    }
 
     fprintf(stderr, "heddle: unknown vcpkg command '%s'\n", cmd);
     usage();

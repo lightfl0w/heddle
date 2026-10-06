@@ -74,7 +74,7 @@ static char **split_ws(const char *s, int *outn) {
         v[n++] = tok;
     }
 
-    v[n] = NULL;
+    v[n]  = NULL;
     *outn = n;
     return v;
 
@@ -120,15 +120,15 @@ static int graph_grow(GRAPH *g, int *cap) {
     return 0;
 }
 
-static int parse_deps(NODE *nd, const char *deps_str, int node_idx,
-                      char *err, size_t errsz, int lineno) {
+static int parse_deps(NODE *nd, const char *deps_str, int node_idx, char *err, size_t errsz,
+                      int lineno) {
     int dn = 0;
 
     char **dtoks = split_ws(deps_str, &dn);
     if (!dtoks) return 0;
 
     size_t dcap = dn > 0 ? (size_t)dn : 1;
-    nd->deps = (int *)malloc(sizeof(int) * dcap);
+    nd->deps    = (int *)malloc(sizeof(int) * dcap);
 
     if (!nd->deps) {
         for (int i = 0; i < dn; i++) free(dtoks[i]);
@@ -196,8 +196,7 @@ static const char *ar_output(const NODE *nd) {
 
     if (flags[0] == '-') flags++;
 
-    if (strcmp(flags, "rcs") && strcmp(flags, "rc") && strcmp(flags, "r"))
-        return NULL;
+    if (strcmp(flags, "rcs") && strcmp(flags, "rc") && strcmp(flags, "r")) return NULL;
 
     return looks_like_path(nd->argv[2]) ? nd->argv[2] : NULL;
 }
@@ -209,14 +208,12 @@ static int is_own_output(const NODE *nd, const char *s) {
     return 0;
 }
 
-static void list_add_words(char ***v, int *n, char *words, int skip_outs,
-                           const NODE *nd) {
-    int    k = 0;
+static void list_add_words(char ***v, int *n, char *words, int skip_outs, const NODE *nd) {
+    int    k   = 0;
     char **tok = split_ws(words, &k);
 
     for (int i = 0; tok && i < k; i++) {
-        if (!skip_outs || !is_own_output(nd, tok[i]))
-            list_add(v, n, tok[i]);
+        if (!skip_outs || !is_own_output(nd, tok[i])) list_add(v, n, tok[i]);
 
         free(tok[i]);
     }
@@ -227,8 +224,7 @@ static void list_add_words(char ***v, int *n, char *words, int skip_outs,
 static void node_scan(NODE *nd) {
     nd->cmd_hash = HASH_FNV_OFFSET;
 
-    for (int i = 0; i < nd->argc; i++)
-        nd->cmd_hash = hash_text(nd->cmd_hash, nd->argv[i]);
+    for (int i = 0; i < nd->argc; i++) nd->cmd_hash = hash_text(nd->cmd_hash, nd->argv[i]);
 
     for (int i = 1; i < nd->argc; i++)
         if (!strcmp(nd->argv[i], "-o") && i + 1 < nd->argc)
@@ -296,8 +292,7 @@ static int build_rdeps(GRAPH *g, char *err, size_t errsz) {
     }
 
     for (int i = 0; i < g->n; i++)
-        for (int j = 0; j < g->nodes[i].ndeps; j++)
-            rcap[g->nodes[i].deps[j]]++;
+        for (int j = 0; j < g->nodes[i].ndeps; j++) rcap[g->nodes[i].deps[j]]++;
 
     for (int i = 0; i < g->n; i++) {
         size_t cap_i = rcap[i] > 0 ? (size_t)rcap[i] : 1;
@@ -314,7 +309,7 @@ static int build_rdeps(GRAPH *g, char *err, size_t errsz) {
 
     for (int i = 0; i < g->n; i++)
         for (int j = 0; j < g->nodes[i].ndeps; j++) {
-            int d = g->nodes[i].deps[j];
+            int d                                   = g->nodes[i].deps[j];
             g->nodes[d].rdeps[g->nodes[d].nrdeps++] = i;
         }
 
@@ -380,7 +375,7 @@ static int node_add_dep(NODE *nd, int d) {
     int *deps = (int *)realloc(nd->deps, sizeof(int) * (size_t)(nd->ndeps + 1));
     if (!deps) return -1;
 
-    nd->deps = deps;
+    nd->deps              = deps;
     nd->deps[nd->ndeps++] = d;
     return 0;
 }
@@ -420,8 +415,7 @@ int graph_finalize(GRAPH *g, char *err, size_t errsz) {
 
     free_rdeps(g);
 
-    for (int i = 0; i < g->n; i++)
-        g->nodes[i].indeg = g->nodes[i].ndeps;
+    for (int i = 0; i < g->n; i++) g->nodes[i].indeg = g->nodes[i].ndeps;
 
     if (build_rdeps(g, err, errsz) != 0) return -1;
 
@@ -437,13 +431,13 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
         return -1;
     }
 
-    int node_idx = 0;
-    int lineno   = 0;
-    const char *p = text;
+    int         node_idx = 0;
+    int         lineno   = 0;
+    const char *p        = text;
 
     while (*p) {
-        const char *eol = strchr(p, '\n');
-        size_t linelen  = eol ? (size_t)(eol - p) : strlen(p);
+        const char *eol     = strchr(p, '\n');
+        size_t      linelen = eol ? (size_t)(eol - p) : strlen(p);
 
         char *line = (char *)malloc(linelen + 1);
         if (!line) {
@@ -478,34 +472,34 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
 
         int declared = atoi(s);
         if (declared != node_idx) {
-            set_err(err, errsz, "line %d: expected index %d, got %d",
-                    lineno + 1, node_idx, declared);
+            set_err(err, errsz, "line %d: expected index %d, got %d", lineno + 1, node_idx,
+                    declared);
             free(line);
             return -1;
         }
 
-        char *rest = colon + 1;
-        char *lt   = find_unquoted(rest, '<');
+        char *rest     = colon + 1;
+        char *lt       = find_unquoted(rest, '<');
         char *deps_str = NULL;
 
         if (lt) {
-            *lt = 0;
+            *lt      = 0;
             deps_str = lt + 1;
         }
 
-        char *at = find_unquoted(rest, '@');
+        char *at      = find_unquoted(rest, '@');
         char *ins_str = NULL;
 
         if (at) {
-            *at = 0;
+            *at     = 0;
             ins_str = at + 1;
         }
 
-        char *gt = find_unquoted(rest, '>');
+        char *gt       = find_unquoted(rest, '>');
         char *outs_str = NULL;
 
         if (gt) {
-            *gt = 0;
+            *gt      = 0;
             outs_str = gt + 1;
         }
 
@@ -531,8 +525,7 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
         nd->argc  = argc;
         nd->indeg = 0;
 
-        if (deps_str && parse_deps(nd, deps_str, node_idx,
-                                   err, errsz, lineno + 1) != 0) {
+        if (deps_str && parse_deps(nd, deps_str, node_idx, err, errsz, lineno + 1) != 0) {
             free(line);
             return -1;
         }
@@ -541,7 +534,7 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
 
         node_scan(nd);
 
-        if (ins_str)  list_add_words(&nd->ins, &nd->nins, ins_str, 0, nd);
+        if (ins_str) list_add_words(&nd->ins, &nd->nins, ins_str, 0, nd);
         if (outs_str) list_add_words(&nd->outs, &nd->nouts, outs_str, 1, nd);
 
         g->n++;
@@ -552,8 +545,7 @@ int graph_parse(const char *text, GRAPH *g, char *err, size_t errsz) {
         lineno++;
     }
 
-    for (int i = 0; i < g->n; i++)
-        g->nodes[i].indeg = g->nodes[i].ndeps;
+    for (int i = 0; i < g->n; i++) g->nodes[i].indeg = g->nodes[i].ndeps;
 
     if (build_rdeps(g, err, errsz) != 0) return -1;
 
@@ -577,17 +569,16 @@ void graph_node_clear_dyn(NODE *nd) {
     for (int i = 0; i < nd->ndyn; i++) free(nd->dyn[i]);
 
     free(nd->dyn);
-    nd->dyn = NULL;
+    nd->dyn  = NULL;
     nd->ndyn = 0;
 }
 
 void graph_free(GRAPH *g) {
     if (!g->nodes) return;
 
-    for (int i = 0; i < g->n; i++)
-        node_free(&g->nodes[i]);
+    for (int i = 0; i < g->n; i++) node_free(&g->nodes[i]);
 
     free(g->nodes);
     g->nodes = NULL;
-    g->n = 0;
+    g->n     = 0;
 }

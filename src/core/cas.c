@@ -47,8 +47,7 @@ static void make_dirs(const char *path) {
 }
 
 static void obj_rel(unsigned long long h, char *buf, size_t n) {
-    snprintf(buf, n, "objects/%02llx/%014llx",
-             h & 0xffULL, h >> 8);
+    snprintf(buf, n, "objects/%02llx/%014llx", h & 0xffULL, h >> 8);
 }
 
 static int try_reflink(int in, int out) {
@@ -68,7 +67,7 @@ static int copy_file(const char *from, const char *to) {
     int in = open(from, CAS_O_RDONLY);
     if (in < 0) return -1;
 
-    char *dir = sys_dup(to);
+    char *dir   = sys_dup(to);
     char *slash = strrchr(dir, '/');
 
     if (slash) {
@@ -90,7 +89,7 @@ static int copy_file(const char *from, const char *to) {
         return 0;
     }
 
-    char   buf[65536];
+    char      buf[65536];
     long long got;
 
     while ((got = read(in, buf, sizeof(buf))) > 0) {
@@ -113,7 +112,7 @@ static int copy_file(const char *from, const char *to) {
 }
 
 static int copy_bytes(const void *p, size_t n, const char *to) {
-    char *dir = sys_dup(to);
+    char *dir   = sys_dup(to);
     char *slash = strrchr(dir, '/');
 
     if (slash) {
@@ -126,8 +125,8 @@ static int copy_bytes(const void *p, size_t n, const char *to) {
     int out = open(to, CAS_O_WRONLY, 0644);
     if (out < 0) return -1;
 
-    const char *b = (const char *)p;
-    size_t off = 0;
+    const char *b   = (const char *)p;
+    size_t      off = 0;
 
     while (off < n) {
         long long w = (long long)write(out, b + off, (size_t)(n - off));
@@ -146,15 +145,14 @@ static int remote_fetch(CAS *c, const char *rel, const char *dest) {
     if (!c->remote) return -1;
 
     if (c->remote_http) {
-        size_t n = strlen(c->remote) + strlen(rel) + 16;
+        size_t n   = strlen(c->remote) + strlen(rel) + 16;
         char  *url = (char *)malloc(n);
         if (!url) return -1;
 
         snprintf(url, n, "%s/%s", c->remote, rel);
 
         char cmd[4096];
-        snprintf(cmd, sizeof(cmd), "curl -fsS -o '%s' '%s' >/dev/null 2>&1",
-                 dest, url);
+        snprintf(cmd, sizeof(cmd), "curl -fsS -o '%s' '%s' >/dev/null 2>&1", dest, url);
 
         int rc = system(cmd);
 
@@ -162,7 +160,7 @@ static int remote_fetch(CAS *c, const char *rel, const char *dest) {
         return rc == 0 ? 0 : -1;
     }
 
-    size_t n = strlen(c->remote) + strlen(rel) + 2;
+    size_t n   = strlen(c->remote) + strlen(rel) + 2;
     char  *src = (char *)malloc(n);
     if (!src) return -1;
 
@@ -178,15 +176,14 @@ static int remote_push(CAS *c, const char *rel, const char *src) {
     if (!c->remote) return -1;
 
     if (c->remote_http) {
-        size_t n = strlen(c->remote) + strlen(rel) + 16;
+        size_t n   = strlen(c->remote) + strlen(rel) + 16;
         char  *url = (char *)malloc(n);
         if (!url) return -1;
 
         snprintf(url, n, "%s/%s", c->remote, rel);
 
         char cmd[4096];
-        snprintf(cmd, sizeof(cmd), "curl -fsS -T '%s' '%s' >/dev/null 2>&1",
-                 src, url);
+        snprintf(cmd, sizeof(cmd), "curl -fsS -T '%s' '%s' >/dev/null 2>&1", src, url);
 
         int rc = system(cmd);
 
@@ -194,7 +191,7 @@ static int remote_push(CAS *c, const char *rel, const char *src) {
         return rc == 0 ? 0 : -1;
     }
 
-    size_t n = strlen(c->remote) + strlen(rel) + 2;
+    size_t n   = strlen(c->remote) + strlen(rel) + 2;
     char  *dst = (char *)malloc(n);
     if (!dst) return -1;
 
@@ -220,8 +217,7 @@ CAS *cas_open(const char *root, const char *remote, char *err, size_t errsz) {
     c->remote = remote ? sys_dup(remote) : NULL;
 
     if (c->remote)
-        c->remote_http = !strncmp(c->remote, "http://", 7) ||
-                         !strncmp(c->remote, "https://", 8);
+        c->remote_http = !strncmp(c->remote, "http://", 7) || !strncmp(c->remote, "https://", 8);
 
     make_dirs(root);
 
@@ -329,7 +325,7 @@ int cas_get_bytes(CAS *c, unsigned long long h, void **out, size_t *outlen) {
     }
 
     size_t got = fread(buf, 1, (size_t)st.size, f);
-    buf[got] = 0;
+    buf[got]   = 0;
 
     fclose(f);
 
@@ -345,9 +341,7 @@ void ac_init(ACTION_CACHE *ac, CAS *cas, const char *root) {
 }
 
 void ac_free(ACTION_CACHE *ac) {
-    for (int i = 0; i < ac->count; i++) {
-        free(ac->items[i].outs);
-    }
+    for (int i = 0; i < ac->count; i++) { free(ac->items[i].outs); }
 
     free(ac->items);
     free(ac->root);
@@ -361,23 +355,21 @@ AC_ENTRY *ac_find(ACTION_CACHE *ac, unsigned long long key) {
     return NULL;
 }
 
-void ac_put(ACTION_CACHE *ac, unsigned long long key,
-            const AC_OUT *outs, int nouts) {
+void ac_put(ACTION_CACHE *ac, unsigned long long key, const AC_OUT *outs, int nouts) {
     AC_ENTRY *e = ac_find(ac, key);
 
     if (!e) {
         if (ac->count == ac->cap) {
             int newcap = ac->cap ? ac->cap * 2 : 64;
 
-            AC_ENTRY *items = (AC_ENTRY *)realloc(
-                ac->items, sizeof(AC_ENTRY) * (size_t)newcap);
+            AC_ENTRY *items = (AC_ENTRY *)realloc(ac->items, sizeof(AC_ENTRY) * (size_t)newcap);
             if (!items) return;
 
             ac->items = items;
             ac->cap   = newcap;
         }
 
-        e = &ac->items[ac->count++];
+        e        = &ac->items[ac->count++];
         e->key   = key;
         e->outs  = NULL;
         e->nouts = 0;
@@ -415,8 +407,8 @@ int ac_load(ACTION_CACHE *ac) {
 
         if (!key || !n) continue;
 
-        unsigned long long k = strtoull(key, NULL, 16);
-        int count = atoi(n);
+        unsigned long long k     = strtoull(key, NULL, 16);
+        int                count = atoi(n);
 
         AC_OUT *outs = (AC_OUT *)malloc(sizeof(AC_OUT) * (size_t)(count ? count : 1));
         if (!outs) break;
@@ -455,8 +447,7 @@ int ac_save(const ACTION_CACHE *ac) {
         fprintf(f, "A %016llx %d", ac->items[i].key, ac->items[i].nouts);
 
         for (int k = 0; k < ac->items[i].nouts; k++)
-            fprintf(f, " %016llx:%o", ac->items[i].outs[k].hash,
-                    ac->items[i].outs[k].mode);
+            fprintf(f, " %016llx:%o", ac->items[i].outs[k].hash, ac->items[i].outs[k].mode);
 
         fputc('\n', f);
     }

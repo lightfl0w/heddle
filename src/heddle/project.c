@@ -36,7 +36,7 @@ static int vec_add(char ***v, int *n, const char *s) {
     char **next = (char **)realloc(*v, sizeof(char *) * (size_t)(*n + 1));
     if (!next) return -1;
 
-    *v = next;
+    *v       = next;
     (*v)[*n] = sys_dup(s);
 
     if (!(*v)[*n]) return -1;
@@ -55,8 +55,7 @@ static TARGET *target_add(PROJECT *p, const char *name, const char *dir) {
     if (p->ntargets == p->cap) {
         int newcap = p->cap ? p->cap * 2 : 16;
 
-        TARGET *targets = (TARGET *)realloc(
-            p->targets, sizeof(TARGET) * (size_t)newcap);
+        TARGET *targets = (TARGET *)realloc(p->targets, sizeof(TARGET) * (size_t)newcap);
         if (!targets) return NULL;
 
         p->targets = targets;
@@ -101,8 +100,7 @@ static int parse_type(const char *s, TARGET_TYPE *out) {
         return 0;
     }
 
-    if (!strcmp(s, "sharedlib") || !strcmp(s, "dylib") ||
-        !strcmp(s, "so")) {
+    if (!strcmp(s, "sharedlib") || !strcmp(s, "dylib") || !strcmp(s, "so")) {
         *out = TARGET_SHAREDLIB;
         return 0;
     }
@@ -127,9 +125,9 @@ static char *prefixed(const char *dir, const char *rel) {
     return project_path(dir, rel);
 }
 
-static int load_strings(const TOML *cfg, const char *section, const char *key,
-                        const char *dir, char ***out, int *n) {
-    for (int i = 0; ; i++) {
+static int load_strings(const TOML *cfg, const char *section, const char *key, const char *dir,
+                        char ***out, int *n) {
+    for (int i = 0;; i++) {
         const char *v = toml_arr(cfg, section, key, i);
 
         if (!v) return 0;
@@ -147,9 +145,9 @@ static int cmp_str(const void *a, const void *b) {
     return strcmp(*(const char *const *)a, *(const char *const *)b);
 }
 
-static int load_sources(const TOML *cfg, const char *section, const char *dir,
-                        char ***out, int *n, char *err, size_t errsz) {
-    for (int i = 0; ; i++) {
+static int load_sources(const TOML *cfg, const char *section, const char *dir, char ***out, int *n,
+                        char *err, size_t errsz) {
+    for (int i = 0;; i++) {
         const char *v = toml_arr(cfg, section, "src", i);
 
         if (!v) break;
@@ -171,8 +169,7 @@ static int load_sources(const TOML *cfg, const char *section, const char *dir,
         int hit = glob_dir(dir && dir[0] ? dir : ".", v, &l);
 
         if (hit == 0) {
-            snprintf(err, errsz, "section [%s]: pattern '%s' matches nothing",
-                     section, v);
+            snprintf(err, errsz, "section [%s]: pattern '%s' matches nothing", section, v);
             glob_free(&l);
             return -1;
         }
@@ -208,8 +205,7 @@ static int load_sources(const TOML *cfg, const char *section, const char *dir,
     return 0;
 }
 
-static int target_fill(TARGET *t, const TOML *cfg,
-                       const char *section, char *err, size_t errsz) {
+static int target_fill(TARGET *t, const TOML *cfg, const char *section, char *err, size_t errsz) {
     const char *type = toml_str(cfg, section, "type");
 
     if (!type) {
@@ -222,21 +218,15 @@ static int target_fill(TARGET *t, const TOML *cfg,
         return -1;
     }
 
-    if (load_sources(cfg, section, t->dir, &t->src, &t->nsrc,
-                     err, errsz) != 0)
-        return -1;
+    if (load_sources(cfg, section, t->dir, &t->src, &t->nsrc, err, errsz) != 0) return -1;
 
-    if (load_strings(cfg, section, "inc", t->dir, &t->inc, &t->ninc) != 0)
-        return -1;
+    if (load_strings(cfg, section, "inc", t->dir, &t->inc, &t->ninc) != 0) return -1;
 
-    if (load_strings(cfg, section, "deps", NULL, &t->deps, &t->ndeps) != 0)
-        return -1;
+    if (load_strings(cfg, section, "deps", NULL, &t->deps, &t->ndeps) != 0) return -1;
 
-    if (load_strings(cfg, section, "cflags", NULL, &t->cflags, &t->ncflags) != 0)
-        return -1;
+    if (load_strings(cfg, section, "cflags", NULL, &t->cflags, &t->ncflags) != 0) return -1;
 
-    if (load_strings(cfg, section, "ldflags", NULL, &t->ldflags, &t->nldflags) != 0)
-        return -1;
+    if (load_strings(cfg, section, "ldflags", NULL, &t->ldflags, &t->nldflags) != 0) return -1;
 
     if (t->type != TARGET_CUSTOM && t->nsrc == 0) {
         snprintf(err, errsz, "section [%s]: key 'src' is empty", section);
@@ -257,8 +247,7 @@ static int target_fill(TARGET *t, const TOML *cfg,
         const char *cmd = toml_str(cfg, section, "cmd");
 
         if (!cmd || !t->out) {
-            snprintf(err, errsz,
-                     "section [%s]: custom needs 'cmd' and 'out'", section);
+            snprintf(err, errsz, "section [%s]: custom needs 'cmd' and 'out'", section);
             return -1;
         }
 
@@ -266,8 +255,7 @@ static int target_fill(TARGET *t, const TOML *cfg,
     }
 
     if (t->type == TARGET_RAW && !t->format) {
-        snprintf(err, errsz,
-                 "section [%s]: raw needs 'format' (e.g. bin, elf)", section);
+        snprintf(err, errsz, "section [%s]: raw needs 'format' (e.g. bin, elf)", section);
         return -1;
     }
 
@@ -281,8 +269,7 @@ static int deps_has(const PROJECT *p, const char *name) {
     return 0;
 }
 
-static int load_recipe_target(PROJECT *p, RECIPE *r, const char *src_dir,
-                              char *err, size_t errsz) {
+static int load_recipe_target(PROJECT *p, RECIPE *r, const char *src_dir, char *err, size_t errsz) {
     if (deps_has(p, r->pkg.name)) return 0;
 
     TARGET *t = target_add(p, r->pkg.name, src_dir);
@@ -295,13 +282,11 @@ static int load_recipe_target(PROJECT *p, RECIPE *r, const char *src_dir,
     t->type = TARGET_STATICLIB;
 
     if (r->build.type && parse_type(r->build.type, &t->type) != 0) {
-        snprintf(err, errsz, "%s: unknown build type '%s'",
-                 r->pkg.name, r->build.type);
+        snprintf(err, errsz, "%s: unknown build type '%s'", r->pkg.name, r->build.type);
         return -1;
     }
 
-    for (int i = 0; i < r->build.nfile; i++)
-        vec_add(&t->src, &t->nsrc, r->build.files[i]);
+    for (int i = 0; i < r->build.nfile; i++) vec_add(&t->src, &t->nsrc, r->build.files[i]);
 
     for (int i = 0; i < r->build.ninc; i++) {
         char *full = prefixed(src_dir, r->build.include_dirs[i]);
@@ -319,8 +304,7 @@ static int load_recipe_target(PROJECT *p, RECIPE *r, const char *src_dir,
         vec_add(&t->cflags, &t->ncflags, d);
     }
 
-    for (int i = 0; i < r->build.ncflags; i++)
-        vec_add(&t->cflags, &t->ncflags, r->build.cflags[i]);
+    for (int i = 0; i < r->build.ncflags; i++) vec_add(&t->cflags, &t->ncflags, r->build.cflags[i]);
 
     return 0;
 }
@@ -331,8 +315,7 @@ static const char *norm_dir(const char *d) {
     return d;
 }
 
-static int load_package(PROJECT *p, const char *pkgdir, int depth,
-                        char *err, size_t errsz) {
+static int load_package(PROJECT *p, const char *pkgdir, int depth, char *err, size_t errsz) {
     if (depth >= PKG_MAX_DEPTH) {
         snprintf(err, errsz, "package nesting deeper than %d", PKG_MAX_DEPTH);
         return -1;
@@ -356,7 +339,7 @@ static int load_package(PROJECT *p, const char *pkgdir, int depth,
     }
 
     char **names = NULL;
-    int    n = toml_sections(&local, "target.", &names);
+    int    n     = toml_sections(&local, "target.", &names);
 
     for (int i = 0; i < n; i++) {
         char section[512];
@@ -377,15 +360,14 @@ static int load_package(PROJECT *p, const char *pkgdir, int depth,
         if (target_fill(t, &local, section, err, errsz) != 0) goto fail;
     }
 
-    int pi = 0;
+    int         pi  = 0;
     const char *sub = NULL;
 
     while ((sub = toml_arr(&local, "package", "deps", pi++))) {
         char *subdir = project_path(norm_dir(pkgdir), sub);
 
         if (!subdir || !dir_exists(subdir)) {
-            snprintf(err, errsz, "%s: missing package directory '%s'",
-                     cfg, sub);
+            snprintf(err, errsz, "%s: missing package directory '%s'", cfg, sub);
             free(subdir);
             goto fail;
         }
@@ -480,22 +462,25 @@ static int add_target_from_cfg(PROJECT *p, STAR_TARGET *st, char *err, size_t er
 
     TARGET *t = target_add(p, st->name, "");
 
-    if (!t) { snprintf(err, errsz, "out of memory"); return -1; }
+    if (!t) {
+        snprintf(err, errsz, "out of memory");
+        return -1;
+    }
 
     if (st->type && parse_type(st->type, &t->type) != 0) {
         snprintf(err, errsz, "target '%s': unknown type '%s'", st->name, st->type);
         return -1;
     }
 
-    for (int i = 0; i < st->nsrc; i++)  vec_add(&t->src, &t->nsrc, st->src[i]);
-    for (int i = 0; i < st->ninc; i++)  vec_add(&t->inc, &t->ninc, st->inc[i]);
+    for (int i = 0; i < st->nsrc; i++) vec_add(&t->src, &t->nsrc, st->src[i]);
+    for (int i = 0; i < st->ninc; i++) vec_add(&t->inc, &t->ninc, st->inc[i]);
     for (int i = 0; i < st->ndeps; i++) vec_add(&t->deps, &t->ndeps, st->deps[i]);
     for (int i = 0; i < st->ncflags; i++) vec_add(&t->cflags, &t->ncflags, st->cflags[i]);
     for (int i = 0; i < st->nldflags; i++) vec_add(&t->ldflags, &t->nldflags, st->ldflags[i]);
 
     if (st->ldscript) t->ldscript = sys_dup(st->ldscript);
-    if (st->entry)    t->entry    = sys_dup(st->entry);
-    if (st->out)      t->out      = sys_dup(st->out);
+    if (st->entry) t->entry = sys_dup(st->entry);
+    if (st->out) t->out = sys_dup(st->out);
 
     if (t->type != TARGET_CUSTOM && t->nsrc == 0) {
         snprintf(err, errsz, "target '%s': no sources", st->name);
@@ -505,8 +490,8 @@ static int add_target_from_cfg(PROJECT *p, STAR_TARGET *st, char *err, size_t er
     return 0;
 }
 
-static int project_load_star(PROJECT *p, const char *root, const char *toolchain,
-                             char *err, size_t errsz) {
+static int project_load_star(PROJECT *p, const char *root, const char *toolchain, char *err,
+                             size_t errsz) {
     char cfgpath[2048];
     snprintf(cfgpath, sizeof(cfgpath), "%s/heddle.star", root);
 
@@ -527,8 +512,7 @@ static int project_load_star(PROJECT *p, const char *root, const char *toolchain
             if (!cfg.tg[i].platform) continue;
 
             for (int k = 0; k < cfg.npl; k++)
-                if (!strcmp(cfg.pl[k].name, cfg.tg[i].platform))
-                    plat = &cfg.pl[k];
+                if (!strcmp(cfg.pl[k].name, cfg.tg[i].platform)) plat = &cfg.pl[k];
         }
     }
 
@@ -536,8 +520,7 @@ static int project_load_star(PROJECT *p, const char *root, const char *toolchain
         for (int i = 0; i < cfg.ntg; i++)
             if (cfg.tg[i].platform) {
                 for (int k = 0; k < cfg.npl; k++)
-                    if (!strcmp(cfg.pl[k].name, cfg.tg[i].platform))
-                        plat = &cfg.pl[k];
+                    if (!strcmp(cfg.pl[k].name, cfg.tg[i].platform)) plat = &cfg.pl[k];
             }
 
     if (!plat && cfg.npl) plat = &cfg.pl[0];
@@ -566,9 +549,10 @@ static int project_load_star(PROJECT *p, const char *root, const char *toolchain
 
     p->build_dir = project_path(root, cfg.build_dir ? cfg.build_dir : "out");
 
-    const char *tcname = toolchain ? toolchain
-                                   : (plat && plat->toolchain ? plat->toolchain
-                                   : (cfg.toolchain ? cfg.toolchain : "auto"));
+    const char *tcname = toolchain
+                             ? toolchain
+                             : (plat && plat->toolchain ? plat->toolchain
+                                                        : (cfg.toolchain ? cfg.toolchain : "auto"));
 
     p->toolchain_name = sys_dup(tcname);
 
@@ -579,25 +563,22 @@ static int project_load_star(PROJECT *p, const char *root, const char *toolchain
         p->tc_cc    = dup_opt(cfg.tc_cc[i]);
     }
 
-    p->pkg.root     = sys_dup(root);
-    p->pkg.manifest = sys_dup(cfgpath);
+    p->pkg.root      = sys_dup(root);
+    p->pkg.manifest  = sys_dup(cfgpath);
     p->pkg.lock_path = project_path(root, "heddle.lock");
-    p->pkg.store    = cfg.store ? project_path(root, cfg.store)
-                                : project_path(root, ".heddle/store");
+    p->pkg.store = cfg.store ? project_path(root, cfg.store) : project_path(root, ".heddle/store");
 
     p->pkg.target.arch    = dup_opt(plat && plat->arch ? plat->arch : cfg.arch);
     p->pkg.target.abi     = dup_opt(plat && plat->abi ? plat->abi : cfg.abi);
     p->pkg.target.float_k = dup_opt(plat && plat->flt ? plat->flt : cfg.flt);
-    p->pkg.target.sysroot = dup_opt(plat && plat->sysroot ? plat->sysroot
-                                                          : cfg.sysroot);
+    p->pkg.target.sysroot = dup_opt(plat && plat->sysroot ? plat->sysroot : cfg.sysroot);
 
     for (int i = 0; i < cfg.ntc; i++)
-        pkg_manifest_add(&p->pkg, PKG_KIND_TOOLCHAIN, cfg.tc_name[i],
-                         NULL, cfg.tc_cc[i]);
+        pkg_manifest_add(&p->pkg, PKG_KIND_TOOLCHAIN, cfg.tc_name[i], NULL, cfg.tc_cc[i]);
 
     for (int i = 0; i < cfg.ndep; i++)
-        pkg_manifest_add(&p->pkg, PKG_KIND_LIBRARY, cfg.dep_name[i],
-                         cfg.dep_ver[i], cfg.dep_src[i]);
+        pkg_manifest_add(&p->pkg, PKG_KIND_LIBRARY, cfg.dep_name[i], cfg.dep_ver[i],
+                         cfg.dep_src[i]);
 
     for (int i = 0; i < cfg.ntg; i++)
         if (add_target_from_cfg(p, &cfg.tg[i], err, errsz) != 0) {
@@ -609,12 +590,10 @@ static int project_load_star(PROJECT *p, const char *root, const char *toolchain
     return 0;
 }
 
-static int project_load_star_finish(PROJECT *p, const char *root,
-                                    const char *toolchain,
-                                    char *err, size_t errsz);
+static int project_load_star_finish(PROJECT *p, const char *root, const char *toolchain, char *err,
+                                    size_t errsz);
 
-int project_load(PROJECT *p, const char *root, const char *toolchain,
-                 char *err, size_t errsz) {
+int project_load(PROJECT *p, const char *root, const char *toolchain, char *err, size_t errsz) {
     memset(p, 0, sizeof(*p));
 
     p->root = sys_dup(root ? root : ".");
@@ -625,8 +604,7 @@ int project_load(PROJECT *p, const char *root, const char *toolchain,
     snprintf(star, sizeof(star), "%s/heddle.star", p->root);
     snprintf(cfg, sizeof(cfg), "%s/heddle.toml", p->root);
 
-    if (path_exists(star))
-        return project_load_star_finish(p, p->root, toolchain, err, errsz);
+    if (path_exists(star)) return project_load_star_finish(p, p->root, toolchain, err, errsz);
 
     if (!path_exists(cfg)) {
         snprintf(err, errsz, "cannot read %s or %s", cfg, star);
@@ -642,8 +620,7 @@ int project_load(PROJECT *p, const char *root, const char *toolchain,
     }
 
     const char *dir = toml_str(&top, "build", "dir");
-    const char *tc  = toolchain ? toolchain
-                                : toml_str(&top, "build", "toolchain");
+    const char *tc  = toolchain ? toolchain : toml_str(&top, "build", "toolchain");
 
     p->build_dir      = project_path(p->root, dir ? dir : "build");
     p->toolchain_name = sys_dup(tc ? tc : "auto");
@@ -664,11 +641,9 @@ int project_load(PROJECT *p, const char *root, const char *toolchain,
     pkg_prepend_path(&p->pkg);
 
     char target_flags[1024];
-    snprintf(target_flags, sizeof(target_flags), "%s %s",
-             p->pkg.target.cpu, p->pkg.target.fpu);
+    snprintf(target_flags, sizeof(target_flags), "%s %s", p->pkg.target.cpu, p->pkg.target.fpu);
 
-    if (tc_load_ex(&p->tc, p->root, p->toolchain_name,
-                   p->target_prefix, p->target_sysroot,
+    if (tc_load_ex(&p->tc, p->root, p->toolchain_name, p->target_prefix, p->target_sysroot,
                    target_flags, err, errsz) != 0) {
         project_free(p);
         return -1;
@@ -704,8 +679,7 @@ int project_load(PROJECT *p, const char *root, const char *toolchain,
 }
 
 void project_free(PROJECT *p) {
-    for (int i = 0; i < p->ntargets; i++)
-        target_free(&p->targets[i]);
+    for (int i = 0; i < p->ntargets; i++) target_free(&p->targets[i]);
 
     free(p->targets);
     free(p->root);
@@ -741,9 +715,8 @@ TARGET *project_target(PROJECT *p, const char *name) {
     return NULL;
 }
 
-static int project_load_star_finish(PROJECT *p, const char *root,
-                                    const char *toolchain,
-                                    char *err, size_t errsz) {
+static int project_load_star_finish(PROJECT *p, const char *root, const char *toolchain, char *err,
+                                    size_t errsz) {
     lang_init_builtin();
 
     if (project_load_star(p, root, toolchain, err, errsz) != 0) {
@@ -767,12 +740,11 @@ static int project_load_star_finish(PROJECT *p, const char *root,
     int trc;
 
     if (p->tc_cc || p->tc_based)
-        trc = tc_load_star(&p->tc, p->toolchain_name, p->tc_based, p->tc_cc,
-                           p->tc_family, p->target_prefix, p->target_sysroot,
-                           flags, err, errsz);
+        trc = tc_load_star(&p->tc, p->toolchain_name, p->tc_based, p->tc_cc, p->tc_family,
+                           p->target_prefix, p->target_sysroot, flags, err, errsz);
     else
-        trc = tc_load_ex(&p->tc, root, p->toolchain_name, p->target_prefix,
-                         p->target_sysroot, flags, err, errsz);
+        trc = tc_load_ex(&p->tc, root, p->toolchain_name, p->target_prefix, p->target_sysroot,
+                         flags, err, errsz);
 
     if (trc != 0) {
         project_free(p);

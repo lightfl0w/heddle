@@ -24,8 +24,7 @@ static int have_src(const TARGET *t, const char *path) {
     return 0;
 }
 
-static const TARGET *owner_of(const PROJECT *p, const TARGET *skip,
-                              const char *path) {
+static const TARGET *owner_of(const PROJECT *p, const TARGET *skip, const char *path) {
     for (int i = 0; i < p->ntargets; i++) {
         const TARGET *t = &p->targets[i];
 
@@ -36,11 +35,9 @@ static const TARGET *owner_of(const PROJECT *p, const TARGET *skip,
     return NULL;
 }
 
-static int cycle_at(const PROJECT *p, int i, int *state,
-                    char *err, size_t errsz) {
+static int cycle_at(const PROJECT *p, int i, int *state, char *err, size_t errsz) {
     if (state[i] == 1) {
-        snprintf(err, errsz, "dependency cycle involving target '%s'",
-                 p->targets[i].name);
+        snprintf(err, errsz, "dependency cycle involving target '%s'", p->targets[i].name);
         return -1;
     }
 
@@ -71,15 +68,13 @@ int project_check(const PROJECT *p, char *err, size_t errsz) {
             const TARGET *d = project_target((PROJECT *)p, t->deps[k]);
 
             if (!d) {
-                snprintf(err, errsz, "target '%s': unknown dependency '%s'",
-                         t->name, t->deps[k]);
+                snprintf(err, errsz, "target '%s': unknown dependency '%s'", t->name, t->deps[k]);
                 return -1;
             }
 
             if (d->type == TARGET_EXE && t->type != TARGET_CUSTOM) {
-                snprintf(err, errsz,
-                         "target '%s': cannot depend on executable '%s'",
-                         t->name, d->name);
+                snprintf(err, errsz, "target '%s': cannot depend on executable '%s'", t->name,
+                         d->name);
                 return -1;
             }
 
@@ -93,31 +88,27 @@ int project_check(const PROJECT *p, char *err, size_t errsz) {
             const char *src = t->src[k];
 
             if (strstr(src, "..")) {
-                snprintf(err, errsz, "target '%s': path escapes project '%s'",
-                         t->name, src);
+                snprintf(err, errsz, "target '%s': path escapes project '%s'", t->name, src);
                 return -1;
             }
 
             if (!is_supported(src)) {
-                snprintf(err, errsz, "target '%s': unsupported source '%s'",
-                         t->name, src);
+                snprintf(err, errsz, "target '%s': unsupported source '%s'", t->name, src);
                 return -1;
             }
 
             const TARGET *owner = owner_of(p, t, src);
 
             if (owner) {
-                snprintf(err, errsz,
-                         "target '%s': source '%s' also used by '%s'",
-                         t->name, src, owner->name);
+                snprintf(err, errsz, "target '%s': source '%s' also used by '%s'", t->name, src,
+                         owner->name);
                 return -1;
             }
 
             SYS_STAT st;
 
             if (sys_stat(src, &st) != 0) {
-                snprintf(err, errsz, "target '%s': missing source '%s'",
-                         t->name, src);
+                snprintf(err, errsz, "target '%s': missing source '%s'", t->name, src);
                 return -1;
             }
         }
@@ -126,8 +117,7 @@ int project_check(const PROJECT *p, char *err, size_t errsz) {
             SYS_STAT st;
 
             if (sys_stat(t->inc[k], &st) != 0) {
-                snprintf(err, errsz, "target '%s': missing include dir '%s'",
-                         t->name, t->inc[k]);
+                snprintf(err, errsz, "target '%s': missing include dir '%s'", t->name, t->inc[k]);
                 return -1;
             }
         }
@@ -184,19 +174,19 @@ static void mark_closure(const PROJECT *p, int i, char *want) {
 
 static char *object_of(const PROJECT *p, const TARGET *t, const char *src) {
     const char *base = strrchr(src, '/');
-    base = base ? base + 1 : src;
+    base             = base ? base + 1 : src;
 
-    const char *dot = strrchr(base, '.');
-    size_t stem = dot && dot != base ? (size_t)(dot - base) : strlen(base);
+    const char *dot  = strrchr(base, '.');
+    size_t      stem = dot && dot != base ? (size_t)(dot - base) : strlen(base);
 
-    const LANG *lg = lang_for(src);
+    const LANG *lg  = lang_for(src);
     const char *ext = lg && lg->outext ? lg->outext : p->tc.objext;
 
-    char  name[1024];
-    snprintf(name, sizeof(name), "%.*s_%.*s%s",
-             (int)strlen(t->name), t->name, (int)stem, base, ext);
+    char name[1024];
+    snprintf(name, sizeof(name), "%.*s_%.*s%s", (int)strlen(t->name), t->name, (int)stem, base,
+             ext);
 
-    size_t n = strlen(p->build_dir) + strlen(name) + 2;
+    size_t n   = strlen(p->build_dir) + strlen(name) + 2;
     char  *out = (char *)malloc(n);
 
     if (out) snprintf(out, n, "%s/%s", p->build_dir, name);
@@ -218,10 +208,10 @@ char *emit_artifact(const PROJECT *p, const TARGET *t) {
         ext = p->tc.dllext;
     }
 
-    char   name[1024];
+    char name[1024];
     snprintf(name, sizeof(name), "%s%s%s", pre, t->name, ext);
 
-    size_t n = strlen(p->build_dir) + strlen(name) + 2;
+    size_t n   = strlen(p->build_dir) + strlen(name) + 2;
     char  *out = (char *)malloc(n);
 
     if (out) snprintf(out, n, "%s/%s", p->build_dir, name);
@@ -234,11 +224,10 @@ static const char *asm_format(const PROJECT *p) {
 
     if (!arch) return "elf";
 
-    int wide = !strcmp(arch, "x86_64") || !strcmp(arch, "aarch64") ||
-               !strcmp(arch, "riscv64") || !strcmp(arch, "powerpc");
+    int wide = !strcmp(arch, "x86_64") || !strcmp(arch, "aarch64") || !strcmp(arch, "riscv64") ||
+               !strcmp(arch, "powerpc");
 
-    if (p->target_prefix && p->target_prefix[0])
-        return wide ? "elf64" : "elf32";
+    if (p->target_prefix && p->target_prefix[0]) return wide ? "elf64" : "elf32";
 
 #if defined(_WIN32)
     return wide ? "win64" : "win32";
@@ -250,8 +239,7 @@ static const char *asm_format(const PROJECT *p) {
 }
 
 static void put_incs(const TARGET *t, char *buf, size_t cap, int *len) {
-    for (int i = 0; i < t->ninc; i++)
-        addf(buf, cap, len, " -I%s", t->inc[i]);
+    for (int i = 0; i < t->ninc; i++) addf(buf, cap, len, " -I%s", t->inc[i]);
 }
 
 static void put_dep_incs(const PROJECT *p, char *buf, size_t cap, int *len) {
@@ -265,8 +253,7 @@ static void put_dep_incs(const PROJECT *p, char *buf, size_t cap, int *len) {
         if (inc) {
             SYS_STAT st;
 
-            if (sys_stat(inc, &st) == 0 && st.is_dir)
-                addf(buf, cap, len, " -I%s", inc);
+            if (sys_stat(inc, &st) == 0 && st.is_dir) addf(buf, cap, len, " -I%s", inc);
 
             free(inc);
         }
@@ -288,7 +275,7 @@ static void put_dep_ldflags(const PROJECT *p, char *buf, size_t cap, int *len) {
                 addf(buf, cap, len, " -L%s", lib);
 
                 char *meta = project_path(s->store_path, ".heddle-pkg");
-                FILE *f = meta ? fopen(meta, "r") : NULL;
+                FILE *f    = meta ? fopen(meta, "r") : NULL;
 
                 if (f) {
                     char line[256];
@@ -296,8 +283,7 @@ static void put_dep_ldflags(const PROJECT *p, char *buf, size_t cap, int *len) {
                     while (fgets(line, sizeof(line), f)) {
                         size_t n = strlen(line);
 
-                        while (n && (line[n - 1] == '\n' || line[n - 1] == '\r'))
-                            line[--n] = 0;
+                        while (n && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[--n] = 0;
 
                         if (line[0]) addf(buf, cap, len, " -l%s", line);
                     }
@@ -315,12 +301,11 @@ static void put_dep_ldflags(const PROJECT *p, char *buf, size_t cap, int *len) {
     }
 }
 
-static void subst_arg(const char *arg, const char *src, const char *out,
-                      const char *format, const char *root,
-                      char *dst, size_t cap) {
+static void subst_arg(const char *arg, const char *src, const char *out, const char *format,
+                      const char *root, char *dst, size_t cap) {
     size_t len = 0;
 
-    for (const char *p = arg; *p && len + 1 < cap; ) {
+    for (const char *p = arg; *p && len + 1 < cap;) {
         if (!strncmp(p, "{src}", 5)) {
             len += (size_t)snprintf(dst + len, cap - len, "%s", src);
             p += 5;
@@ -350,9 +335,8 @@ static int lang_is_template(const LANG *lg) {
     return 0;
 }
 
-static void put_args(const LANG *lg, const char *src, const char *out,
-                     const char *format, const char *root,
-                     char *buf, size_t cap, int *len) {
+static void put_args(const LANG *lg, const char *src, const char *out, const char *format,
+                     const char *root, char *buf, size_t cap, int *len) {
     for (int a = 0; a < lg->nargs; a++) {
         char sub[2048];
 
@@ -361,10 +345,9 @@ static void put_args(const LANG *lg, const char *src, const char *out,
     }
 }
 
-static void build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg,
-                      const char *src, const char *out,
-                      const char *incs, const char *flags,
-                      const char *deffmt, char *cmd, size_t cap) {
+static void build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg, const char *src,
+                      const char *out, const char *incs, const char *flags, const char *deffmt,
+                      char *cmd, size_t cap) {
     const char *fmt = t->format ? t->format : deffmt;
     int         len = 0;
 
@@ -374,10 +357,8 @@ static void build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg,
     if (lg->fmt) addf(cmd, cap, &len, " -f %s", fmt);
     if (lg->cflags) addf(cmd, cap, &len, "%s", flags);
 
-    if (!lang_is_template(lg))
-        addf(cmd, cap, &len, "%s -I%s -o %s %s", incs, p->root, out, src);
+    if (!lang_is_template(lg)) addf(cmd, cap, &len, "%s -I%s -o %s %s", incs, p->root, out, src);
 }
-
 
 typedef struct {
     char  *cmd;
@@ -398,8 +379,7 @@ static void plan_close(PLAN *pl) {
     for (int i = 0; i < pl->n; i++) {
         free(pl->steps[i].cmd);
 
-        for (int k = 0; k < pl->steps[i].nout; k++)
-            free(pl->steps[i].out[k]);
+        for (int k = 0; k < pl->steps[i].nout; k++) free(pl->steps[i].out[k]);
 
         free(pl->steps[i].out);
         free(pl->steps[i].dep);
@@ -431,7 +411,7 @@ static void step_out(STEP *st, const char *path) {
     char **next = (char **)realloc(st->out, sizeof(char *) * (size_t)(st->nout + 1));
     if (!next) return;
 
-    st->out = next;
+    st->out             = next;
     st->out[st->nout++] = sys_dup(path);
 }
 
@@ -442,39 +422,33 @@ static void step_dep(STEP *st, int id) {
     int *next = (int *)realloc(st->dep, sizeof(int) * (size_t)(st->ndep + 1));
     if (!next) return;
 
-    st->dep = next;
+    st->dep             = next;
     st->dep[st->ndep++] = id;
 }
 
-
-
-static void target_incs(const PROJECT *p, const TARGET *t, char *buf,
-                        size_t cap, int *len) {
-    *len  = 0;
+static void target_incs(const PROJECT *p, const TARGET *t, char *buf, size_t cap, int *len) {
+    *len   = 0;
     buf[0] = 0;
 
     put_incs(t, buf, cap, len);
     put_dep_incs(p, buf, cap, len);
 }
 
-static void target_flags(const PROJECT *p, const TARGET *t, char *buf,
-                         size_t cap, int *len) {
-    *len  = 0;
+static void target_flags(const PROJECT *p, const TARGET *t, char *buf, size_t cap, int *len) {
+    *len   = 0;
     buf[0] = 0;
 
-    for (int k = 0; k < p->tc.ncflags; k++)
-        addf(buf, cap, len, " %s", p->tc.cflags[k]);
+    for (int k = 0; k < p->tc.ncflags; k++) addf(buf, cap, len, " %s", p->tc.cflags[k]);
 
-    for (int k = 0; k < t->ncflags; k++)
-        addf(buf, cap, len, " %s", t->cflags[k]);
+    for (int k = 0; k < t->ncflags; k++) addf(buf, cap, len, " %s", t->cflags[k]);
 }
 
 static int is_compile_unit(const TARGET *t) {
     return t->type != TARGET_CUSTOM && t->type != TARGET_RAW;
 }
 
-static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
-                        const char *want, char *err, size_t errsz) {
+static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *want, char *err,
+                        size_t errsz) {
     for (int i = 0; i < p->ntargets; i++) {
         if (!want[i]) continue;
 
@@ -492,16 +466,14 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
 
         if (t->type == TARGET_RAW) {
             if (t->nsrc != 1) {
-                snprintf(err, errsz,
-                         "target '%s': raw needs exactly one source", t->name);
+                snprintf(err, errsz, "target '%s': raw needs exactly one source", t->name);
                 return -1;
             }
 
             const LANG *lg = lang_for(t->src[0]);
 
             if (!lg) {
-                snprintf(err, errsz, "target '%s': no language for '%s'",
-                         t->name, t->src[0]);
+                snprintf(err, errsz, "target '%s': no language for '%s'", t->name, t->src[0]);
                 return -1;
             }
 
@@ -510,8 +482,7 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
 
             char cmd[16384];
 
-            build_cmd(p, t, lg, t->src[0], bin, incs, flags, "bin",
-                      cmd, sizeof(cmd));
+            build_cmd(p, t, lg, t->src[0], bin, incs, flags, "bin", cmd, sizeof(cmd));
 
             STEP *st = plan_add(pl, cmd);
 
@@ -536,15 +507,13 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
 
             if (!lg) {
                 free(obj);
-                snprintf(err, errsz, "target '%s': no language for '%s'",
-                         t->name, t->src[k]);
+                snprintf(err, errsz, "target '%s': no language for '%s'", t->name, t->src[k]);
                 return -1;
             }
 
             char cmd[16384];
 
-            build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p),
-                      cmd, sizeof(cmd));
+            build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p), cmd, sizeof(cmd));
 
             STEP *st = plan_add(pl, cmd);
 
@@ -583,8 +552,7 @@ static int is_gnu_script(const char *path) {
     return dot && (!strcmp(dot, ".ld") || !strcmp(dot, ".lds"));
 }
 
-static char *script_for_family(const PROJECT *p, const TARGET *t,
-                               PLAN *pl, int *ok, int *step_id) {
+static char *script_for_family(const PROJECT *p, const TARGET *t, PLAN *pl, int *ok, int *step_id) {
     const char *fam = p->tc.family ? p->tc.family : "gnu";
 
     *ok      = 1;
@@ -600,12 +568,14 @@ static char *script_for_family(const PROJECT *p, const TARGET *t,
     snprintf(out, sizeof(out), "%s/%s%s", p->build_dir, t->name, ext);
 
     char cmd[8192];
-    snprintf(cmd, sizeof(cmd), "'%s' ldconv %s %s '%s'",
-             g_self, t->ldscript, fam, out);
+    snprintf(cmd, sizeof(cmd), "'%s' ldconv %s %s '%s'", g_self, t->ldscript, fam, out);
 
     STEP *st = plan_add(pl, cmd);
 
-    if (!st) { *ok = 0; return NULL; }
+    if (!st) {
+        *ok = 0;
+        return NULL;
+    }
 
     step_out(st, out);
 
@@ -613,8 +583,7 @@ static char *script_for_family(const PROJECT *p, const TARGET *t,
     return sys_dup(out);
 }
 
-int emit_graph(const PROJECT *p, const char *target, const char *graph,
-               char *err, size_t errsz) {
+int emit_graph(const PROJECT *p, const char *target, const char *graph, char *err, size_t errsz) {
     int root = target_index(p, target);
 
     if (root < 0) {
@@ -655,7 +624,7 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
     if (emit_objects(p, &pl, obj_of, want, err, errsz) != 0) goto fail;
 
     int *order = (int *)malloc(sizeof(int) * (size_t)n);
-    int  no = 0;
+    int  no    = 0;
 
     if (!order) {
         snprintf(err, errsz, "out of memory");
@@ -718,8 +687,7 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
             len = snprintf(cmd, sizeof(cmd), "sh -c \"%s\"", t->cmd);
 #endif
 
-            for (int k = 0; k < t->nsrc; k++)
-                addf(cmd, sizeof(cmd), &len, " %s", t->src[k]);
+            for (int k = 0; k < t->nsrc; k++) addf(cmd, sizeof(cmd), &len, " %s", t->src[k]);
 
             addf(cmd, sizeof(cmd), &len, " > %s", out);
         } else if (t->type == TARGET_STATICLIB) {
@@ -733,9 +701,9 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
                 free(obj);
             }
         } else {
-            char  *objs[4096];
-            char  *libs[4096];
-            int    nobj = 0, nlib = 0;
+            char *objs[4096];
+            char *libs[4096];
+            int   nobj = 0, nlib = 0;
 
             for (int k = 0; k < t->nsrc && nobj < 4096; k++) {
                 char *obj = object_of(p, t, t->src[k]);
@@ -764,18 +732,17 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
                 dlen--;
             }
 
-            char  *ldflags[1024];
-            int    nldf = 0;
+            char *ldflags[1024];
+            int   nldf = 0;
 
             for (int k = 0; k < p->tc.nldflags && nldf < 1024; k++)
                 ldflags[nldf++] = p->tc.ldflags[k];
 
-            for (int k = 0; k < t->nldflags && nldf < 1024; k++)
-                ldflags[nldf++] = t->ldflags[k];
+            for (int k = 0; k < t->nldflags && nldf < 1024; k++) ldflags[nldf++] = t->ldflags[k];
 
             if (dlen) ldflags[nldf++] = depflags;
 
-            int   sok = 1;
+            int   sok    = 1;
             char *script = script_for_family(p, t, &pl, &sok, &sstep);
 
             if (!sok) {
@@ -832,8 +799,7 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
         STEP *st = &pl.steps[art[i]];
 
         if (p->targets[i].type != TARGET_RAW)
-            for (int k = 0; k < p->targets[i].nsrc; k++)
-                step_dep(st, obj_of[i][k]);
+            for (int k = 0; k < p->targets[i].nsrc; k++) step_dep(st, obj_of[i][k]);
 
         for (int k = 0; k < p->targets[i].ndeps; k++) {
             int d = target_index(p, p->targets[i].deps[k]);
@@ -869,8 +835,7 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
         if (pl.steps[i].ndep > 0) {
             fputs(" <", f);
 
-            for (int k = 0; k < pl.steps[i].ndep; k++)
-                fprintf(f, " %d", pl.steps[i].dep[k]);
+            for (int k = 0; k < pl.steps[i].ndep; k++) fprintf(f, " %d", pl.steps[i].dep[k]);
         }
 
         fputc('\n', f);
@@ -901,12 +866,9 @@ static void abs_dir(const char *root, char *buf, size_t cap) {
 
     if (!getcwd(cwd, sizeof(cwd))) cwd[0] = 0;
 
-    if (!root || !root[0] || !strcmp(root, "."))
-        snprintf(buf, cap, "%s", cwd[0] ? cwd : ".");
-    else if (root[0] == '/' || (root[0] && root[1] == ':'))
-        snprintf(buf, cap, "%s", root);
-    else
-        snprintf(buf, cap, "%s/%s", cwd, root);
+    if (!root || !root[0] || !strcmp(root, ".")) snprintf(buf, cap, "%s", cwd[0] ? cwd : ".");
+    else if (root[0] == '/' || (root[0] && root[1] == ':')) snprintf(buf, cap, "%s", root);
+    else snprintf(buf, cap, "%s/%s", cwd, root);
 
     for (char *q = buf; *q; q++)
         if (*q == '\\') *q = '/';
@@ -927,8 +889,8 @@ static void json_str(FILE *f, const char *s) {
     fputc('"', f);
 }
 
-int emit_compile_db(const PROJECT *p, const char *target, const char *out,
-                    char *err, size_t errsz) {
+int emit_compile_db(const PROJECT *p, const char *target, const char *out, char *err,
+                    size_t errsz) {
     int n = p->ntargets;
 
     char *want = (char *)calloc((size_t)n, 1);
@@ -988,8 +950,7 @@ int emit_compile_db(const PROJECT *p, const char *target, const char *out,
 
             char cmd[16384];
 
-            build_cmd(p, t, lg, t->src[k], obj,
-                      incs, flags, asm_format(p), cmd, sizeof(cmd));
+            build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p), cmd, sizeof(cmd));
 
             if (!first) fputs(",\n", f);
 

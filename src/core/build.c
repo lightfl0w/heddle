@@ -24,16 +24,16 @@
 struct BUILD_ENGINE {
     BUILD_OPTS opts;
 
-    GRAPH  graph;
+    GRAPH   graph;
     INCR_DB db;
 
     char *active;
     char  loaded;
 
-    CAS          *cas;
-    ACTION_CACHE  ac;
-    int           ran;
-    int           cached;
+    CAS         *cas;
+    ACTION_CACHE ac;
+    int          ran;
+    int          cached;
 
     char state_path[1024];
     char hash_path[1024];
@@ -55,7 +55,7 @@ static char *read_file(const char *path) {
     }
 
     size_t got = fread(buf, 1, (size_t)len, f);
-    buf[got] = 0;
+    buf[got]   = 0;
 
     fclose(f);
     return buf;
@@ -117,7 +117,6 @@ BUILD_ENGINE *build_open(const BUILD_OPTS *o, char *err, size_t errsz) {
     ac_init(&e->ac, e->cas, cache_root);
     ac_load(&e->ac);
 
-
     return e;
 }
 
@@ -145,8 +144,7 @@ static int        g_ntools = 0;
 static unsigned long long tool_resolve(const char *name) {
     if (!name || !name[0]) return 0;
 
-    if (strchr(name, '/'))
-        return hash_read_file(NULL, name);
+    if (strchr(name, '/')) return hash_read_file(NULL, name);
 
     const char *path = getenv("PATH");
     if (!path) return 0;
@@ -154,12 +152,12 @@ static unsigned long long tool_resolve(const char *name) {
     char *copy = sys_dup(path);
     if (!copy) return 0;
 
-    unsigned long long h = 0;
-    char *save = NULL;
-    char *dir  = sys_tok(copy, ":", &save);
+    unsigned long long h    = 0;
+    char              *save = NULL;
+    char              *dir  = sys_tok(copy, ":", &save);
 
     while (dir) {
-        size_t n = strlen(dir) + strlen(name) + 2;
+        size_t n    = strlen(dir) + strlen(name) + 2;
         char  *cand = (char *)malloc(n);
 
         if (cand) {
@@ -224,8 +222,7 @@ static int deps_key(INCR_DB *db, int node, unsigned long long *out) {
 
     unsigned long long k = HASH_FNV_OFFSET;
 
-    for (int i = 0; i < nd->ndyn; i++)
-        k = hash_u64(k, hash_read_file(&db->files, nd->dyn[i]));
+    for (int i = 0; i < nd->ndyn; i++) k = hash_u64(k, hash_read_file(&db->files, nd->dyn[i]));
 
     *out = k;
     return 0;
@@ -259,7 +256,7 @@ static void cache_restore(BUILD_ENGINE *e, int *dirty) {
         deps_key(db, i, &dyn);
 
         unsigned long long key = hash_u64(intrinsic, dyn);
-        key = hash_u64(key, tool_hash(nd->argv[0]));
+        key                    = hash_u64(key, tool_hash(nd->argv[0]));
 
         AC_ENTRY *ent = ac_find(&e->ac, key);
 
@@ -273,16 +270,14 @@ static void cache_restore(BUILD_ENGINE *e, int *dirty) {
         int restored = 1;
 
         for (int k = 0; k < ent->nouts; k++)
-            if (cas_get_file(e->cas, ent->outs[k].hash, nd->outs[k]) != 0)
-                restored = 0;
+            if (cas_get_file(e->cas, ent->outs[k].hash, nd->outs[k]) != 0) restored = 0;
 
         if (!restored) continue;
 
         SYS_STAT st;
 
         for (int k = 0; k < ent->nouts; k++)
-            if (sys_stat(nd->outs[k], &st) == 0)
-                sys_chmod(nd->outs[k], ent->outs[k].mode);
+            if (sys_stat(nd->outs[k], &st) == 0) sys_chmod(nd->outs[k], ent->outs[k].mode);
 
         incr_record(db, i);
         e->active[i] = 0;
@@ -308,12 +303,12 @@ static void cache_store(BUILD_ENGINE *e) {
         deps_key(db, i, &dyn);
 
         unsigned long long key = hash_u64(intrinsic, dyn);
-        key = hash_u64(key, tool_hash(nd->argv[0]));
+        key                    = hash_u64(key, tool_hash(nd->argv[0]));
 
         AC_OUT *outs = (AC_OUT *)malloc(sizeof(AC_OUT) * (size_t)nd->nouts);
         if (!outs) continue;
 
-        int n = 0;
+        int n  = 0;
         int ok = 1;
 
         for (int k = 0; k < nd->nouts; k++) {
@@ -359,8 +354,7 @@ int build_run(BUILD_ENGINE *e) {
     e->ran    = 0;
     e->cached = 0;
 
-    if (!e->opts.no_cache)
-        cache_restore(e, &dirty);
+    if (!e->opts.no_cache) cache_restore(e, &dirty);
 
     if (dirty == 0) {
         save_state(e);
@@ -383,8 +377,7 @@ int build_run(BUILD_ENGINE *e) {
     int rc = sched_run(&so);
 
     if (rc == 0) {
-        if (!e->opts.no_cache)
-            cache_store(e);
+        if (!e->opts.no_cache) cache_store(e);
 
         save_state(e);
     }

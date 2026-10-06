@@ -7,8 +7,8 @@ static int  g_built;
 
 const char *heddle_version_string(void) {
     if (!g_built) {
-        snprintf(g_version, sizeof(g_version), "%s (%s, %s)",
-                 BUILD_VERSION, BUILD_TARGET, BUILD_COMMIT);
+        snprintf(g_version, sizeof(g_version), "%s (%s, %s)", BUILD_VERSION, BUILD_TARGET,
+                 BUILD_COMMIT);
         g_built = 1;
     }
 

@@ -75,7 +75,6 @@ char *sys_dup(const char *s) {
     return p;
 }
 
-
 int sys_chdir(const char *path) {
 #if defined(_WIN32)
     return _chdir(path);

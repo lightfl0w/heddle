@@ -25,8 +25,7 @@ static void put(JSON *j, const char *key, const char *val) {
     if (j->n == j->cap) {
         int newcap = j->cap ? j->cap * 2 : 16;
 
-        JSON_KV *items = (JSON_KV *)realloc(
-            j->items, sizeof(JSON_KV) * (size_t)newcap);
+        JSON_KV *items = (JSON_KV *)realloc(j->items, sizeof(JSON_KV) * (size_t)newcap);
         if (!items) return;
 
         j->items = items;
@@ -78,7 +77,10 @@ static char *read_string(PARSER *s) {
         if (n + 1 >= cap) {
             cap *= 2;
             char *big = (char *)realloc(out, cap);
-            if (!big) { free(out); return NULL; }
+            if (!big) {
+                free(out);
+                return NULL;
+            }
             out = big;
         }
 
@@ -96,7 +98,7 @@ static char *read_primitive(PARSER *s) {
 
     while (s->p < s->end && !strchr(",}] \t\r\n", *s->p)) s->p++;
 
-    size_t n = (size_t)(s->p - b);
+    size_t n   = (size_t)(s->p - b);
     char  *out = (char *)malloc(n + 1);
 
     if (!out) return NULL;
@@ -119,7 +121,10 @@ static void parse_object(PARSER *s, const char *path) {
         skip_ws(s);
 
         if (s->p >= s->end) return;
-        if (*s->p == '}') { s->p++; return; }
+        if (*s->p == '}') {
+            s->p++;
+            return;
+        }
 
         char *key = read_string(s);
 
@@ -131,10 +136,8 @@ static void parse_object(PARSER *s, const char *path) {
 
         char sub[1024];
 
-        if (path[0])
-            snprintf(sub, sizeof(sub), "%s.%s", path, key);
-        else
-            snprintf(sub, sizeof(sub), "%s", key);
+        if (path[0]) snprintf(sub, sizeof(sub), "%s.%s", path, key);
+        else snprintf(sub, sizeof(sub), "%s", key);
 
         free(key);
 
@@ -142,8 +145,14 @@ static void parse_object(PARSER *s, const char *path) {
 
         skip_ws(s);
 
-        if (s->p < s->end && *s->p == ',') { s->p++; continue; }
-        if (s->p < s->end && *s->p == '}') { s->p++; return; }
+        if (s->p < s->end && *s->p == ',') {
+            s->p++;
+            continue;
+        }
+        if (s->p < s->end && *s->p == '}') {
+            s->p++;
+            return;
+        }
     }
 }
 
@@ -160,7 +169,10 @@ static void parse_array(PARSER *s, const char *path) {
         skip_ws(s);
 
         if (s->p >= s->end) return;
-        if (*s->p == ']') { s->p++; return; }
+        if (*s->p == ']') {
+            s->p++;
+            return;
+        }
 
         char sub[1024];
         snprintf(sub, sizeof(sub), "%s[%d]", path, idx++);
@@ -169,8 +181,14 @@ static void parse_array(PARSER *s, const char *path) {
 
         skip_ws(s);
 
-        if (s->p < s->end && *s->p == ',') { s->p++; continue; }
-        if (s->p < s->end && *s->p == ']') { s->p++; return; }
+        if (s->p < s->end && *s->p == ',') {
+            s->p++;
+            continue;
+        }
+        if (s->p < s->end && *s->p == ']') {
+            s->p++;
+            return;
+        }
     }
 }
 
@@ -180,8 +198,7 @@ static void parse_value(PARSER *s, const char *path) {
     if (s->p >= s->end) return;
 
     if (s->depth++ > 64) {
-        if (s->err) snprintf(s->err, s->errsz, "%s: json nested too deep",
-                             path);
+        if (s->err) snprintf(s->err, s->errsz, "%s: json nested too deep", path);
         s->depth--;
         return;
     }
@@ -193,18 +210,23 @@ static void parse_value(PARSER *s, const char *path) {
     } else if (*s->p == '"') {
         char *v = read_string(s);
 
-        if (v) { put(s->j, path, v); free(v); }
+        if (v) {
+            put(s->j, path, v);
+            free(v);
+        }
     } else {
         char *v = read_primitive(s);
 
-        if (v) { put(s->j, path, v); free(v); }
+        if (v) {
+            put(s->j, path, v);
+            free(v);
+        }
     }
 
     s->depth--;
 }
 
-static int json_parse_text(JSON *j, const char *text, const char *src,
-                           char *err, size_t errsz) {
+static int json_parse_text(JSON *j, const char *text, const char *src, char *err, size_t errsz) {
     PARSER s;
     memset(&s, 0, sizeof(s));
 
@@ -254,7 +276,7 @@ int json_parse(JSON *j, const char *path, char *err, size_t errsz) {
     }
 
     size_t got = fread(buf, 1, (size_t)n, f);
-    buf[got] = 0;
+    buf[got]   = 0;
     fclose(f);
 
     int rc = json_parse_text(j, buf, path, err, errsz);
@@ -269,4 +291,3 @@ const char *json_get(const JSON *j, const char *key) {
 
     return NULL;
 }
-

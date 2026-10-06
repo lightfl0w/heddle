@@ -40,8 +40,8 @@ static int ident(SCAN *s, char *buf, size_t cap) {
     skip_ws(s);
     size_t n = 0;
 
-    while (s->p < s->end && (isalnum((unsigned char)*s->p) ||
-                             *s->p == '_' || *s->p == '.' || *s->p == '-')) {
+    while (s->p < s->end &&
+           (isalnum((unsigned char)*s->p) || *s->p == '_' || *s->p == '.' || *s->p == '-')) {
         if (n + 1 < cap) buf[n++] = *s->p;
         s->p++;
     }
@@ -65,13 +65,11 @@ static int number(SCAN *s, char *buf, size_t cap) {
     return n > 0;
 }
 
-static void push_region(LD_SCRIPT *L, const char *name,
-                        const char *origin, const char *length) {
-    LD_REGION *nr = (LD_REGION *)realloc(L->regions,
-                                         sizeof(LD_REGION) * (size_t)(L->nreg + 1));
+static void push_region(LD_SCRIPT *L, const char *name, const char *origin, const char *length) {
+    LD_REGION *nr = (LD_REGION *)realloc(L->regions, sizeof(LD_REGION) * (size_t)(L->nreg + 1));
     if (!nr) return;
 
-    L->regions = nr;
+    L->regions                 = nr;
     L->regions[L->nreg].name   = name ? strdup(name) : NULL;
     L->regions[L->nreg].origin = origin ? strdup(origin) : NULL;
     L->regions[L->nreg].length = length ? strdup(length) : NULL;
@@ -82,7 +80,7 @@ static void push_place(LD_SCRIPT *L, const char *region) {
     char **np = (char **)realloc(L->places, sizeof(char *) * (size_t)(L->nplace + 1));
     if (!np) return;
 
-    L->places = np;
+    L->places              = np;
     L->places[L->nplace++] = region ? strdup(region) : NULL;
 }
 
@@ -126,7 +124,10 @@ static void parse_memory(LD_SCRIPT *L, SCAN *s) {
             else if (!strcasecmp(key, "LENGTH")) snprintf(length, sizeof(length), "%s", val);
 
             skip_ws(s);
-            if (s->p < s->end && *s->p == ',') { s->p++; continue; }
+            if (s->p < s->end && *s->p == ',') {
+                s->p++;
+                continue;
+            }
             break;
         }
 
@@ -145,18 +146,23 @@ static void parse_sections(LD_SCRIPT *L, SCAN *s) {
         if (*s->p == '.') {
             s->p++;
 
-            while (s->p < s->end && (isalnum((unsigned char)*s->p) || *s->p == '_' ||
-                                     *s->p == '.')) s->p++;
-
-            while (s->p < s->end && *s->p != '{' && *s->p != '>' && *s->p != ';')
+            while (s->p < s->end && (isalnum((unsigned char)*s->p) || *s->p == '_' || *s->p == '.'))
                 s->p++;
+
+            while (s->p < s->end && *s->p != '{' && *s->p != '>' && *s->p != ';') s->p++;
 
             if (s->p < s->end && *s->p == '{') {
                 int depth = 0;
 
                 while (s->p < s->end) {
                     if (*s->p == '{') depth++;
-                    else if (*s->p == '}') { depth--; if (!depth) { s->p++; break; } }
+                    else if (*s->p == '}') {
+                        depth--;
+                        if (!depth) {
+                            s->p++;
+                            break;
+                        }
+                    }
                     s->p++;
                 }
             }
@@ -194,13 +200,17 @@ static int ld_parse(LD_SCRIPT *L, const char *path, char *err, size_t errsz) {
     fseek(f, 0, SEEK_SET);
 
     char *buf = (char *)malloc((size_t)n + 1);
-    if (!buf) { fclose(f); snprintf(err, errsz, "out of memory"); return -1; }
+    if (!buf) {
+        fclose(f);
+        snprintf(err, errsz, "out of memory");
+        return -1;
+    }
 
     size_t got = fread(buf, 1, (size_t)n, f);
-    buf[got] = 0;
+    buf[got]   = 0;
     fclose(f);
 
-    SCAN s = { buf, buf + got };
+    SCAN s = {buf, buf + got};
 
     for (;;) {
         char kw[64];
@@ -212,7 +222,10 @@ static int ld_parse(LD_SCRIPT *L, const char *path, char *err, size_t errsz) {
 
         const char *b = s.p;
 
-        if (!ident(&s, kw, sizeof(kw))) { s.p = b + 1; continue; }
+        if (!ident(&s, kw, sizeof(kw))) {
+            s.p = b + 1;
+            continue;
+        }
 
         if (!strcasecmp(kw, "ENTRY")) {
             skip_ws(&s);
@@ -229,13 +242,19 @@ static int ld_parse(LD_SCRIPT *L, const char *path, char *err, size_t errsz) {
 
         if (!strcasecmp(kw, "MEMORY")) {
             skip_ws(&s);
-            if (s.p < s.end && *s.p == '{') { s.p++; parse_memory(L, &s); }
+            if (s.p < s.end && *s.p == '{') {
+                s.p++;
+                parse_memory(L, &s);
+            }
             continue;
         }
 
         if (!strcasecmp(kw, "SECTIONS")) {
             skip_ws(&s);
-            if (s.p < s.end && *s.p == '{') { s.p++; parse_sections(L, &s); }
+            if (s.p < s.end && *s.p == '{') {
+                s.p++;
+                parse_sections(L, &s);
+            }
             continue;
         }
     }
@@ -262,8 +281,8 @@ static void ld_free(LD_SCRIPT *L) {
 static unsigned long long num(const char *s) {
     if (!s || !*s) return 0;
 
-    char *end = NULL;
-    unsigned long long v = strtoull(s, &end, 0);
+    char              *end = NULL;
+    unsigned long long v   = strtoull(s, &end, 0);
     unsigned long long mul = 1;
 
     if (end) {
@@ -288,8 +307,8 @@ static int emit_icf(LD_SCRIPT *L, FILE *f, char *err, size_t errsz) {
     if (L->entry) fprintf(f, "define symbol __entry = %s;\n", L->entry);
 
     for (int i = 0; i < L->nreg; i++)
-        fprintf(f, "define region %s = mem:[from 0x%llx to 0x%llx];\n",
-                L->regions[i].name, num(L->regions[i].origin),
+        fprintf(f, "define region %s = mem:[from 0x%llx to 0x%llx];\n", L->regions[i].name,
+                num(L->regions[i].origin),
                 num(L->regions[i].origin) + num(L->regions[i].length) - 1);
 
     if (L->nplace) {
@@ -311,15 +330,14 @@ static int emit_scatter(LD_SCRIPT *L, FILE *f, char *err, size_t errsz) {
     if (L->entry) fprintf(f, "ENTRY %s\n", L->entry);
 
     for (int i = 0; i < L->nreg; i++)
-        fprintf(f, "  %s 0x%llx 0x%llx {\n    * (+RO, +RW, +ZI)\n  }\n",
-                L->regions[i].name, num(L->regions[i].origin),
-                num(L->regions[i].length));
+        fprintf(f, "  %s 0x%llx 0x%llx {\n    * (+RO, +RW, +ZI)\n  }\n", L->regions[i].name,
+                num(L->regions[i].origin), num(L->regions[i].length));
 
     return 0;
 }
 
-int ldconv_convert(const char *gnu_ld, const char *family,
-                   const char *out_path, char *err, size_t errsz) {
+int ldconv_convert(const char *gnu_ld, const char *family, const char *out_path, char *err,
+                   size_t errsz) {
     LD_SCRIPT L;
     memset(&L, 0, sizeof(L));
 

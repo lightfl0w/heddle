@@ -15,7 +15,9 @@ void star_init(void) {
     g_none.kind = STAR_NONE;
 }
 
-STAR *star_none(void) { return &g_none; }
+STAR *star_none(void) {
+    return &g_none;
+}
 
 static STAR *alloc(STAR_KIND k) {
     STAR *v = (STAR *)calloc(1, sizeof(STAR));
@@ -49,8 +51,12 @@ STAR *star_bool(int b) {
     return v;
 }
 
-STAR *star_list(void) { return alloc(STAR_LIST); }
-STAR *star_dict(void) { return alloc(STAR_DICT); }
+STAR *star_list(void) {
+    return alloc(STAR_LIST);
+}
+STAR *star_dict(void) {
+    return alloc(STAR_DICT);
+}
 
 void star_free(STAR *v) {
     if (!v || v == &g_none) return;
@@ -91,8 +97,7 @@ STAR *star_dup(const STAR *v) {
     } else if (v->kind == STAR_LIST) {
         for (int i = 0; i < v->n; i++) star_list_add(d, star_dup(v->items[i]));
     } else if (v->kind == STAR_DICT) {
-        for (int i = 0; i < v->n; i++)
-            star_dict_put(d, v->keys[i], star_dup(v->vals[i]));
+        for (int i = 0; i < v->n; i++) star_dict_put(d, v->keys[i], star_dup(v->vals[i]));
     }
 
     return d;
@@ -100,9 +105,12 @@ STAR *star_dup(const STAR *v) {
 
 void star_list_add(STAR *l, STAR *v) {
     STAR **next = (STAR **)realloc(l->items, sizeof(STAR *) * (size_t)(l->n + 1));
-    if (!next) { star_free(v); return; }
+    if (!next) {
+        star_free(v);
+        return;
+    }
 
-    l->items = next;
+    l->items         = next;
     l->items[l->n++] = v;
 }
 
@@ -118,10 +126,13 @@ void star_dict_put(STAR *d, const char *k, STAR *v) {
     STAR **nv = (STAR **)realloc(d->vals, sizeof(STAR *) * (size_t)(d->n + 1));
     char **nk = (char **)realloc(d->keys, sizeof(char *) * (size_t)(d->n + 1));
 
-    if (!nv || !nk) { star_free(v); return; }
+    if (!nv || !nk) {
+        star_free(v);
+        return;
+    }
 
-    d->vals = nv;
-    d->keys = nk;
+    d->vals       = nv;
+    d->keys       = nk;
     d->keys[d->n] = sys_dup(k);
     d->vals[d->n] = v;
     d->n++;
@@ -174,9 +185,9 @@ static char *num_str(double n) {
 }
 
 static void append(char **dst, const char *tail) {
-    char *s = *dst ? *dst : sys_dup("");
+    char  *s = *dst ? *dst : sys_dup("");
     size_t n = strlen(s) + strlen(tail) + 1;
-    char *r = (char *)malloc(n);
+    char  *r = (char *)malloc(n);
 
     if (r) snprintf(r, n, "%s%s", s, tail);
 
@@ -185,7 +196,7 @@ static void append(char **dst, const char *tail) {
 }
 
 static char *as_text(const STAR *v) {
-    if (v->kind == STAR_STR)  return sys_dup(v->s);
+    if (v->kind == STAR_STR) return sys_dup(v->s);
     if (v->kind == STAR_BOOL) return sys_dup(v->b ? "True" : "False");
 
     return num_str(v->num);
@@ -198,13 +209,12 @@ void star_add(STAR *a, const STAR *b) {
         a->num += b->num;
     } else if (a->kind == STAR_LIST && b->kind == STAR_LIST) {
         for (int i = 0; i < b->n; i++) star_list_add(a, star_dup(b->items[i]));
-    } else if (a->kind == STAR_STR || a->kind == STAR_NUM ||
-               a->kind == STAR_BOOL) {
+    } else if (a->kind == STAR_STR || a->kind == STAR_NUM || a->kind == STAR_BOOL) {
         char *l = as_text(a);
         char *r = as_text(b);
 
         free(a->s);
-        a->s = sys_dup("");
+        a->s    = sys_dup("");
         a->kind = STAR_STR;
 
         append(&a->s, l);
@@ -216,18 +226,39 @@ void star_add(STAR *a, const STAR *b) {
 }
 
 typedef enum {
-    T_EOF, T_NEWLINE, T_INDENT, T_DEDENT,
-    T_NAME, T_NUM, T_STR,
-    T_LP, T_RP, T_LB, T_RB, T_LC, T_RC,
-    T_COMMA, T_COLON, T_DOT, T_ASSIGN,
-    T_PLUS, T_MINUS, T_STAR, T_SLASH,
-    T_EQ, T_NE, T_LT, T_LE, T_GT, T_GE,
+    T_EOF,
+    T_NEWLINE,
+    T_INDENT,
+    T_DEDENT,
+    T_NAME,
+    T_NUM,
+    T_STR,
+    T_LP,
+    T_RP,
+    T_LB,
+    T_RB,
+    T_LC,
+    T_RC,
+    T_COMMA,
+    T_COLON,
+    T_DOT,
+    T_ASSIGN,
+    T_PLUS,
+    T_MINUS,
+    T_STAR,
+    T_SLASH,
+    T_EQ,
+    T_NE,
+    T_LT,
+    T_LE,
+    T_GT,
+    T_GE,
     T_PERCENT
 } TT;
 
 typedef struct {
-    TT   t;
-    char *s;
+    TT     t;
+    char  *s;
     double num;
     int    line;
 } TOK;
@@ -241,18 +272,18 @@ typedef struct {
 
 static void tok_add(LEX *l, TT t, const char *s, double num, int line) {
     if (l->n == l->cap) {
-        int cap = l->cap ? l->cap * 2 : 64;
-        TOK *v = (TOK *)realloc(l->v, sizeof(TOK) * (size_t)cap);
+        int  cap = l->cap ? l->cap * 2 : 64;
+        TOK *v   = (TOK *)realloc(l->v, sizeof(TOK) * (size_t)cap);
 
         if (!v) return;
 
-        l->v = v;
+        l->v   = v;
         l->cap = cap;
     }
 
-    l->v[l->n].t = t;
-    l->v[l->n].s = s ? sys_dup(s) : NULL;
-    l->v[l->n].num = num;
+    l->v[l->n].t    = t;
+    l->v[l->n].s    = s ? sys_dup(s) : NULL;
+    l->v[l->n].num  = num;
     l->v[l->n].line = line;
     l->n++;
 }
@@ -269,23 +300,26 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
     memset(out, 0, sizeof(*out));
     out->file = sys_dup(file);
 
-    const char *p = src;
-    int line = 1;
+    const char *p    = src;
+    int         line = 1;
 
     int indents[64];
-    int depth = 0;
+    int depth  = 0;
     indents[0] = 0;
 
     int at_line_start = 1;
-    int line_blank = 0;
-    int bdepth = 0;
+    int line_blank    = 0;
+    int bdepth        = 0;
 
     while (*p) {
         if (at_line_start && !line_blank && bdepth == 0) {
-            const char *q = p;
-            int col = 0;
+            const char *q   = p;
+            int         col = 0;
 
-            while (*q == ' ') { q++; col++; }
+            while (*q == ' ') {
+                q++;
+                col++;
+            }
 
             if (*q == '\t') {
                 snprintf(err, errsz, "%s:%d: tabs are not allowed", file, line);
@@ -293,7 +327,7 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
             }
 
             if (*q == '\n' || *q == '\r' || *q == '#') {
-                p = q;
+                p             = q;
                 at_line_start = 0;
             } else {
                 if (col > indents[depth]) {
@@ -315,12 +349,15 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
                     }
                 }
 
-                p = q;
+                p             = q;
                 at_line_start = 0;
             }
         }
 
-        if (*p == ' ' || *p == '\t' || *p == '\r') { p++; continue; }
+        if (*p == ' ' || *p == '\t' || *p == '\r') {
+            p++;
+            continue;
+        }
 
         if (*p == '#') {
             while (*p && *p != '\n') p++;
@@ -332,16 +369,19 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
             line++;
             p++;
             at_line_start = 1;
-            line_blank = 0;
+            line_blank    = 0;
             continue;
         }
 
         if (*p == '"' || *p == '\'') {
-            char q = *p++;
+            char   q   = *p++;
             size_t cap = 32, n = 0;
-            char *buf = (char *)malloc(cap);
+            char  *buf = (char *)malloc(cap);
 
-            if (!buf) { snprintf(err, errsz, "oom"); return -1; }
+            if (!buf) {
+                snprintf(err, errsz, "oom");
+                return -1;
+            }
 
             while (*p && *p != q) {
                 char c = *p++;
@@ -356,7 +396,11 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
                 if (n + 1 >= cap) {
                     cap *= 2;
                     char *b2 = (char *)realloc(buf, cap);
-                    if (!b2) { free(buf); snprintf(err, errsz, "oom"); return -1; }
+                    if (!b2) {
+                        free(buf);
+                        snprintf(err, errsz, "oom");
+                        return -1;
+                    }
                     buf = b2;
                 }
 
@@ -377,10 +421,10 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
         }
 
         if (isdigit((unsigned char)*p)) {
-            char *end = NULL;
-            double v = strtod(p, &end);
+            char  *end = NULL;
+            double v   = strtod(p, &end);
 
-            char buf[64];
+            char   buf[64];
             size_t n = (size_t)(end - p);
 
             if (n >= sizeof(buf)) n = sizeof(buf) - 1;
@@ -397,7 +441,7 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
 
             while (isalnum((unsigned char)*p) || *p == '_') p++;
 
-            char buf[256];
+            char   buf[256];
             size_t n = (size_t)(p - b);
 
             if (n >= sizeof(buf)) n = sizeof(buf) - 1;
@@ -411,12 +455,30 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
         char c = *p++;
 
         switch (c) {
-        case '(': bdepth++; tok_add(out, T_LP, NULL, 0, line); break;
-        case ')': if (bdepth) bdepth--; tok_add(out, T_RP, NULL, 0, line); break;
-        case '[': bdepth++; tok_add(out, T_LB, NULL, 0, line); break;
-        case ']': if (bdepth) bdepth--; tok_add(out, T_RB, NULL, 0, line); break;
-        case '{': bdepth++; tok_add(out, T_LC, NULL, 0, line); break;
-        case '}': if (bdepth) bdepth--; tok_add(out, T_RC, NULL, 0, line); break;
+        case '(':
+            bdepth++;
+            tok_add(out, T_LP, NULL, 0, line);
+            break;
+        case ')':
+            if (bdepth) bdepth--;
+            tok_add(out, T_RP, NULL, 0, line);
+            break;
+        case '[':
+            bdepth++;
+            tok_add(out, T_LB, NULL, 0, line);
+            break;
+        case ']':
+            if (bdepth) bdepth--;
+            tok_add(out, T_RB, NULL, 0, line);
+            break;
+        case '{':
+            bdepth++;
+            tok_add(out, T_LC, NULL, 0, line);
+            break;
+        case '}':
+            if (bdepth) bdepth--;
+            tok_add(out, T_RC, NULL, 0, line);
+            break;
         case ',': tok_add(out, T_COMMA, NULL, 0, line); break;
         case ':': tok_add(out, T_COLON, NULL, 0, line); break;
         case '.': tok_add(out, T_DOT, NULL, 0, line); break;
@@ -426,24 +488,33 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
         case '/': tok_add(out, T_SLASH, NULL, 0, line); break;
         case '%': tok_add(out, T_PERCENT, NULL, 0, line); break;
         case '=':
-            if (*p == '=') { p++; tok_add(out, T_EQ, NULL, 0, line); }
-            else tok_add(out, T_ASSIGN, NULL, 0, line);
+            if (*p == '=') {
+                p++;
+                tok_add(out, T_EQ, NULL, 0, line);
+            } else tok_add(out, T_ASSIGN, NULL, 0, line);
             break;
         case '!':
-            if (*p == '=') { p++; tok_add(out, T_NE, NULL, 0, line); }
-            else { snprintf(err, errsz, "%s:%d: unexpected '!'", file, line); return -1; }
+            if (*p == '=') {
+                p++;
+                tok_add(out, T_NE, NULL, 0, line);
+            } else {
+                snprintf(err, errsz, "%s:%d: unexpected '!'", file, line);
+                return -1;
+            }
             break;
         case '<':
-            if (*p == '=') { p++; tok_add(out, T_LE, NULL, 0, line); }
-            else tok_add(out, T_LT, NULL, 0, line);
+            if (*p == '=') {
+                p++;
+                tok_add(out, T_LE, NULL, 0, line);
+            } else tok_add(out, T_LT, NULL, 0, line);
             break;
         case '>':
-            if (*p == '=') { p++; tok_add(out, T_GE, NULL, 0, line); }
-            else tok_add(out, T_GT, NULL, 0, line);
+            if (*p == '=') {
+                p++;
+                tok_add(out, T_GE, NULL, 0, line);
+            } else tok_add(out, T_GT, NULL, 0, line);
             break;
-        default:
-            snprintf(err, errsz, "%s:%d: unexpected '%c'", file, line, c);
-            return -1;
+        default: snprintf(err, errsz, "%s:%d: unexpected '%c'", file, line, c); return -1;
         }
     }
 
@@ -466,13 +537,13 @@ typedef struct {
 } BIND;
 
 typedef struct {
-    BIND  v[MAX_VARS];
-    int   n;
+    BIND v[MAX_VARS];
+    int  n;
 } SCOPE;
 
 typedef struct {
-    LEX    lex;
-    int    pos;
+    LEX lex;
+    int pos;
 
     SCOPE *scopes[64];
     int    nscope;
@@ -480,8 +551,8 @@ typedef struct {
     STAR_CFG *cfg;
     char     *cwd;
 
-    char  err[512];
-    int   failed;
+    char err[512];
+    int  failed;
 
     int   loop_depth;
     STAR *ret;
@@ -496,8 +567,12 @@ static void ierr(INTERP *I, const char *fmt, const char *a) {
     I->failed = 1;
 }
 
-static TOK *peek(INTERP *I) { return &I->lex.v[I->pos]; }
-static TOK *peek2(INTERP *I) { return &I->lex.v[I->pos + 1]; }
+static TOK *peek(INTERP *I) {
+    return &I->lex.v[I->pos];
+}
+static TOK *peek2(INTERP *I) {
+    return &I->lex.v[I->pos + 1];
+}
 
 static TOK *next(INTERP *I) {
     if (I->lex.v[I->pos].t != T_EOF) I->pos++;
@@ -538,8 +613,7 @@ static void scope_pop(INTERP *I) {
 static STAR *var_get(INTERP *I, const char *name) {
     for (int i = I->nscope - 1; i >= 0; i--)
         for (int k = 0; k < I->scopes[i]->n; k++)
-            if (!strcmp(I->scopes[i]->v[k].name, name))
-                return I->scopes[i]->v[k].val;
+            if (!strcmp(I->scopes[i]->v[k].name, name)) return I->scopes[i]->v[k].val;
 
     return NULL;
 }
@@ -558,7 +632,7 @@ static int var_set(INTERP *I, const char *name, STAR *val) {
     if (s->n >= MAX_VARS) return -1;
 
     s->v[s->n].name = sys_dup(name);
-    s->v[s->n].val = val;
+    s->v[s->n].val  = val;
     s->n++;
     return 0;
 }
@@ -579,8 +653,8 @@ STAR *star_userfn(char **params, int nparams, int body_pos) {
 
     if (!v) return star_none();
 
-    v->params = (char **)calloc((size_t)(nparams ? nparams : 1), sizeof(char *));
-    v->nparams = nparams;
+    v->params   = (char **)calloc((size_t)(nparams ? nparams : 1), sizeof(char *));
+    v->nparams  = nparams;
     v->body_pos = body_pos;
 
     for (int i = 0; i < nparams; i++) v->params[i] = sys_dup(params[i]);
@@ -598,7 +672,10 @@ static STAR *eval_call(INTERP *I, const char *name, STAR *args, STAR *kw) {
     if (fn && fn->kind == STAR_USERFN) {
         SCOPE *s = scope_push(I);
 
-        if (!s) { ierr(I, "too deep", ""); return star_none(); }
+        if (!s) {
+            ierr(I, "too deep", "");
+            return star_none();
+        }
 
         for (int i = 0; i < fn->nparams; i++) {
             STAR *v = i < args->n ? star_dup(args->items[i]) : star_none();
@@ -612,7 +689,10 @@ static STAR *eval_call(INTERP *I, const char *name, STAR *args, STAR *kw) {
 
         STAR *r = eval_block(I, 0);
 
-        if (I->ret) { r = I->ret; I->ret = NULL; }
+        if (I->ret) {
+            r      = I->ret;
+            I->ret = NULL;
+        }
 
         I->pos = save;
         scope_pop(I);
@@ -664,7 +744,7 @@ static STAR *eval_index(INTERP *I, STAR *base) {
 
         if (peek(I)->t != T_RB) {
             STAR *hv = eval_expr(I);
-            hi = (int)star_as_num(hv, base->n);
+            hi       = (int)star_as_num(hv, base->n);
             star_free(hv);
         }
 
@@ -672,8 +752,7 @@ static STAR *eval_index(INTERP *I, STAR *base) {
 
         STAR *l = star_list();
 
-        for (int i = 0; i < hi && i < base->n; i++)
-            star_list_add(l, star_dup(base->items[i]));
+        for (int i = 0; i < hi && i < base->n; i++) star_list_add(l, star_dup(base->items[i]));
 
         return l;
     }
@@ -686,7 +765,7 @@ static STAR *eval_index(INTERP *I, STAR *base) {
 
         if (peek(I)->t != T_RB) {
             STAR *hv = eval_expr(I);
-            hi = (int)star_as_num(hv, base->n);
+            hi       = (int)star_as_num(hv, base->n);
             star_free(hv);
         }
 
@@ -695,8 +774,7 @@ static STAR *eval_index(INTERP *I, STAR *base) {
 
         STAR *l = star_list();
 
-        for (int i = lo; i < hi && i < base->n; i++)
-            star_list_add(l, star_dup(base->items[i]));
+        for (int i = lo; i < hi && i < base->n; i++) star_list_add(l, star_dup(base->items[i]));
 
         return l;
     }
@@ -711,7 +789,7 @@ static STAR *eval_index(INTERP *I, STAR *base) {
     }
 
     if (base->kind == STAR_LIST) {
-        int i = (int)star_as_num(idx, 0);
+        int   i = (int)star_as_num(idx, 0);
         STAR *v = star_at(base, i);
 
         star_free(idx);
@@ -869,9 +947,7 @@ static STAR *eval_cmp(INTERP *I) {
     for (;;) {
         TT t = peek(I)->t;
 
-        if (t != T_EQ && t != T_NE && t != T_LT && t != T_LE &&
-            t != T_GT && t != T_GE)
-            return v;
+        if (t != T_EQ && t != T_NE && t != T_LT && t != T_LE && t != T_GT && t != T_GE) return v;
 
         next(I);
         STAR *r = eval_add(I);
@@ -900,8 +976,14 @@ static STAR *eval_expr(INTERP *I) {
 static STAR *eval_primary(INTERP *I) {
     TOK *t = peek(I);
 
-    if (t->t == T_NUM) { next(I); return star_num(t->num); }
-    if (t->t == T_STR) { next(I); return star_str(t->s); }
+    if (t->t == T_NUM) {
+        next(I);
+        return star_num(t->num);
+    }
+    if (t->t == T_STR) {
+        next(I);
+        return star_str(t->s);
+    }
 
     if (t->t == T_LB) {
         next(I);
@@ -914,7 +996,10 @@ static STAR *eval_primary(INTERP *I) {
             star_list_add(l, eval_expr(I));
 
             if (accept(I, T_COMMA)) {
-                if (peek(I)->t == T_RB) { next(I); break; }
+                if (peek(I)->t == T_RB) {
+                    next(I);
+                    break;
+                }
                 continue;
             }
 
@@ -943,7 +1028,10 @@ static STAR *eval_primary(INTERP *I) {
             star_free(k);
 
             if (accept(I, T_COMMA)) {
-                if (peek(I)->t == T_RC) { next(I); break; }
+                if (peek(I)->t == T_RC) {
+                    next(I);
+                    break;
+                }
                 continue;
             }
 
@@ -981,14 +1069,14 @@ static STAR *eval_primary(INTERP *I) {
     if (t->t == T_NAME) {
         next(I);
 
-        if (!strcmp(t->s, "True"))  return star_bool(1);
+        if (!strcmp(t->s, "True")) return star_bool(1);
         if (!strcmp(t->s, "False")) return star_bool(0);
-        if (!strcmp(t->s, "None"))  return star_none();
+        if (!strcmp(t->s, "None")) return star_none();
 
         if (peek(I)->t == T_LP) {
             next(I);
 
-            STAR *kw = NULL;
+            STAR *kw   = NULL;
             STAR *args = eval_args(I, &kw);
 
             STAR *r = eval_call(I, t->s, args, kw);
@@ -1027,7 +1115,7 @@ static int parse_pattern(INTERP *I, PAT *p) {
 
             if (!ns) return 0;
 
-            p->sub = ns;
+            p->sub            = ns;
             p->sub[p->nsub++] = sub;
 
             if (accept(I, T_COMMA)) continue;
@@ -1062,15 +1150,14 @@ static void bind_pattern(INTERP *I, const PAT *p, const STAR *v) {
 
     if (!v || v->kind != STAR_LIST) return;
 
-    for (int i = 0; i < p->nsub; i++)
-        bind_pattern(I, &p->sub[i], i < v->n ? v->items[i] : NULL);
+    for (int i = 0; i < p->nsub; i++) bind_pattern(I, &p->sub[i], i < v->n ? v->items[i] : NULL);
 }
 
 static int is_unsupported(const char *w) {
     static const char *bad[] = {
-        "while", "import", "class", "try", "with", "lambda", "assert",
-        "del", "global", "nonlocal", "yield", "raise", "except", "finally",
-        "match", "async", "await", "exec", "eval",
+        "while", "import", "class",    "try",   "with",  "lambda", "assert",
+        "del",   "global", "nonlocal", "yield", "raise", "except", "finally",
+        "match", "async",  "await",    "exec",  "eval",
     };
 
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++)
@@ -1085,8 +1172,10 @@ static void skip_block(INTERP *I) {
     int depth = 0;
 
     while (peek(I)->t != T_EOF) {
-        if (peek(I)->t == T_INDENT) { depth++; next(I); }
-        else if (peek(I)->t == T_DEDENT) {
+        if (peek(I)->t == T_INDENT) {
+            depth++;
+            next(I);
+        } else if (peek(I)->t == T_DEDENT) {
             next(I);
             if (--depth <= 0) break;
         } else next(I);
@@ -1094,9 +1183,7 @@ static void skip_block(INTERP *I) {
 }
 
 static void skip_line(INTERP *I) {
-    while (peek(I)->t != T_NEWLINE && peek(I)->t != T_EOF &&
-           peek(I)->t != T_DEDENT)
-        next(I);
+    while (peek(I)->t != T_NEWLINE && peek(I)->t != T_EOF && peek(I)->t != T_DEDENT) next(I);
 
     accept(I, T_NEWLINE);
 }
@@ -1117,8 +1204,7 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
 
     STAR *last = star_none();
 
-    while (!I->failed && !I->ret && peek(I)->t != T_DEDENT &&
-           peek(I)->t != T_EOF) {
+    while (!I->failed && !I->ret && peek(I)->t != T_DEDENT && peek(I)->t != T_EOF) {
         if (accept(I, T_NEWLINE)) continue;
 
         TOK *t = peek(I);
@@ -1127,7 +1213,10 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
             next(I);
             TOK *nm = next(I);
 
-            if (nm->t != T_NAME) { ierr(I, "bad def", ""); break; }
+            if (nm->t != T_NAME) {
+                ierr(I, "bad def", "");
+                break;
+            }
 
             char *params[32];
             int   np = 0;
@@ -1190,7 +1279,10 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
 
                 if (peek(I)->t != T_NAME) break;
 
-                if (!strcmp(peek(I)->s, "elif")) { next(I); continue; }
+                if (!strcmp(peek(I)->s, "elif")) {
+                    next(I);
+                    continue;
+                }
 
                 if (!strcmp(peek(I)->s, "else")) {
                     next(I);
@@ -1226,12 +1318,15 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
                     goto for_done;
                 }
 
-                PAT *ns = (PAT *)realloc(pat.sub,
-                                         sizeof(PAT) * (size_t)(pat.nsub + 1));
+                PAT *ns = (PAT *)realloc(pat.sub, sizeof(PAT) * (size_t)(pat.nsub + 1));
 
-                if (!ns) { free_pattern(&one); free_pattern(&pat); break; }
+                if (!ns) {
+                    free_pattern(&one);
+                    free_pattern(&pat);
+                    break;
+                }
 
-                pat.sub = ns;
+                pat.sub             = ns;
                 pat.sub[pat.nsub++] = one;
 
                 if (accept(I, T_COMMA)) continue;
@@ -1242,7 +1337,7 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
             if (pat.nsub == 1 && pat.sub[0].name) {
                 pat.name = pat.sub[0].name;
                 free(pat.sub);
-                pat.sub = NULL;
+                pat.sub  = NULL;
                 pat.nsub = 0;
             }
 
@@ -1252,9 +1347,12 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
             accept(I, T_COLON);
             accept(I, T_NEWLINE);
 
-            if (peek(I)->t != T_INDENT) { ierr(I, "for: need block", ""); break; }
+            if (peek(I)->t != T_INDENT) {
+                ierr(I, "for: need block", "");
+                break;
+            }
 
-            int body = I->pos;
+            int body  = I->pos;
             int depth = 1;
 
             accept(I, T_INDENT);
@@ -1287,7 +1385,7 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
                     }
 
                     int save = I->pos;
-                    I->pos = body;
+                    I->pos   = body;
                     I->loop_depth++;
                     star_free(last);
                     last = eval_block(I, 0);
@@ -1301,7 +1399,7 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
             star_free(it);
             free_pattern(&pat);
 
-for_done:
+        for_done:
             continue;
         }
 
@@ -1318,8 +1416,7 @@ for_done:
         if (t->t == T_NAME && is_unsupported(t->s)) {
             char msg[256];
 
-            snprintf(msg, sizeof(msg), "%s:%d: '%s' is not supported",
-                     I->lex.file, t->line, t->s);
+            snprintf(msg, sizeof(msg), "%s:%d: '%s' is not supported", I->lex.file, t->line, t->s);
             ierr(I, "%s", msg);
             break;
         }
@@ -1398,8 +1495,8 @@ static STAR *b_glob(INTERP *I, STAR *a, STAR *) {
 
         if (!pat) continue;
 
-        char *dir = NULL;
-        const char *gp = pat;
+        char       *dir = NULL;
+        const char *gp  = pat;
 
         const char *star_c = strpbrk(pat, "*?");
 
@@ -1411,7 +1508,7 @@ static STAR *b_glob(INTERP *I, STAR *a, STAR *) {
 
             if (slash) {
                 size_t n = (size_t)(slash - pat) + strlen(base) + 2;
-                dir = (char *)malloc(n);
+                dir      = (char *)malloc(n);
                 if (dir) snprintf(dir, n, "%s/%.*s", base, (int)(slash - pat), pat);
                 gp = slash + 1;
             }
@@ -1447,12 +1544,12 @@ static void cfg_at(char ***v, int idx, const char *s) {
     char **next = (char **)realloc(*v, sizeof(char *) * (size_t)(idx + 1));
     if (!next) return;
 
-    *v = next;
+    *v        = next;
     (*v)[idx] = sys_dup(s ? s : "");
 }
 
 static char *kw_dup(STAR *kw, const char *k) {
-    STAR *v = star_get(kw, k);
+    STAR       *v = star_get(kw, k);
     const char *s = v ? star_as_str(v) : NULL;
 
     return s ? sys_dup(s) : NULL;
@@ -1497,10 +1594,10 @@ static const char *obj_name(const STAR *v) {
 }
 
 static STAR *h_project(INTERP *I, STAR *, STAR *kw) {
-    set(&I->cfg->project_name,   kw, "name");
-    set(&I->cfg->build_dir,      kw, "build_dir");
-    set(&I->cfg->toolchain,      kw, "default_toolchain");
-    set(&I->cfg->store,          kw, "store");
+    set(&I->cfg->project_name, kw, "name");
+    set(&I->cfg->build_dir, kw, "build_dir");
+    set(&I->cfg->toolchain, kw, "default_toolchain");
+    set(&I->cfg->store, kw, "store");
 
     return star_none();
 }
@@ -1508,15 +1605,15 @@ static STAR *h_project(INTERP *I, STAR *, STAR *kw) {
 static STAR *h_build(INTERP *I, STAR *, STAR *kw) {
     set(&I->cfg->build_dir, kw, "dir");
     set(&I->cfg->toolchain, kw, "toolchain");
-    set(&I->cfg->store,     kw, "store");
+    set(&I->cfg->store, kw, "store");
 
     return star_none();
 }
 
 static STAR *h_target_config(INTERP *I, STAR *, STAR *kw) {
-    set(&I->cfg->arch,    kw, "arch");
-    set(&I->cfg->abi,     kw, "abi");
-    set(&I->cfg->flt,     kw, "float");
+    set(&I->cfg->arch, kw, "arch");
+    set(&I->cfg->abi, kw, "abi");
+    set(&I->cfg->flt, kw, "float");
     set(&I->cfg->sysroot, kw, "sysroot");
 
     return star_none();
@@ -1541,7 +1638,10 @@ static STAR *h_toolchain(INTERP *I, STAR *, STAR *kw) {
 static STAR *h_platform(INTERP *I, STAR *, STAR *kw) {
     const char *name = kw_str(kw, "name");
 
-    if (!name) { ierr(I, "platform(): missing name", ""); return star_none(); }
+    if (!name) {
+        ierr(I, "platform(): missing name", "");
+        return star_none();
+    }
 
     STAR_PLATFORM p;
     memset(&p, 0, sizeof(p));
@@ -1553,12 +1653,15 @@ static STAR *h_platform(INTERP *I, STAR *, STAR *kw) {
     p.sysroot   = kw_dup(kw, "sysroot");
     p.toolchain = kw_dup(kw, "toolchain");
 
-    STAR_PLATFORM *np = (STAR_PLATFORM *)realloc(
-        I->cfg->pl, sizeof(STAR_PLATFORM) * (size_t)(I->cfg->npl + 1));
+    STAR_PLATFORM *np =
+        (STAR_PLATFORM *)realloc(I->cfg->pl, sizeof(STAR_PLATFORM) * (size_t)(I->cfg->npl + 1));
 
-    if (!np) { ierr(I, "out of memory", ""); return star_none(); }
+    if (!np) {
+        ierr(I, "out of memory", "");
+        return star_none();
+    }
 
-    I->cfg->pl = np;
+    I->cfg->pl                = np;
     I->cfg->pl[I->cfg->npl++] = p;
 
     return obj_new("platform", name);
@@ -1581,8 +1684,7 @@ static STAR *h_package(INTERP *I, STAR *, STAR *kw) {
 }
 
 STAR_TARGET *star_cfg_add_target(STAR_CFG *c, const char *name) {
-    STAR_TARGET *tg = (STAR_TARGET *)realloc(
-        c->tg, sizeof(STAR_TARGET) * (size_t)(c->ntg + 1));
+    STAR_TARGET *tg = (STAR_TARGET *)realloc(c->tg, sizeof(STAR_TARGET) * (size_t)(c->ntg + 1));
 
     if (!tg) return NULL;
 
@@ -1621,20 +1723,26 @@ static void tg_list(STAR *kw, const char *key, char ***out, int *n) {
 static STAR *h_install(INTERP *I, STAR *, STAR *kw) {
     const char *name = kw_str(kw, "target");
 
-    if (!name) { ierr(I, "install(): missing target", ""); return star_none(); }
+    if (!name) {
+        ierr(I, "install(): missing target", "");
+        return star_none();
+    }
 
     STAR_TARGET *t = NULL;
 
     for (int i = 0; i < I->cfg->ntg; i++)
         if (!strcmp(I->cfg->tg[i].name, name)) t = &I->cfg->tg[i];
 
-    if (!t) { ierr(I, "install(): unknown target", ""); return star_none(); }
+    if (!t) {
+        ierr(I, "install(): unknown target", "");
+        return star_none();
+    }
 
-    tg_list(kw, "bin",     &t->i_bin, &t->n_i_bin);
-    tg_list(kw, "lib",     &t->i_lib, &t->n_i_lib);
+    tg_list(kw, "bin", &t->i_bin, &t->n_i_bin);
+    tg_list(kw, "lib", &t->i_lib, &t->n_i_lib);
     tg_list(kw, "include", &t->i_include, &t->n_i_include);
-    tg_list(kw, "share",   &t->i_share, &t->n_i_share);
-    tg_list(kw, "etc",     &t->i_etc, &t->n_i_etc);
+    tg_list(kw, "share", &t->i_share, &t->n_i_share);
+    tg_list(kw, "etc", &t->i_etc, &t->n_i_etc);
 
     t->i_rootfs = kw_dup(kw, "rootfs");
 
@@ -1647,8 +1755,8 @@ static void tg_deps(STAR *kw, STAR_TARGET *t) {
     if (!v || v->kind != STAR_LIST) return;
 
     for (int i = 0; i < v->n; i++) {
-        STAR *item = v->items[i];
-        const char *n = obj_name(item);
+        STAR       *item = v->items[i];
+        const char *n    = obj_name(item);
 
         if (!n) continue;
 
@@ -1656,8 +1764,7 @@ static void tg_deps(STAR *kw, STAR_TARGET *t) {
 
         if (k && k->kind == STAR_STR && !strcmp(k->s, "package"))
             cfg_at(&t->pkgdeps, t->npkgdeps++, n);
-        else
-            cfg_at(&t->deps, t->ndeps++, n);
+        else cfg_at(&t->deps, t->ndeps++, n);
     }
 }
 
@@ -1674,23 +1781,29 @@ static char *ref_name(STAR *kw, const char *key) {
 static STAR *h_target(INTERP *I, STAR *, STAR *kw) {
     const char *name = kw_str(kw, "name");
 
-    if (!name) { ierr(I, "target(): missing name", ""); return star_none(); }
+    if (!name) {
+        ierr(I, "target(): missing name", "");
+        return star_none();
+    }
 
     STAR_TARGET *t = star_cfg_add_target(I->cfg, name);
 
-    if (!t) { ierr(I, "out of memory", ""); return star_none(); }
+    if (!t) {
+        ierr(I, "out of memory", "");
+        return star_none();
+    }
 
     t->type = sys_dup(type_name(kw_str(kw, "type")));
 
-    tg_list(kw, "src",     &t->src, &t->nsrc);
-    tg_list(kw, "inc",     &t->inc, &t->ninc);
+    tg_list(kw, "src", &t->src, &t->nsrc);
+    tg_list(kw, "inc", &t->inc, &t->ninc);
     tg_deps(kw, t);
-    tg_list(kw, "cflags",  &t->cflags, &t->ncflags);
+    tg_list(kw, "cflags", &t->cflags, &t->ncflags);
     tg_list(kw, "ldflags", &t->ldflags, &t->nldflags);
 
     t->ldscript = kw_dup(kw, "linker_script");
-    t->entry = kw_dup(kw, "entry");
-    t->out = kw_dup(kw, "out");
+    t->entry    = kw_dup(kw, "entry");
+    t->out      = kw_dup(kw, "out");
 
     t->platform = ref_name(kw, "platform");
 
@@ -1698,18 +1811,18 @@ static STAR *h_target(INTERP *I, STAR *, STAR *kw) {
 }
 
 static STAR *call_builtin(INTERP *I, const char *name, STAR *args, STAR *kw) {
-    if (!strcmp(name, "len"))    return b_len(I, args, kw);
-    if (!strcmp(name, "range"))  return b_range(I, args, kw);
-    if (!strcmp(name, "str"))    return b_str(I, args, kw);
-    if (!strcmp(name, "glob"))   return b_glob(I, args, kw);
-    if (!strcmp(name, "build"))  return h_build(I, args, kw);
+    if (!strcmp(name, "len")) return b_len(I, args, kw);
+    if (!strcmp(name, "range")) return b_range(I, args, kw);
+    if (!strcmp(name, "str")) return b_str(I, args, kw);
+    if (!strcmp(name, "glob")) return b_glob(I, args, kw);
+    if (!strcmp(name, "build")) return h_build(I, args, kw);
     if (!strcmp(name, "project")) return h_project(I, args, kw);
     if (!strcmp(name, "platform")) return h_platform(I, args, kw);
     if (!strcmp(name, "target_config")) return h_target_config(I, args, kw);
-    if (!strcmp(name, "toolchain"))     return h_toolchain(I, args, kw);
-    if (!strcmp(name, "package"))       return h_package(I, args, kw);
-    if (!strcmp(name, "target"))        return h_target(I, args, kw);
-    if (!strcmp(name, "install"))       return h_install(I, args, kw);
+    if (!strcmp(name, "toolchain")) return h_toolchain(I, args, kw);
+    if (!strcmp(name, "package")) return h_package(I, args, kw);
+    if (!strcmp(name, "target")) return h_target(I, args, kw);
+    if (!strcmp(name, "install")) return h_install(I, args, kw);
 
     char msg[256];
     snprintf(msg, sizeof(msg), "%s: unknown function '%s'", I->lex.file, name);
@@ -1806,7 +1919,10 @@ void star_cfg_free(STAR_CFG *c) {
 static char *slurp(const char *path, char *err, size_t errsz) {
     FILE *f = fopen(path, "rb");
 
-    if (!f) { snprintf(err, errsz, "cannot read %s", path); return NULL; }
+    if (!f) {
+        snprintf(err, errsz, "cannot read %s", path);
+        return NULL;
+    }
 
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
@@ -1814,10 +1930,14 @@ static char *slurp(const char *path, char *err, size_t errsz) {
 
     char *buf = (char *)malloc((size_t)n + 1);
 
-    if (!buf) { fclose(f); snprintf(err, errsz, "out of memory"); return NULL; }
+    if (!buf) {
+        fclose(f);
+        snprintf(err, errsz, "out of memory");
+        return NULL;
+    }
 
     size_t got = fread(buf, 1, (size_t)n, f);
-    buf[got] = 0;
+    buf[got]   = 0;
     fclose(f);
     return buf;
 }

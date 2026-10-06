@@ -13,26 +13,22 @@ static LANG g_langs[LANG_MAX];
 static int  g_n;
 
 typedef struct {
-    const char  *ext;
-    const char  *cmd;
+    const char        *ext;
+    const char        *cmd;
     const char *const *args;
-    int          nargs;
-    const char  *outext;
-    int          cflags;
-    int          fmt;
+    int                nargs;
+    const char        *outext;
+    int                cflags;
+    int                fmt;
 } BUILTIN;
 
-static const char *const cc_args[] = { "-c" };
+static const char *const cc_args[] = {"-c"};
 
 static const BUILTIN g_builtin[] = {
-    { "c",   "cc",   cc_args, 1, ".o", 1, 0 },
-    { "cc",  "c++",  cc_args, 1, ".o", 1, 0 },
-    { "cpp", "c++",  cc_args, 1, ".o", 1, 0 },
-    { "cxx", "c++",  cc_args, 1, ".o", 1, 0 },
-    { "c++", "c++",  cc_args, 1, ".o", 1, 0 },
-    { "S",   "cc",   cc_args, 1, ".o", 1, 0 },
-    { "s",   "cc",   cc_args, 1, ".o", 1, 0 },
-    { "asm", "nasm", NULL,    0, ".o", 0, 1 },
+    {"c", "cc", cc_args, 1, ".o", 1, 0},    {"cc", "c++", cc_args, 1, ".o", 1, 0},
+    {"cpp", "c++", cc_args, 1, ".o", 1, 0}, {"cxx", "c++", cc_args, 1, ".o", 1, 0},
+    {"c++", "c++", cc_args, 1, ".o", 1, 0}, {"S", "cc", cc_args, 1, ".o", 1, 0},
+    {"s", "cc", cc_args, 1, ".o", 1, 0},    {"asm", "nasm", NULL, 0, ".o", 0, 1},
 };
 
 static int ext_match(const char *path, const char *ext) {
@@ -57,7 +53,7 @@ static int push_str(char ***v, int *n, const char *s) {
     char **next = (char **)realloc(*v, sizeof(char *) * (size_t)(*n + 1));
     if (!next) return -1;
 
-    *v = next;
+    *v       = next;
     (*v)[*n] = sys_dup(s);
 
     if (!(*v)[*n]) return -1;
@@ -70,8 +66,7 @@ int lang_add_ext(LANG *l, const char *ext) {
     return push_str(&l->ext, &l->next, ext);
 }
 
-int lang_add(const char *ext, const char *cmd,
-             const char *const *args, int nargs,
+int lang_add(const char *ext, const char *cmd, const char *const *args, int nargs,
              const char *outext, int cflags, int fmt) {
     if (g_n >= LANG_MAX) return -1;
 
@@ -100,8 +95,7 @@ int lang_init_builtin(void) {
     int n = (int)(sizeof(g_builtin) / sizeof(g_builtin[0]));
 
     for (int i = 0; i < n; i++)
-        lang_add(g_builtin[i].ext, g_builtin[i].cmd,
-                 g_builtin[i].args, g_builtin[i].nargs,
+        lang_add(g_builtin[i].ext, g_builtin[i].cmd, g_builtin[i].args, g_builtin[i].nargs,
                  g_builtin[i].outext, g_builtin[i].cflags, g_builtin[i].fmt);
 
     done = 1;
@@ -110,7 +104,7 @@ int lang_init_builtin(void) {
 
 int lang_load_toml(const TOML *t) {
     char **names = NULL;
-    int    n = toml_sections(t, "lang.", &names);
+    int    n     = toml_sections(t, "lang.", &names);
 
     for (int i = 0; i < n; i++) {
         char sect[256];
@@ -134,11 +128,8 @@ int lang_load_toml(const TOML *t) {
             args[nargs++] = (char *)a;
         }
 
-        lang_add(ext ? ext : names[i], cmd,
-                 (const char *const *)args, nargs,
-                 out ? out : ".o",
-                 toml_bool(t, sect, "cflags", 0),
-                 toml_bool(t, sect, "fmt", 0));
+        lang_add(ext ? ext : names[i], cmd, (const char *const *)args, nargs, out ? out : ".o",
+                 toml_bool(t, sect, "cflags", 0), toml_bool(t, sect, "fmt", 0));
     }
 
     for (int i = 0; i < n; i++) free(names[i]);

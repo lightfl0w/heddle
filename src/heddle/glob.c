@@ -93,8 +93,7 @@ static void push(GLOB_LIST *l, const char *s) {
     if (l->n == l->cap) {
         int newcap = l->cap ? l->cap * 2 : 16;
 
-        char **items = (char **)realloc(l->items,
-                                        sizeof(char *) * (size_t)newcap);
+        char **items = (char **)realloc(l->items, sizeof(char *) * (size_t)newcap);
         if (!items) return;
 
         l->items = items;
@@ -106,8 +105,7 @@ static void push(GLOB_LIST *l, const char *s) {
     if (l->items[l->n]) l->n++;
 }
 
-static void walk(const char *base, const char *rel, const char *pat,
-                 GLOB_LIST *out) {
+static void walk(const char *base, const char *rel, const char *pat, GLOB_LIST *out) {
     char *dir = rel[0] ? join(base, rel) : sys_dup(base);
 
     DIR *d = dir ? opendir(dir) : NULL;
@@ -129,10 +127,8 @@ static void walk(const char *base, const char *rel, const char *pat,
 
         if (!full) continue;
 
-        if (sys_isdir(full))
-            walk(base, r, pat, out);
-        else if (glob_match(pat, r))
-            push(out, r);
+        if (sys_isdir(full)) walk(base, r, pat, out);
+        else if (glob_match(pat, r)) push(out, r);
 
         free(full);
     }
