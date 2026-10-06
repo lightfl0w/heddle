@@ -70,19 +70,36 @@ static void iar_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t ca
     put_flags(buf, cap, len, r);
 }
 
+static int msvc_lib_ok(const char *f) {
+    if (!strcmp(f, "-nostdlib") || !strcmp(f, "-Wl,--build-id=none")) return 0;
+
+    return f[0] != '-';
+}
+
+static void put_msvc_ldflags(char *buf, size_t cap, int *len, const LINK_REQ *r) {
+    for (int i = 0; i < r->nldf; i++) {
+        const char *f = r->ldflags[i];
+
+        if (!f || !*f) continue;
+
+        if (!strncmp(f, "-Wl,", 4)) app(buf, cap, len, " %s", f + 4);
+        else if (msvc_lib_ok(f)) app(buf, cap, len, " %s", f);
+    }
+}
+
 static void msvc_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t cap, int *len) {
-    app(buf, cap, len, "%s /Fe %s", tc->ld, r->out);
+    app(buf, cap, len, "%s /nologo", tc->ld);
 
     if (r->shared) app(buf, cap, len, " /LD");
 
     put_objs(buf, cap, len, r, " ");
     put_libs(buf, cap, len, r, " ");
-    put_flags(buf, cap, len, r);
-
-    app(buf, cap, len, " /link");
 
     if (r->ldscript) app(buf, cap, len, " /DEF:%s", r->ldscript);
     if (r->entry) app(buf, cap, len, " /ENTRY:%s", r->entry);
+
+    app(buf, cap, len, " /Fe%s /link", r->out);
+    put_msvc_ldflags(buf, cap, len, r);
 }
 
 void link_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t cap) {

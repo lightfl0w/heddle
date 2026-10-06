@@ -174,78 +174,89 @@ static const char *env_lookup(char **items, int n, const char *key) {
     return NULL;
 }
 
-static int msvc_env(TOOLCHAIN *tc, const char *arch, const char *want) {
-    char install[1024];
-    char toolset[1024];
-    char inc[2048];
-    char lib[2048];
+static int tc_file_exists(const char *path) {
+    SYS_STAT st;
+    return sys_stat(path, &st) == 0;
+}
 
-    if (vs_install(install, sizeof(install)) != 0) return -1;
-    if (vs_toolset(install, want, toolset, sizeof(toolset)) != 0) return -1;
+static int cl_in(const char *dir, size_t dl, char *out, size_t cap) {
+    if (!dl || dl + 12 >= cap) return 0;
 
-    if (vs_sdk(arch, inc, sizeof(inc), lib, sizeof(lib)) != 0) inc[0] = lib[0] = 0;
+    snprintf(out, cap, "%.*s\\cl.exe", (int)dl, dir);
 
-    {
-        static char raw[131072];
-        char       *items[1024];
-        int         n;
-
-        if (vs_env_capture(install, arch, raw, sizeof(raw)) == 0 &&
-            (n = vs_env_split(raw, items, 1024)) > 0) {
-            for (int i = 0; i < n; i++) tc_add_env_raw(tc, items[i]);
-
-            return 0;
-        }
+    if (!tc_file_exists(out)) {
+        out[0] = 0;
+        return 0;
     }
 
-    char *sys_path = getenv("PATH");
+    return 1;
+}
 
-    tc_add_env(tc, "PATH=%s\\bin\\Host%s\\%s;%s", toolset, arch, arch, sys_path ? sys_path : "");
-    tc_add_env(tc, "INCLUDE=%s;%s\\include", inc, toolset);
-    tc_add_env(tc, "LIB=%s;%s\\lib\\%s", lib, toolset, arch);
+static void find_cl(char **items, int n, const char *arch, char *out, size_t cap) {
+    out[0] = 0;
+
+    const char *vcdir = env_lookup(items, n, "VCToolsInstallDir");
+
+    if (vcdir && vcdir[0]) {
+        size_t l = strlen(vcdir);
+
+        while (l > 0 && (vcdir[l - 1] == '\\' || vcdir[l - 1] == '/')) l--;
+
+        snprintf(out, cap, "%.*s\\bin\\Host%s\\%s\\cl.exe", (int)l, vcdir, arch, arch);
+
+        if (!tc_file_exists(out)) out[0] = 0;
+    }
+
+    for (const char *p = env_lookup(items, n, "PATH"); p && *p && !out[0];) {
+        const char *e = strchr(p, ';');
+
+        cl_in(p, e ? (size_t)(e - p) : strlen(p), out, cap);
+
+        p = e ? e + 1 : NULL;
+    }
+}
+
+static int msvc_env(TOOLCHAIN *tc, const char *arch, const char *want, char *cl_out,
+                    size_t cl_cap) {
+    char install[1024];
+
+    if (vs_install(install, sizeof(install)) != 0) return -1;
+
+    static char raw[131072];
+    char       *items[1024];
+    int         n;
+
+    if (vs_env_capture(install, arch, want, raw, sizeof(raw)) != 0 ||
+        (n = vs_env_split(raw, items, 1024)) == 0)
+        return -1;
+
+    const char *vc_inc = env_lookup(items, n, "INCLUDE");
+
+    if (!vc_inc || !vc_inc[0]) return -1;
+
+    for (int i = 0; i < n; i++) tc_add_env_raw(tc, items[i]);
+
+    if (cl_out && cl_cap) find_cl(items, n, arch, cl_out, cl_cap);
 
     return 0;
 }
 
-static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
-    char install[1024];
-    char toolset[1024];
-    char cl[2048];
+static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want, char *err, size_t errsz) {
+    char cl[2048] = {0};
 
-    if (vs_install(install, sizeof(install)) != 0) return -1;
-    if (vs_toolset(install, want, toolset, sizeof(toolset)) != 0) return -1;
-
-    snprintf(cl, sizeof(cl), "%s\\bin\\Host%s\\%s\\cl.exe", toolset, arch, arch);
-
-    {
-        static char raw[131072];
-        char       *items[1024];
-        int         n;
-
-        if (vs_env_capture(install, arch, raw, sizeof(raw)) == 0 &&
-            (n = vs_env_split(raw, items, 1024)) > 0) {
-            const char *vcdir = env_lookup(items, n, "VCToolsInstallDir");
-            char        full[2048];
-
-            if (vcdir && vcdir[0]) {
-                size_t l = strlen(vcdir);
-
-                while (l > 0 && (vcdir[l - 1] == '\\' || vcdir[l - 1] == '/')) l--;
-
-                snprintf(full, sizeof(full), "%.*s\\bin\\Host%s\\%s\\cl.exe", (int)l, vcdir, arch,
-                         arch);
-
-#ifdef _WIN32
-                if (GetFileAttributesA(full) != INVALID_FILE_ATTRIBUTES)
-                    snprintf(cl, sizeof(cl), "%s", full);
-#else
-                snprintf(cl, sizeof(cl), "%s", full);
-#endif
-            }
-        }
+    if (msvc_env(tc, arch, want, cl, sizeof(cl)) != 0) {
+        snprintf(err, errsz,
+                 "MSVC environment could not be loaded; vcvarsall.bat was not "
+                 "found or failed to run");
+        return -1;
     }
 
-    if (msvc_env(tc, arch, want) != 0) return -1;
+    if (!cl[0]) {
+        snprintf(err, errsz,
+                 "cl.exe was not found in the Visual Studio environment; "
+                 "check that the MSVC build tools are installed");
+        return -1;
+    }
 
     free(tc->cc);
     free(tc->cxx);
@@ -346,16 +357,25 @@ int tc_triple_needs_msvc(const char *triple) {
     return 0;
 }
 
-static void maybe_load_msvc_env(TOOLCHAIN *tc, const char *arch) {
-    if (!tc->cc || !tc->cc[0]) return;
-    if (tc->family && !strcmp(tc->family, "msvc")) return;
+static int maybe_load_msvc_env(TOOLCHAIN *tc, const char *arch, char *err, size_t errsz) {
+    if (!tc->cc || !tc->cc[0]) return 0;
+    if (tc->family && !strcmp(tc->family, "msvc")) return 0;
 
     char triple[256];
 
-    if (tc_probe_triple(tc->cc, triple, sizeof(triple)) != 0) return;
-    if (!tc_triple_needs_msvc(triple)) return;
+    if (tc_probe_triple(tc->cc, triple, sizeof(triple)) != 0) return 0;
+    if (!tc_triple_needs_msvc(triple)) return 0;
 
-    msvc_env(tc, arch, NULL);
+    if (msvc_env(tc, arch, NULL, NULL, 0) != 0) {
+        snprintf(err, errsz,
+                 "compiler '%s' targets the MSVC ABI (%s) but the Visual Studio "
+                 "environment could not be loaded; vcvarsall.bat was not found "
+                 "or failed to run",
+                 tc->cc, triple);
+        return -1;
+    }
+
+    return 0;
 }
 
 int tc_auto_count(void) {
@@ -475,7 +495,8 @@ static void load_preset(TOOLCHAIN *tc, const TC_PRESET *p) {
     host_fix(tc);
 }
 
-static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user, const char *arch) {
+static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user, const char *arch, char *err,
+                      size_t errsz) {
     for (int i = 0; i < tc_auto_count(); i++) {
         const TC_PRESET *p = preset_of(g_auto[i]);
 
@@ -484,12 +505,9 @@ static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user, const ch
         load_preset(tc, p);
 
         if (!strcmp(p->name, "msvc")) {
-            free(tc->cc);
-            tc->cc = NULL;
-
-            if (msvc_fill(tc, arch, NULL) != 0) continue;
+            if (msvc_fill(tc, arch, NULL, err, errsz) != 0) return -1;
         } else {
-            maybe_load_msvc_env(tc, arch);
+            if (maybe_load_msvc_env(tc, arch, err, errsz) != 0) return -1;
         }
 
         read_flags(dir, tc, user);
@@ -560,7 +578,7 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
             }
         }
 
-        if (apply_auto(tc, dir, "host", arch_msvc) == 0) goto overlay;
+        if (apply_auto(tc, dir, "host", arch_msvc, err, errsz) == 0) goto overlay;
 
         snprintf(err, errsz,
                  "no C compiler found on PATH; "
@@ -589,10 +607,6 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
         return -1;
     }
 
-    if (!strcmp(p->name, "msvc"))
-        msvc_fill(tc, or_default(&t, sect, "arch", arch_msvc),
-                  or_default(&t, sect, "toolset", NULL));
-
     tc->name     = sys_dup(name);
     tc->family   = dup_or(&t, sect, "family", p->family);
     tc->cc       = dup_or(&t, sect, "cc", p->cc);
@@ -608,11 +622,21 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
     tc->soflag   = dup_or(&t, sect, "soflag", p->soflag);
     tc->platform = dup_or(&t, sect, "platform", p->name);
 
+    if (!strcmp(p->name, "msvc") &&
+        msvc_fill(tc, or_default(&t, sect, "arch", arch_msvc),
+                  or_default(&t, sect, "toolset", NULL), err, errsz) != 0) {
+        toml_free(&t);
+        return -1;
+    }
+
     add_flags(&t, sect, "cflags", &tc->cflags, &tc->ncflags);
     add_flags(&t, sect, "ldflags", &tc->ldflags, &tc->nldflags);
 
     toml_free(&t);
-    if (strcmp(p->name, "msvc") != 0) maybe_load_msvc_env(tc, arch_msvc);
+    if (strcmp(p->name, "msvc") != 0 && maybe_load_msvc_env(tc, arch_msvc, err, errsz) != 0) {
+        toml_free(&t);
+        return -1;
+    }
 
 overlay:
     if (prefix && prefix[0]) {
@@ -758,9 +782,11 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based, const char 
     }
 
     (void)pfx2;
-    if (tc->family && strcmp(tc->family, "msvc") != 0) maybe_load_msvc_env(tc, msvc_arch(arch));
 
-    return 0;
+    if (tc->family && !strcmp(tc->family, "msvc"))
+        return msvc_fill(tc, msvc_arch(arch), NULL, err, errsz);
+
+    return maybe_load_msvc_env(tc, msvc_arch(arch), err, errsz);
 }
 
 const char *tc_tool(const TOOLCHAIN *tc, const char *name) {

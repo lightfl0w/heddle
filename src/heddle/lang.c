@@ -25,10 +25,10 @@ typedef struct {
 static const char *const cc_args[] = {"-c"};
 
 static const BUILTIN g_builtin[] = {
-    {"c", "cc", cc_args, 1, ".o", 1, 0},    {"cc", "c++", cc_args, 1, ".o", 1, 0},
-    {"cpp", "c++", cc_args, 1, ".o", 1, 0}, {"cxx", "c++", cc_args, 1, ".o", 1, 0},
-    {"c++", "c++", cc_args, 1, ".o", 1, 0}, {"S", "cc", cc_args, 1, ".o", 1, 0},
-    {"s", "cc", cc_args, 1, ".o", 1, 0},    {"asm", "nasm", NULL, 0, ".o", 0, 1},
+    {"c", "cc", cc_args, 1, NULL, 1, 0},    {"cc", "c++", cc_args, 1, NULL, 1, 0},
+    {"cpp", "c++", cc_args, 1, NULL, 1, 0}, {"cxx", "c++", cc_args, 1, NULL, 1, 0},
+    {"c++", "c++", cc_args, 1, NULL, 1, 0}, {"S", "cc", cc_args, 1, NULL, 1, 0},
+    {"s", "cc", cc_args, 1, NULL, 1, 0},    {"asm", "nasm", NULL, 0, NULL, 0, 1},
 };
 
 static int ext_match(const char *path, const char *ext) {
@@ -74,7 +74,7 @@ int lang_add(const char *ext, const char *cmd, const char *const *args, int narg
     memset(l, 0, sizeof(*l));
 
     l->cmd    = sys_dup(cmd);
-    l->outext = sys_dup(outext ? outext : ".o");
+    l->outext = outext ? sys_dup(outext) : NULL;
     l->cflags = cflags;
     l->fmt    = fmt;
 
@@ -128,7 +128,7 @@ int lang_load_toml(const TOML *t) {
             args[nargs++] = (char *)a;
         }
 
-        lang_add(ext ? ext : names[i], cmd, (const char *const *)args, nargs, out ? out : ".o",
+        lang_add(ext ? ext : names[i], cmd, (const char *const *)args, nargs, out,
                  toml_bool(t, sect, "cflags", 0), toml_bool(t, sect, "fmt", 0));
     }
 

@@ -368,7 +368,7 @@ static void build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg, const c
         addf(cmd, cap, &len, " /c /nologo");
         if (lg->cflags) addf(cmd, cap, &len, "%s", flags);
 
-        addf(cmd, cap, &len, "%s /I%s /Fo %s %s", incs, p->root, out, src);
+        addf(cmd, cap, &len, "%s /I%s /Fo%s %s", incs, p->root, out, src);
         return;
     }
 
