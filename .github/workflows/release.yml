@@ -66,11 +66,21 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y nasm
 
-      - run: xmake
+      - name: build & test (Linux)
+        if: runner.os == 'Linux'
         shell: bash
+        run: |
+          set -Eeuo pipefail
+          xmake
+          bash tests/run.sh
 
-      - run: bash tests/run.sh
-        shell: bash
+      - name: build & test (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -Eeuo pipefail
+          xmake
+          bash tests/run.sh
 
   build:
     name: build (${{ matrix.target }})
@@ -115,7 +125,8 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zip unzip
 
-      - name: build
+      - name: build (unix)
+        if: runner.os != 'Windows'
         shell: bash
         env:
           VERSION: ${{ needs.metadata.outputs.version }}
@@ -128,27 +139,53 @@ jobs:
           xmake
           BUILD_DATE="${{ needs.metadata.outputs.date }}" ./scripts/release/package.sh
 
-      - name: verify
+      - name: build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+          BUILD_TARGET: ${{ matrix.target }}
+          TARGET: ${{ matrix.target }}
+          DIST: dist
+        run: |
+          set -Eeuo pipefail
+          xmake
+          BUILD_DATE="${{ needs.metadata.outputs.date }}" ./scripts/release/package.sh
+
+      - name: verify (unix)
+        if: runner.os != 'Windows'
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
         run: |
           set -Eeuo pipefail
           pkg="heddle-${{ needs.metadata.outputs.version }}-${TARGET}"
-          exe=""
           rm -rf verify
           mkdir -p verify
-          if [ "${TARGET%%-*}" = windows ]; then
-            exe=".exe"
-            unzip -q "dist/${pkg}.zip" -d verify
-          else
-            tar -xzf "dist/${pkg}.tar.gz" -C verify
-          fi
-          test -s "verify/${pkg}/bin/heddle${exe}"
-          test -s "verify/${pkg}/bin/loom${exe}"
+          tar -xzf "dist/${pkg}.tar.gz" -C verify
+          test -s "verify/${pkg}/bin/heddle"
+          test -s "verify/${pkg}/bin/loom"
           test -s "verify/${pkg}/VERSION"
           grep -qxF "${{ needs.metadata.outputs.version }}" "verify/${pkg}/VERSION"
           "./verify/${pkg}/bin/heddle" --version | grep -F "${{ needs.metadata.outputs.version }}"
+
+      - name: verify (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -Eeuo pipefail
+          pkg="heddle-${{ needs.metadata.outputs.version }}-${TARGET}"
+          rm -rf verify
+          mkdir -p verify
+          unzip -q "dist/${pkg}.zip" -d verify
+          test -s "verify/${pkg}/bin/heddle.exe"
+          test -s "verify/${pkg}/bin/loom.exe"
+          test -s "verify/${pkg}/VERSION"
+          grep -qxF "${{ needs.metadata.outputs.version }}" "verify/${pkg}/VERSION"
+          "./verify/${pkg}/bin/heddle.exe" --version | grep -F "${{ needs.metadata.outputs.version }}"
 
       - uses: actions/upload-artifact@v4
         with:
