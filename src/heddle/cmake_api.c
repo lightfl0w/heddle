@@ -376,7 +376,7 @@ static char *find_reply(const char *dir, const char *prefix) {
     return out;
 #else
     size_t plen = strlen(prefix);
-    DIR *d = opendir(dir);
+    DIR   *d    = opendir(dir);
     if (!d) return NULL;
     struct dirent *e;
     char          *out = NULL;
@@ -399,8 +399,8 @@ static const char *map_type(const char *t) {
 }
 
 static int is_internal(const char *nm, const char *ty) {
-    static const char *known[] = {"ALL_BUILD", "ZERO_CHECK", "INSTALL", "RUN_TESTS",
-                                  "PACKAGE", "edit_cache", "rebuild_cache", NULL};
+    static const char *known[] = {"ALL_BUILD", "ZERO_CHECK", "INSTALL",       "RUN_TESTS",
+                                  "PACKAGE",   "edit_cache", "rebuild_cache", NULL};
     if (ty && !strcmp(ty, "UTILITY")) return 1;
     if (!nm) return 0;
     for (int i = 0; known[i]; i++)

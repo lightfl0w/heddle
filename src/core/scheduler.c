@@ -193,8 +193,70 @@ static void complete_node(SCHED_STATE *s, int nd, int *indeg, char *done, char *
     mutex_unlock(&s->mtx);
 }
 
-static void fail_node(SCHED_STATE *s, int nd, int *tries, char *blocked, int *remaining,
-                      int *failed) {
+static void cmd_to_str(const NODE *n, char *out, size_t cap) {
+    size_t len = 0;
+    out[0]     = 0;
+
+    for (int i = 0; n->argv[i] && len + 1 < cap; i++) {
+        int w = snprintf(out + len, cap - len, "%s%s", i ? " " : "", n->argv[i]);
+
+        if (w > 0) len += (size_t)w;
+    }
+}
+
+static void dump_log(SCHED_STATE *s, int nd) {
+    char logpath[1024];
+    snprintf(logpath, sizeof(logpath), "%s/%d.log", s->logdir, nd);
+
+    FILE *f = fopen(logpath, "rb");
+
+    if (!f) {
+        fprintf(stderr, "  (no log at %s)\n", logpath);
+        return;
+    }
+
+    char   line[4096];
+    int    n     = 0;
+    size_t total = 0;
+
+    while (fgets(line, sizeof(line), f)) {
+        if (n++ < 60) {
+            fputs("  | ", stderr);
+            fputs(line, stderr);
+
+            if (!strchr(line, '\n')) fputc('\n', stderr);
+        } else {
+            total++;
+        }
+    }
+
+    if (n > 60) fprintf(stderr, "  | ... %zu more line(s)\n", total);
+
+    fclose(f);
+
+    if (n == 0) fprintf(stderr, "  (log empty: %s)\n", logpath);
+}
+
+static void report_failure(SCHED_STATE *s, int nd, const PROC_RESULT *r) {
+    const NODE *n = &s->g->nodes[nd];
+    char        cmd[8192];
+
+    cmd_to_str(n, cmd, sizeof(cmd));
+
+    fprintf(stderr, "\nerror: build step failed\n");
+
+    if (r->signaled) fprintf(stderr, "  signal: %d\n", r->signal);
+    else fprintf(stderr, "  exit:   %d\n", r->exit_code);
+
+    fprintf(stderr, "  command: %s\n", cmd);
+    fprintf(stderr, "  output:\n");
+
+    dump_log(s, nd);
+    fputc('\n', stderr);
+}
+
+static void fail_node(SCHED_STATE *s, int nd, const PROC_RESULT *r, int *tries, char *blocked,
+                      int *remaining, int *failed) {
     if (blocked[nd]) return;
 
     tries[nd]++;
@@ -208,6 +270,8 @@ static void fail_node(SCHED_STATE *s, int nd, int *tries, char *blocked, int *re
         fprintf(stderr, "[retry %d/%d] node %d\n", tries[nd], s->retry_count, nd);
         return;
     }
+
+    report_failure(s, nd, r);
 
     *failed = 1;
     (*remaining)--;
@@ -302,7 +366,7 @@ int sched_run(const SCHED_OPTS *o) {
 
             if (r->exit_code == 0 && !r->signaled)
                 complete_node(&s, nd, indeg, done, blocked, &remaining);
-            else fail_node(&s, nd, tries, blocked, &remaining, &failed);
+            else fail_node(&s, nd, r, tries, blocked, &remaining, &failed);
         }
 
         free(local);

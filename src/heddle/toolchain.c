@@ -1,4 +1,5 @@
 #include "toolchain.h"
+#include "proc.h"
 #include "sys.h"
 #include "toml.h"
 #include "vswhere.h"
@@ -173,19 +174,16 @@ static const char *env_lookup(char **items, int n, const char *key) {
     return NULL;
 }
 
-static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
+static int msvc_env(TOOLCHAIN *tc, const char *arch, const char *want) {
     char install[1024];
     char toolset[1024];
     char inc[2048];
     char lib[2048];
-    char cl[2048];
 
     if (vs_install(install, sizeof(install)) != 0) return -1;
     if (vs_toolset(install, want, toolset, sizeof(toolset)) != 0) return -1;
 
     if (vs_sdk(arch, inc, sizeof(inc), lib, sizeof(lib)) != 0) inc[0] = lib[0] = 0;
-
-    snprintf(cl, sizeof(cl), "%s\\bin\\Host%s\\%s\\cl.exe", toolset, arch, arch);
 
     {
         static char raw[131072];
@@ -196,6 +194,36 @@ static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
             (n = vs_env_split(raw, items, 1024)) > 0) {
             for (int i = 0; i < n; i++) tc_add_env_raw(tc, items[i]);
 
+            return 0;
+        }
+    }
+
+    char *sys_path = getenv("PATH");
+
+    tc_add_env(tc, "PATH=%s\\bin\\Host%s\\%s;%s", toolset, arch, arch, sys_path ? sys_path : "");
+    tc_add_env(tc, "INCLUDE=%s;%s\\include", inc, toolset);
+    tc_add_env(tc, "LIB=%s;%s\\lib\\%s", lib, toolset, arch);
+
+    return 0;
+}
+
+static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
+    char install[1024];
+    char toolset[1024];
+    char cl[2048];
+
+    if (vs_install(install, sizeof(install)) != 0) return -1;
+    if (vs_toolset(install, want, toolset, sizeof(toolset)) != 0) return -1;
+
+    snprintf(cl, sizeof(cl), "%s\\bin\\Host%s\\%s\\cl.exe", toolset, arch, arch);
+
+    {
+        static char raw[131072];
+        char       *items[1024];
+        int         n;
+
+        if (vs_env_capture(install, arch, raw, sizeof(raw)) == 0 &&
+            (n = vs_env_split(raw, items, 1024)) > 0) {
             const char *vcdir = env_lookup(items, n, "VCToolsInstallDir");
             char        full[2048];
 
@@ -214,20 +242,10 @@ static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
                 snprintf(cl, sizeof(cl), "%s", full);
 #endif
             }
-
-            free(tc->cc);
-            free(tc->cxx);
-            free(tc->ar);
-            free(tc->ld);
-
-            tc->cc  = sys_dup(cl);
-            tc->cxx = sys_dup(cl);
-            tc->ld  = sys_dup(cl);
-            tc->ar  = sys_dup("lib");
-
-            return 0;
         }
     }
+
+    if (msvc_env(tc, arch, want) != 0) return -1;
 
     free(tc->cc);
     free(tc->cxx);
@@ -238,12 +256,6 @@ static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
     tc->cxx = sys_dup(cl);
     tc->ld  = sys_dup(cl);
     tc->ar  = sys_dup("lib");
-
-    char *sys_path = getenv("PATH");
-
-    tc_add_env(tc, "PATH=%s\\bin\\Host%s\\%s;%s", toolset, arch, arch, sys_path ? sys_path : "");
-    tc_add_env(tc, "INCLUDE=%s;%s\\include", inc, toolset);
-    tc_add_env(tc, "LIB=%s;%s\\lib\\%s", lib, toolset, arch);
 
     return 0;
 }
@@ -266,6 +278,72 @@ const char *tc_preset_cc(const char *preset) {
     const TC_PRESET *p = preset_of(preset);
 
     return p ? p->cc : "";
+}
+
+static const char *probe_tmpdir(void) {
+#if defined(_WIN32)
+    const char *t = getenv("TEMP");
+    if (t && *t) return t;
+
+    t = getenv("TMP");
+    if (t && *t) return t;
+
+    return ".";
+#else
+    const char *t = getenv("TMPDIR");
+    if (t && *t) return t;
+
+    return "/tmp";
+#endif
+}
+
+int tc_probe_triple(const char *cc, char *out, size_t cap) {
+    char log[4096];
+    snprintf(log, sizeof(log), "%s/heddle-triple.log", probe_tmpdir());
+
+    char *argv[4];
+    argv[0] = (char *)cc;
+    argv[1] = (char *)"-dumpmachine";
+    argv[2] = NULL;
+
+    PROC_RESULT r;
+    memset(&r, 0, sizeof(r));
+    out[0] = 0;
+
+    if (proc_run(argv, NULL, log, NULL, 0, &r) != 0 || r.exit_code != 0) return -1;
+
+    FILE *f = fopen(log, "rb");
+    if (!f) return -1;
+
+    char line[1024];
+    int  got = 0;
+
+    if (fgets(line, sizeof(line), f)) {
+        size_t n = strlen(line);
+
+        while (n && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[--n] = 0;
+
+        if (n) {
+            if (n >= cap) n = cap - 1;
+            memcpy(out, line, n);
+            out[n] = 0;
+            got    = 1;
+        }
+    }
+
+    fclose(f);
+    remove(log);
+
+    return got ? 0 : -1;
+}
+
+int tc_triple_needs_msvc(const char *triple) {
+    if (!triple || !*triple) return 0;
+
+    if (!strstr(triple, "windows")) return 0;
+    if (strstr(triple, "msvc")) return 1;
+
+    return 0;
 }
 
 int tc_auto_count(void) {
@@ -398,6 +476,12 @@ static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
             tc->cc = NULL;
 
             if (msvc_fill(tc, "x64", NULL) != 0) continue;
+        } else {
+            char triple[256];
+
+            if (tc_probe_triple(tc->cc, triple, sizeof(triple)) == 0 &&
+                tc_triple_needs_msvc(triple))
+                msvc_env(tc, "x64", NULL);
         }
 
         read_flags(dir, tc, user);

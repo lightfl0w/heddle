@@ -65,4 +65,8 @@ int  tc_tool_ok(const TOOLCHAIN *tc, const char *tool);
 
 const char *tc_preset_cc(const char *preset);
 
+int tc_probe_triple(const char *cc, char *out, size_t cap);
+
+int tc_triple_needs_msvc(const char *triple);
+
 #endif

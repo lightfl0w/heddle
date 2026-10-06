@@ -208,8 +208,16 @@ int heddle_toolchains(void) {
 
     for (int i = 0; i < tc_auto_count(); i++) {
         const char *name = tc_auto_at(i);
+        int         ok   = tc_probe(name);
 
-        printf("  %-8s %-4s %s\n", name, tc_probe(name) ? "ok" : "-", tc_preset_cc(name));
+        printf("  %-8s %-4s %s\n", name, ok ? "ok" : "-", tc_preset_cc(name));
+        if (!ok) continue;
+
+        char triple[256];
+        if (tc_probe_triple(tc_preset_cc(name), triple, sizeof(triple)) != 0) continue;
+
+        printf("           target %s%s\n", triple,
+               tc_triple_needs_msvc(triple) ? "  (needs MSVC env, loaded on use)" : "");
     }
 
     return 0;

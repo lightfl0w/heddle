@@ -238,11 +238,11 @@ static const char *asm_format(const PROJECT *p) {
 #endif
 }
 
-static void put_incs(const TARGET *t, char *buf, size_t cap, int *len) {
-    for (int i = 0; i < t->ninc; i++) addf(buf, cap, len, " -I%s", t->inc[i]);
+static void put_incs(const TARGET *t, char *buf, size_t cap, int *len, int msvc) {
+    for (int i = 0; i < t->ninc; i++) addf(buf, cap, len, msvc ? " /I%s" : " -I%s", t->inc[i]);
 }
 
-static void put_dep_incs(const PROJECT *p, char *buf, size_t cap, int *len) {
+static void put_dep_incs(const PROJECT *p, char *buf, size_t cap, int *len, int msvc) {
     for (int i = 0; i < p->pkg.deps.n; i++) {
         const PKG_SPEC *s = &p->pkg.deps.items[i];
 
@@ -253,7 +253,8 @@ static void put_dep_incs(const PROJECT *p, char *buf, size_t cap, int *len) {
         if (inc) {
             SYS_STAT st;
 
-            if (sys_stat(inc, &st) == 0 && st.is_dir) addf(buf, cap, len, " -I%s", inc);
+            if (sys_stat(inc, &st) == 0 && st.is_dir)
+                addf(buf, cap, len, msvc ? " /I%s" : " -I%s", inc);
 
             free(inc);
         }
@@ -345,19 +346,38 @@ static void put_args(const LANG *lg, const char *src, const char *out, const cha
     }
 }
 
+static int tc_is_msvc(const PROJECT *p) {
+    return p->tc.family && !strcmp(p->tc.family, "msvc");
+}
+
 static void build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg, const char *src,
                       const char *out, const char *incs, const char *flags, const char *deffmt,
                       char *cmd, size_t cap) {
-    const char *fmt = t->format ? t->format : deffmt;
-    int         len = 0;
+    const char *fmt  = t->format ? t->format : deffmt;
+    int         msvc = tc_is_msvc(p);
+    int         len  = 0;
 
     addf(cmd, cap, &len, "%s", tc_tool(&p->tc, lg->cmd));
+
+    if (lang_is_template(lg)) {
+        put_args(lg, src, out, fmt, p->root, cmd, cap, &len);
+        return;
+    }
+
+    if (msvc) {
+        addf(cmd, cap, &len, " /c /nologo");
+        if (lg->cflags) addf(cmd, cap, &len, "%s", flags);
+
+        addf(cmd, cap, &len, "%s /I%s /Fo%s %s", incs, p->root, out, src);
+        return;
+    }
+
     put_args(lg, src, out, fmt, p->root, cmd, cap, &len);
 
     if (lg->fmt) addf(cmd, cap, &len, " -f %s", fmt);
     if (lg->cflags) addf(cmd, cap, &len, "%s", flags);
 
-    if (!lang_is_template(lg)) addf(cmd, cap, &len, "%s -I%s -o %s %s", incs, p->root, out, src);
+    addf(cmd, cap, &len, "%s -I%s -o %s %s", incs, p->root, out, src);
 }
 
 typedef struct {
@@ -427,11 +447,13 @@ static void step_dep(STEP *st, int id) {
 }
 
 static void target_incs(const PROJECT *p, const TARGET *t, char *buf, size_t cap, int *len) {
+    int msvc = tc_is_msvc(p);
+
     *len   = 0;
     buf[0] = 0;
 
-    put_incs(t, buf, cap, len);
-    put_dep_incs(p, buf, cap, len);
+    put_incs(t, buf, cap, len, msvc);
+    put_dep_incs(p, buf, cap, len, msvc);
 }
 
 static void target_flags(const PROJECT *p, const TARGET *t, char *buf, size_t cap, int *len) {
