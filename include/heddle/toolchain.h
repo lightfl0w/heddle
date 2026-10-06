@@ -39,13 +39,14 @@ int  tc_load(TOOLCHAIN *tc, const char *dir, const char *name,
 
 int  tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name,
                 const char *prefix, const char *sysroot,
-                const char *extra_cflags,
+                const char *extra_cflags, const char *arch,
                 char *err, size_t errsz);
 
 int  tc_load_star(TOOLCHAIN *tc, const char *name, const char *based,
                   const char *cc, const char *family,
                   const char *prefix, const char *sysroot,
-                  const char *extra_cflags, char *err, size_t errsz);
+                  const char *extra_cflags, const char *arch,
+                  char *err, size_t errsz);
 
 void tc_free(TOOLCHAIN *tc);
 

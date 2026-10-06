@@ -346,6 +346,18 @@ int tc_triple_needs_msvc(const char *triple) {
     return 0;
 }
 
+static void maybe_load_msvc_env(TOOLCHAIN *tc, const char *arch) {
+    if (!tc->cc || !tc->cc[0]) return;
+    if (tc->family && !strcmp(tc->family, "msvc")) return;
+
+    char triple[256];
+
+    if (tc_probe_triple(tc->cc, triple, sizeof(triple)) != 0) return;
+    if (!tc_triple_needs_msvc(triple)) return;
+
+    msvc_env(tc, arch, NULL);
+}
+
 int tc_auto_count(void) {
     return (int)(sizeof(g_auto) / sizeof(g_auto[0]));
 }
@@ -463,7 +475,7 @@ static void load_preset(TOOLCHAIN *tc, const TC_PRESET *p) {
     host_fix(tc);
 }
 
-static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
+static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user, const char *arch) {
     for (int i = 0; i < tc_auto_count(); i++) {
         const TC_PRESET *p = preset_of(g_auto[i]);
 
@@ -475,13 +487,9 @@ static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
             free(tc->cc);
             tc->cc = NULL;
 
-            if (msvc_fill(tc, "x64", NULL) != 0) continue;
+            if (msvc_fill(tc, arch, NULL) != 0) continue;
         } else {
-            char triple[256];
-
-            if (tc_probe_triple(tc->cc, triple, sizeof(triple)) == 0 &&
-                tc_triple_needs_msvc(triple))
-                msvc_env(tc, "x64", NULL);
+            maybe_load_msvc_env(tc, arch);
         }
 
         read_flags(dir, tc, user);
@@ -491,8 +499,20 @@ static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
     return -1;
 }
 
+static const char *msvc_arch(const char *arch) {
+    if (!arch || !*arch) return "x64";
+
+    if (!strcmp(arch, "x86_64") || !strcmp(arch, "amd64")) return "x64";
+    if (!strcmp(arch, "i686") || !strcmp(arch, "i386") || !strcmp(arch, "x86")) return "x86";
+    if (!strcmp(arch, "aarch64") || !strcmp(arch, "arm64")) return "arm64";
+    if (!strncmp(arch, "armv", 4) || !strncmp(arch, "cortex", 6) || !strcmp(arch, "arm"))
+        return "arm";
+
+    return arch;
+}
+
 int tc_load(TOOLCHAIN *tc, const char *dir, const char *name, char *err, size_t errsz) {
-    return tc_load_ex(tc, dir, name, NULL, NULL, NULL, err, errsz);
+    return tc_load_ex(tc, dir, name, NULL, NULL, NULL, NULL, err, errsz);
 }
 
 static char *apply_prefix(const char *prefix, const char *tool) {
@@ -509,7 +529,10 @@ static char *apply_prefix(const char *prefix, const char *tool) {
 }
 
 int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *prefix,
-               const char *sysroot, const char *extra_cflags, char *err, size_t errsz) {
+               const char *sysroot, const char *extra_cflags, const char *arch, char *err,
+               size_t errsz) {
+    const char *arch_msvc = msvc_arch(arch);
+
     memset(tc, 0, sizeof(*tc));
 
     if (is_auto(name)) {
@@ -537,7 +560,7 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
             }
         }
 
-        if (apply_auto(tc, dir, "host") == 0) goto overlay;
+        if (apply_auto(tc, dir, "host", arch_msvc) == 0) goto overlay;
 
         snprintf(err, errsz,
                  "no C compiler found on PATH; "
@@ -567,7 +590,8 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
     }
 
     if (!strcmp(p->name, "msvc"))
-        msvc_fill(tc, or_default(&t, sect, "arch", "x64"), or_default(&t, sect, "toolset", NULL));
+        msvc_fill(tc, or_default(&t, sect, "arch", arch_msvc),
+                  or_default(&t, sect, "toolset", NULL));
 
     tc->name     = sys_dup(name);
     tc->family   = dup_or(&t, sect, "family", p->family);
@@ -588,6 +612,7 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
     add_flags(&t, sect, "ldflags", &tc->ldflags, &tc->nldflags);
 
     toml_free(&t);
+    if (strcmp(p->name, "msvc") != 0) maybe_load_msvc_env(tc, arch_msvc);
 
 overlay:
     if (prefix && prefix[0]) {
@@ -645,7 +670,7 @@ overlay:
 
 int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based, const char *cc,
                  const char *family, const char *prefix, const char *sysroot,
-                 const char *extra_cflags, char *err, size_t errsz) {
+                 const char *extra_cflags, const char *arch, char *err, size_t errsz) {
     memset(tc, 0, sizeof(*tc));
 
     const TC_PRESET *p = preset_of(based && based[0] ? based : NULL);
@@ -733,6 +758,8 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based, const char 
     }
 
     (void)pfx2;
+    if (tc->family && strcmp(tc->family, "msvc") != 0) maybe_load_msvc_env(tc, msvc_arch(arch));
+
     return 0;
 }
 

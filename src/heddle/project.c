@@ -644,7 +644,7 @@ int project_load(PROJECT *p, const char *root, const char *toolchain, char *err,
     snprintf(target_flags, sizeof(target_flags), "%s %s", p->pkg.target.cpu, p->pkg.target.fpu);
 
     if (tc_load_ex(&p->tc, p->root, p->toolchain_name, p->target_prefix, p->target_sysroot,
-                   target_flags, err, errsz) != 0) {
+                   target_flags, p->pkg.target.arch, err, errsz) != 0) {
         project_free(p);
         return -1;
     }
@@ -741,10 +741,11 @@ static int project_load_star_finish(PROJECT *p, const char *root, const char *to
 
     if (p->tc_cc || p->tc_based)
         trc = tc_load_star(&p->tc, p->toolchain_name, p->tc_based, p->tc_cc, p->tc_family,
-                           p->target_prefix, p->target_sysroot, flags, err, errsz);
+                           p->target_prefix, p->target_sysroot, flags, p->pkg.target.arch, err,
+                           errsz);
     else
         trc = tc_load_ex(&p->tc, root, p->toolchain_name, p->target_prefix, p->target_sysroot,
-                         flags, err, errsz);
+                         flags, p->pkg.target.arch, err, errsz);
 
     if (trc != 0) {
         project_free(p);
