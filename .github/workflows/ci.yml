@@ -66,9 +66,9 @@ jobs:
           echo "--- tools ---"
           which gcc cc ar nasm xmake || true
           gcc --version | head -1 || true
-          echo "--- cold build verbose ---"
           HEDDLE=$(ls "$GITHUB_WORKSPACE"/build/*/*/release/heddle* | head -1)
           echo "HEDDLE=$HEDDLE"
+          echo "--- cold build verbose ---"
           cd tests/basic
           rm -rf out .heddle
           "$HEDDLE" -v app; echo "rc=$?"
@@ -76,3 +76,24 @@ jobs:
           ls -la out 2>&1 || true
           echo "--- logs ---"
           for f in .heddle/*.log; do echo "== $f"; cat "$f"; done 2>&1 || true
+
+          echo
+          echo "=== migrate ==="
+          cd "$GITHUB_WORKSPACE/tests/migrate"
+          rm -f heddle.toml heddle.star
+          rm -rf out .heddle build-heddle-cmake
+          echo "--- cmake configure ---"
+          cmake --version
+          "$HEDDLE" migrate . 2>&1; echo "migrate rc=$?"
+          echo "--- heddle.toml ---"
+          cat heddle.toml 2>&1 || true
+          echo "--- check ---"
+          "$HEDDLE" check 2>&1; echo "check rc=$?"
+          echo "--- build ---"
+          "$HEDDLE" -v app 2>&1; echo "build rc=$?"
+          echo "--- graph ---"
+          cat .heddle/app.graph 2>&1 || true
+          echo "--- compile logs ---"
+          for f in .heddle/*.log; do echo "== $f"; cat "$f"; done 2>&1 || true
+          echo "--- out ---"
+          ls -la out 2>&1 || true

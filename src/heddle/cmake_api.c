@@ -390,6 +390,30 @@ static const char *map_type(const char *t) {
     return "exe";
 }
 
+#if defined(_WIN32)
+static int on_path_gcc(void) {
+    const char *path = getenv("PATH");
+    if (!path) return 0;
+
+    for (const char *p = path; p && *p;) {
+        const char *e = strchr(p, path[0] == '/' ? ':' : ';');
+        size_t      l = e ? (size_t)(e - p) : strlen(p);
+        char        cand[1024];
+
+        if (l && l + 8 < sizeof(cand)) {
+            snprintf(cand, sizeof(cand), "%.*s/gcc.exe", (int)l, p);
+
+            SYS_STAT st;
+            if (sys_stat(cand, &st) == 0) return 1;
+        }
+
+        p = e ? e + 1 : NULL;
+    }
+
+    return 0;
+}
+#endif
+
 static int is_internal(const char *nm, const char *ty) {
     static const char *known[] = {"ALL_BUILD", "ZERO_CHECK", "INSTALL",       "RUN_TESTS",
                                   "PACKAGE",   "edit_cache", "rebuild_cache", NULL};
@@ -448,7 +472,8 @@ static void add_compile(MIG_TARGET *t, const JV *j) {
         if (frs && frs->type == JARR)
             for (int i = 0; i < frs->n; i++) {
                 const char *f = jv_str(jv_get(frs->items[i], "fragment"));
-                if (f && *f) push_uniq(&t->cflags, &t->ncflags, f);
+
+                if (f && *f && f[0] != '/') push_uniq(&t->cflags, &t->ncflags, f);
             }
     }
 }
@@ -531,6 +556,14 @@ int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
     snprintf(log, sizeof(log), "%s/heddle-cmake-configure.log", builddir);
     char *argv[64] = {"cmake", "-S", (char *)srcdir, "-B", builddir};
     int   n        = 5;
+
+#if defined(_WIN32)
+    if (on_path_gcc()) {
+        argv[n++] = (char *)"-G";
+        argv[n++] = (char *)"MSYS Makefiles";
+    }
+#endif
+
     for (int i = 0; i < nargs && n < 63; i++) argv[n++] = args[i];
     argv[n] = NULL;
     PROC_RESULT r;
