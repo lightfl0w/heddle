@@ -5,12 +5,11 @@
 #include <string.h>
 
 static void app(char *buf, size_t cap, int *len, const char *fmt, ...) {
-    if ((size_t)*len >= cap) return;
-
     va_list ap;
     va_start(ap, fmt);
-    int n = vsnprintf(buf + *len, cap - (size_t)*len, fmt, ap);
+    int n = vsnprintf(cap ? buf + *len : NULL, cap > (size_t)*len ? cap - (size_t)*len : 0, fmt, ap);
     va_end(ap);
+
     if (n > 0) *len += n;
 }
 
@@ -26,13 +25,22 @@ static void put_flags(char *buf, size_t cap, int *len, const LINK_REQ *r) {
     for (int i = 0; i < r->nldf; i++) app(buf, cap, len, " %s", r->ldflags[i]);
 }
 
+static void put_inputs(const LINK_REQ *r, char *buf, size_t cap, int *len) {
+    if (r->rsp) {
+        app(buf, cap, len, " \"@%s\"", r->rsp);
+        return;
+    }
+
+    put_objs(buf, cap, len, r, " ");
+    put_libs(buf, cap, len, r, " ");
+}
+
 static void gnu_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t cap, int *len) {
     app(buf, cap, len, "%s", tc->ld);
     if (r->shared) app(buf, cap, len, " %s", tc->soflag);
 
     app(buf, cap, len, " -o %s", r->out);
-    put_objs(buf, cap, len, r, " ");
-    put_libs(buf, cap, len, r, " ");
+    put_inputs(r, buf, cap, len);
     if (r->entry) app(buf, cap, len, " -e %s", r->entry);
 
     if (r->ldscript) app(buf, cap, len, " -T %s", r->ldscript);
@@ -46,8 +54,7 @@ static void armcc_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t 
     if (r->ldscript) app(buf, cap, len, " --scatter=%s", r->ldscript);
     if (r->entry) app(buf, cap, len, " --entry=%s", r->entry);
 
-    put_objs(buf, cap, len, r, " ");
-    put_libs(buf, cap, len, r, " ");
+    put_inputs(r, buf, cap, len);
     put_flags(buf, cap, len, r);
 }
 
@@ -57,8 +64,7 @@ static void iar_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t ca
     if (r->ldscript) app(buf, cap, len, " --config=%s", r->ldscript);
     if (r->entry) app(buf, cap, len, " --entry=%s", r->entry);
 
-    put_objs(buf, cap, len, r, " ");
-    put_libs(buf, cap, len, r, " ");
+    put_inputs(r, buf, cap, len);
     put_flags(buf, cap, len, r);
 }
 
@@ -82,13 +88,22 @@ static void msvc_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t c
     app(buf, cap, len, "%s /nologo", tc->ld);
     if (r->shared) app(buf, cap, len, " /LD");
 
-    put_objs(buf, cap, len, r, " ");
-    put_libs(buf, cap, len, r, " ");
+    put_inputs(r, buf, cap, len);
     if (r->ldscript) app(buf, cap, len, " /DEF:%s", r->ldscript);
     if (r->entry) app(buf, cap, len, " /ENTRY:%s", r->entry);
 
     app(buf, cap, len, " /Fe%s /link", r->out);
     put_msvc_ldflags(buf, cap, len, r);
+}
+
+int link_cmd_len(const TOOLCHAIN *tc, const LINK_REQ *r) {
+    char tmp[1];
+    int  len = 0;
+    if (tc->family && !strcmp(tc->family, "armcc")) armcc_cmd(tc, r, tmp, 0, &len);
+    else if (tc->family && !strcmp(tc->family, "iar")) iar_cmd(tc, r, tmp, 0, &len);
+    else if (tc->family && !strcmp(tc->family, "msvc")) msvc_cmd(tc, r, tmp, 0, &len);
+    else gnu_cmd(tc, r, tmp, 0, &len);
+    return len;
 }
 
 void link_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t cap) {

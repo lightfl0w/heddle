@@ -13,6 +13,31 @@
 #include <unistd.h>
 #endif
 
+#define HEDDLE_CMD_MAX 8000
+
+static void rsp_arg(FILE *f, const char *s) {
+    if (strpbrk(s, " \t")) fprintf(f, "\"%s\"\n", s);
+    else fprintf(f, "%s\n", s);
+}
+
+static int write_rsp(const char *path, char **objs, int nobj, char **libs, int nlib) {
+    FILE *f = fopen(path, "w");
+    if (!f) return -1;
+
+    for (int i = 0; i < nobj; i++) rsp_arg(f, objs[i]);
+    for (int i = 0; i < nlib; i++) rsp_arg(f, libs[i]);
+    return fclose(f) == 0 ? 0 : -1;
+}
+
+static int write_flag_rsp(const char *path, const PROJECT *p, const TARGET *t) {
+    FILE *f = fopen(path, "w");
+    if (!f) return -1;
+
+    for (int i = 0; i < p->tc.ncflags; i++) rsp_arg(f, p->tc.cflags[i]);
+    for (int i = 0; i < t->ncflags; i++) rsp_arg(f, t->cflags[i]);
+    return fclose(f) == 0 ? 0 : -1;
+}
+
 static int is_supported(const char *src) {
     return lang_for(src) != NULL;
 }
@@ -312,37 +337,44 @@ static int tc_is_msvc(const PROJECT *p) {
     return p->tc.family && !strcmp(p->tc.family, "msvc");
 }
 
-static void build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg, const char *src,
-                      const char *out, const char *incs, const char *flags, const char *deffmt,
-                      char *cmd, size_t cap) {
+static int build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg, const char *src,
+                     const char *out, const char *incs, const char *flags, const char *deffmt,
+                     const char *flags_rsp, char *cmd, size_t cap) {
     const char *fmt  = t->format ? t->format : deffmt;
     int         msvc = tc_is_msvc(p);
     int         len  = 0;
     addf(cmd, cap, &len, "%s", tc_tool(&p->tc, lg->cmd));
     if (lang_is_template(lg)) {
         put_args(lg, src, out, fmt, p->root, cmd, cap, &len);
-        return;
+        return (size_t)len < cap;
     }
+
+    const char *fl = flags_rsp ? NULL : flags;
 
     if (msvc) {
         addf(cmd, cap, &len, " /c /nologo");
-        if (lg->cflags) addf(cmd, cap, &len, "%s", flags);
+        if (lg->cflags && fl) addf(cmd, cap, &len, "%s", fl);
+        if (lg->cflags && flags_rsp) addf(cmd, cap, &len, " \"@%s\"", flags_rsp);
 
         addf(cmd, cap, &len, "%s /I%s /Fo%s %s", incs, p->root, out, src);
-        return;
+        return (size_t)len < cap;
     }
 
     put_args(lg, src, out, fmt, p->root, cmd, cap, &len);
     if (lg->fmt) addf(cmd, cap, &len, " -f %s", fmt);
-    if (lg->cflags) addf(cmd, cap, &len, "%s", flags);
+    if (lg->cflags && fl) addf(cmd, cap, &len, "%s", fl);
+    if (lg->cflags && flags_rsp) addf(cmd, cap, &len, " \"@%s\"", flags_rsp);
 
     addf(cmd, cap, &len, "%s -I%s -o %s %s", incs, p->root, out, src);
+    return (size_t)len < cap;
 }
 
 typedef struct {
     char  *cmd;
     char **out;
     int    nout;
+    char **ins;
+    int    nins;
     int   *dep;
     int    ndep;
 } STEP;
@@ -357,8 +389,10 @@ static void plan_close(PLAN *pl) {
     for (int i = 0; i < pl->n; i++) {
         free(pl->steps[i].cmd);
         for (int k = 0; k < pl->steps[i].nout; k++) free(pl->steps[i].out[k]);
+        for (int k = 0; k < pl->steps[i].nins; k++) free(pl->steps[i].ins[k]);
 
         free(pl->steps[i].out);
+        free(pl->steps[i].ins);
         free(pl->steps[i].dep);
     }
 
@@ -388,6 +422,14 @@ static void step_out(STEP *st, const char *path) {
 
     st->out             = next;
     st->out[st->nout++] = sys_dup(path);
+}
+
+static void step_in(STEP *st, const char *path) {
+    char **next = (char **)realloc(st->ins, sizeof(char *) * (size_t)(st->nins + 1));
+    if (!next) return;
+
+    st->ins             = next;
+    st->ins[st->nins++] = sys_dup(path);
 }
 
 static void step_dep(STEP *st, int id) {
@@ -427,13 +469,25 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *wa
         if (!want[i]) continue;
 
         const TARGET *t = &p->targets[i];
-        char          incs[8192];
-        char          flags[8192];
-        int           ilen = 0;
-        int           flen = 0;
+
+        char incs[8192];
+        char flags[8192];
+        int  ilen = 0;
+        int  flen = 0;
         target_incs(p, t, incs, sizeof(incs), &ilen);
         target_flags(p, t, flags, sizeof(flags), &flen);
         if (t->type == TARGET_CUSTOM) continue;
+
+        char frsp[4096];
+        frsp[0] = 0;
+        if (flen > HEDDLE_CMD_MAX / 2) {
+            snprintf(frsp, sizeof(frsp), "%s/%s.flags.rsp", p->build_dir, t->name);
+
+            if (write_flag_rsp(frsp, p, t) != 0) {
+                snprintf(err, errsz, "cannot write %s", frsp);
+                return -1;
+            }
+        }
 
         if (t->type == TARGET_RAW) {
             if (t->nsrc != 1) {
@@ -451,7 +505,12 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *wa
             if (!bin) continue;
 
             char cmd[16384];
-            build_cmd(p, t, lg, t->src[0], bin, incs, flags, "bin", cmd, sizeof(cmd));
+            if (!build_cmd(p, t, lg, t->src[0], bin, incs, flags, "bin", frsp[0] ? frsp : NULL,
+                           cmd, sizeof(cmd))) {
+                free(bin);
+                snprintf(err, errsz, "target '%s': command too long", t->name);
+                return -1;
+            }
             STEP *st = plan_add(pl, cmd);
             if (!st) {
                 free(bin);
@@ -459,6 +518,7 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *wa
                 return -1;
             }
 
+            if (frsp[0]) step_in(st, frsp);
             step_out(st, bin);
             obj_of[i][0] = pl->n - 1;
             free(bin);
@@ -477,7 +537,12 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *wa
             }
 
             char cmd[16384];
-            build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p), cmd, sizeof(cmd));
+            if (!build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p),
+                           frsp[0] ? frsp : NULL, cmd, sizeof(cmd))) {
+                free(obj);
+                snprintf(err, errsz, "target '%s': command too long", t->name);
+                return -1;
+            }
             STEP *st = plan_add(pl, cmd);
             if (!st) {
                 free(obj);
@@ -485,6 +550,7 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *wa
                 return -1;
             }
 
+            if (frsp[0]) step_in(st, frsp);
             step_out(st, obj);
             obj_of[i][k] = pl->n - 1;
             free(obj);
@@ -614,6 +680,8 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
         char *out = emit_artifact(p, t);
         if (!out) continue;
 
+        char rsp[4096];
+        rsp[0] = 0;
         char cmd[16384];
         int  len   = 0;
         int  sstep = -1;
@@ -697,6 +765,24 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
             req.ldscript = script;
             req.entry    = t->entry;
             req.shared   = t->type == TARGET_SHAREDLIB;
+
+            int need = link_cmd_len(&p->tc, &req);
+
+            if (need > HEDDLE_CMD_MAX) {
+                snprintf(rsp, sizeof(rsp), "%s/%s.rsp", p->build_dir, t->name);
+
+                if (write_rsp(rsp, req.objs, req.nobj, req.libs, req.nlib) != 0) {
+                    free(script);
+                    for (int k = 0; k < nobj; k++) free(objs[k]);
+                    for (int k = 0; k < nlib; k++) free(libs[k]);
+                    free(out);
+                    snprintf(err, errsz, "cannot write %s", rsp);
+                    goto fail;
+                }
+
+                req.rsp = rsp;
+            }
+
             link_cmd(&p->tc, &req, cmd, sizeof(cmd));
             free(script);
             for (int k = 0; k < nobj; k++) free(objs[k]);
@@ -710,6 +796,7 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
             goto fail;
         }
 
+        if (rsp[0]) step_in(st, rsp);
         if (sstep >= 0) step_dep(st, sstep);
 
         step_out(st, out);
@@ -752,6 +839,11 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
 
     for (int i = 0; i < pl.n; i++) {
         fprintf(f, "%d: %s", i, pl.steps[i].cmd);
+        if (pl.steps[i].nins > 0) {
+            fputs(" @", f);
+            for (int k = 0; k < pl.steps[i].nins; k++) fprintf(f, " %s", pl.steps[i].ins[k]);
+        }
+
         if (pl.steps[i].ndep > 0) {
             fputs(" <", f);
             for (int k = 0; k < pl.steps[i].ndep; k++) fprintf(f, " %d", pl.steps[i].dep[k]);
@@ -854,7 +946,12 @@ int emit_compile_db(const PROJECT *p, const char *target, const char *out, char 
             if (!obj) continue;
 
             char cmd[16384];
-            build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p), cmd, sizeof(cmd));
+            if (!build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p), NULL, cmd,
+                           sizeof(cmd))) {
+                fprintf(stderr, "heddle: skipping %s: command too long\n", t->src[k]);
+                free(obj);
+                continue;
+            }
             if (!first) fputs(",\n", f);
 
             first = 0;

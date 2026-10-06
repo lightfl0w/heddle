@@ -16,8 +16,10 @@ typedef struct {
     const char *ldscript;
     const char *entry;
     int         shared;
+    const char *rsp;
 } LINK_REQ;
 
 void link_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t cap);
+int link_cmd_len(const TOOLCHAIN *tc, const LINK_REQ *r);
 
 #endif
