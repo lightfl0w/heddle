@@ -2,7 +2,7 @@
 dir = "out"
 
 [toolchain.host]
-cc = "cc"
+based_on = "gcc"
 cflags = ["-O2", "-Wall"]
 
 [target.util]

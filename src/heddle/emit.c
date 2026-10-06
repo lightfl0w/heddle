@@ -702,14 +702,18 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
         cmd[0] = 0;
 
         if (t->type == TARGET_CUSTOM) {
+#if defined(_WIN32)
+            len = snprintf(cmd, sizeof(cmd), "cmd /c \"%s\"", t->cmd);
+#else
             len = snprintf(cmd, sizeof(cmd), "sh -c \"%s\"", t->cmd);
+#endif
 
             for (int k = 0; k < t->nsrc; k++)
                 addf(cmd, sizeof(cmd), &len, " %s", t->src[k]);
 
             addf(cmd, sizeof(cmd), &len, " > %s", out);
         } else if (t->type == TARGET_STATICLIB) {
-            addf(cmd, sizeof(cmd), &len, "%s rcs -o %s", p->tc.ar, out);
+            addf(cmd, sizeof(cmd), &len, "%s rcs %s", p->tc.ar, out);
 
             for (int k = 0; k < t->nsrc; k++) {
                 char *obj = object_of(p, t, t->src[k]);

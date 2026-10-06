@@ -176,6 +176,32 @@ static int looks_like_path(const char *s) {
     return s[0] != '-' && (strchr(s, '.') || strchr(s, '/'));
 }
 
+static const char *base_name(const char *p) {
+    const char *s = strrchr(p, '/');
+
+    return s ? s + 1 : p;
+}
+
+static int is_ar(const char *tool) {
+    const char *b = base_name(tool);
+
+    return !strcmp(b, "ar") || !strcmp(b, "ar.exe") ||
+           (strlen(b) > 3 && !strcmp(b + strlen(b) - 3, "-ar"));
+}
+
+static const char *ar_output(const NODE *nd) {
+    if (nd->argc < 3 || !is_ar(nd->argv[0])) return NULL;
+
+    const char *flags = nd->argv[1];
+
+    if (flags[0] == '-') flags++;
+
+    if (strcmp(flags, "rcs") && strcmp(flags, "rc") && strcmp(flags, "r"))
+        return NULL;
+
+    return looks_like_path(nd->argv[2]) ? nd->argv[2] : NULL;
+}
+
 static int is_own_output(const NODE *nd, const char *s) {
     for (int i = 0; i < nd->nouts; i++)
         if (!strcmp(nd->outs[i], s)) return 1;
@@ -207,6 +233,10 @@ static void node_scan(NODE *nd) {
     for (int i = 1; i < nd->argc; i++)
         if (!strcmp(nd->argv[i], "-o") && i + 1 < nd->argc)
             list_add(&nd->outs, &nd->nouts, nd->argv[++i]);
+
+    const char *archive = ar_output(nd);
+
+    if (archive) list_add(&nd->outs, &nd->nouts, archive);
 
     for (int i = 1; i < nd->argc; i++) {
         const char *arg = nd->argv[i];

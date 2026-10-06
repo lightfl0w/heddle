@@ -5,7 +5,20 @@ ORIG_PATH=$PATH
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 
-HEDDLE=${HEDDLE:-$ROOT/build/linux/x86_64/release/heddle}
+find_heddle() {
+  local c
+  for c in "$ROOT"/build/*/*/release/heddle "$ROOT"/build/*/*/release/heddle.exe; do
+    [ -x "$c" ] && { printf '%s' "$c"; return; }
+  done
+  printf '%s' "$ROOT/build/linux/x86_64/release/heddle"
+}
+
+HEDDLE=${HEDDLE:-$(find_heddle)}
+
+case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*) EXE=.exe; FAKE_TOOLS=0 ;;
+    *)                    EXE=;     FAKE_TOOLS=1 ;;
+esac
 
 pass=0
 fail=0
@@ -65,7 +78,7 @@ rm -rf out .heddle
 
 $HEDDLE -C . -j4 app >/dev/null 2>&1
 check_rc "cold build" $? 0
-check_eq "app output" "$(./out/app)" "42"
+check_eq "app output" "$(./out/app$EXE)" "42"
 
 $HEDDLE -C . -j4 app >/dev/null 2>&1
 check_rc "noop rebuild" $? 0
@@ -74,7 +87,7 @@ sleep 1
 printf 'int util_id(void) {\n    return 2;\n}\n' > src/util/util.c
 out=$($HEDDLE -C . -j4 -v app 2>&1)
 check_rc "rebuild after edit" $? 0
-check_eq "app output after edit" "$(./out/app)" "43"
+check_eq "app output after edit" "$(./out/app$EXE)" "43"
 
 case "$out" in
     *"4 ran"*) ok "partial rebuild (4 of 6)" ;;
@@ -125,7 +138,7 @@ rm -rf out .heddle
 
 $HEDDLE -C . -j4 app >/dev/null 2>&1
 check_rc "cross-package build" $? 0
-check_eq "app output" "$(./out/app)" "6"
+check_eq "app output" "$(./out/app$EXE)" "6"
 
 $HEDDLE -C . -j4 app >/dev/null 2>&1
 check_rc "noop rebuild" $? 0
@@ -166,15 +179,21 @@ echo "os:"
 cd "$HERE/os"
 rm -rf out .heddle
 
-if command -v nasm >/dev/null 2>&1; then
+if [ -n "$EXE" ]; then
+    echo "  skip (os fixture is unix-only: boot sector, -m32, cat|)"
+elif command -v nasm >/dev/null 2>&1; then
     $HEDDLE image >/dev/null 2>&1
     check_rc "os image build" $? 0
 
     sig=$(xxd -s 510 -l 2 -p out/mbr.bin 2>/dev/null)
     check_eq "boot signature" "$sig" "55aa"
 
-    check_eq "kernel is ELF32" \
-        "$(readelf -h out/kernel 2>/dev/null | awk '/Class:/ {print $2}')" "ELF32"
+    if command -v readelf >/dev/null 2>&1; then
+        check_eq "kernel is ELF32" \
+            "$(readelf -h out/kernel$EXE 2>/dev/null | awk '/Class:/ {print $2}')" "ELF32"
+    else
+        echo "  skip (readelf not found)"
+    fi
 
     head_ok=$(cmp -n 512 out/mbr.bin out/os.img >/dev/null 2>&1 && echo yes || echo no)
     check_eq "image starts with mbr" "$head_ok" "yes"
@@ -192,86 +211,92 @@ else
 fi
 echo
 
-echo "pkg (toolchain + dependencies):"
-cd "$HERE/pkg"
-rm -rf out .heddle heddle.lock
-export HEDDLE_REGISTRY="$HERE/pkg/registry"
+if [ "$FAKE_TOOLS" = 0 ]; then
+    echo "pkg (fake shell toolchain):"
+    echo "  skip (needs a unix shell to fake arm-none-eabi-gcc)"
+else
+    echo "pkg (toolchain + dependencies):"
+    cd "$HERE/pkg"
+    rm -rf out .heddle heddle.lock
+    export HEDDLE_REGISTRY="$HERE/pkg/registry"
 
-out=$($HEDDLE tool plan 2>&1)
-check_rc "tool plan" $? 0
-expect_err "plan derives prefix" "$out" "arm-none-eabi-"
-expect_err "plan derives cpu"    "$out" "cortex-m4"
-expect_err "plan lists toolchain" "$out" "arm-none-eabi"
-expect_err "plan lists dependency" "$out" "freertos"
+    out=$($HEDDLE tool plan 2>&1)
+    check_rc "tool plan" $? 0
+    expect_err "plan derives prefix" "$out" "arm-none-eabi-"
+    expect_err "plan derives cpu"    "$out" "cortex-m4"
+    expect_err "plan lists toolchain" "$out" "arm-none-eabi"
+    expect_err "plan lists dependency" "$out" "freertos"
 
-$HEDDLE tool install >/dev/null 2>&1
-check_rc "tool install" $? 0
-[ -f heddle.lock ] && ok "lockfile written" || bad "lockfile missing"
-grep -q "^toolchain arm-none-eabi 12.2.0 sha256:" heddle.lock \
-    && ok "lock records toolchain hash" || bad "lock toolchain line"
-grep -q "^library freertos 10.5.1 sha256:" heddle.lock \
-    && ok "lock records dependency hash" || bad "lock library line"
+    $HEDDLE tool install >/dev/null 2>&1
+    check_rc "tool install" $? 0
+    [ -f heddle.lock ] && ok "lockfile written" || bad "lockfile missing"
+    grep -q "^toolchain arm-none-eabi 12.2.0 sha256:" heddle.lock \
+        && ok "lock records toolchain hash" || bad "lock toolchain line"
+    grep -q "^library freertos 10.5.1 sha256:" heddle.lock \
+        && ok "lock records dependency hash" || bad "lock library line"
 
-$HEDDLE env verify >/dev/null 2>&1
-check_rc "env verify after install" $? 0
+    $HEDDLE env verify >/dev/null 2>&1
+    check_rc "env verify after install" $? 0
 
-rm -rf out .heddle/app.graph
-$HEDDLE app >/dev/null 2>&1
-check_rc "build with managed toolchain" $? 0
-check_eq "dependency linked in" "$(./out/app | head -1)" "10501"
-check_eq "managed compiler used" "$(./out/app | tail -1)" "managed"
+    rm -rf out .heddle/app.graph
+    $HEDDLE app >/dev/null 2>&1
+    check_rc "build with managed toolchain" $? 0
+    check_eq "dependency linked in" "$(./out/app$EXE | head -1)" "10501"
+    check_eq "managed compiler used" "$(./out/app$EXE | tail -1)" "managed"
 
-printf 'int freertos_version(void){return 0;}\n' \
-    > .heddle/store/library/freertos/10.5.1/include/freertos.h
-$HEDDLE env verify >/dev/null 2>&1
-check_rc "env verify catches drift" $? 1
+    printf 'int freertos_version(void){return 0;}\n' \
+        > .heddle/store/library/freertos/10.5.1/include/freertos.h
+    $HEDDLE env verify >/dev/null 2>&1
+    check_rc "env verify catches drift" $? 1
 
-out=$($HEDDLE -v tool install 2>&1)
-expect_err "install repairs drift" "$out" "repairing"
-$HEDDLE env verify >/dev/null 2>&1
-check_rc "env verify after repair" $? 0
+    out=$($HEDDLE -v tool install 2>&1)
+    expect_err "install repairs drift" "$out" "repairing"
+    $HEDDLE env verify >/dev/null 2>&1
+    check_rc "env verify after repair" $? 0
 
-unset HEDDLE_REGISTRY
-rm -rf out .heddle/app.graph
-$HEDDLE app >/dev/null 2>&1
-check_rc "offline build (no registry)" $? 0
-check_eq "offline run" "$(./out/app | head -1)" "10501"
+    unset HEDDLE_REGISTRY
+    rm -rf out .heddle/app.graph
+    $HEDDLE app >/dev/null 2>&1
+    check_rc "offline build (no registry)" $? 0
+    check_eq "offline run" "$(./out/app$EXE | head -1)" "10501"
 
-rm -rf .heddle
-out=$($HEDDLE --offline tool install 2>&1)
-check_rc "offline cold install fails" $? 1
-expect_err "offline message" "$out" "offline"
+    rm -rf .heddle
+    out=$($HEDDLE --offline tool install 2>&1)
+    check_rc "offline cold install fails" $? 1
+    expect_err "offline message" "$out" "offline"
 
-rm -rf .heddle
-$HEDDLE env verify >/dev/null 2>&1
-check_rc "verify without lock fails" $? 1
+    rm -rf .heddle
+    $HEDDLE env verify >/dev/null 2>&1
+    check_rc "verify without lock fails" $? 1
 
-rm -rf out .heddle heddle.lock
-unset HEDDLE_REGISTRY
-echo
+    rm -rf out .heddle heddle.lock
+    unset HEDDLE_REGISTRY
+    echo
 
-echo "pkg (tarball registry):"
-TARREG="$HERE/pkg/registry-targz"
-rm -rf "$TARREG"
-mkdir -p "$TARREG/library/freertos"
-( cd "$HERE/pkg/registry/library/freertos/10.5.1" \
-  && tar czf "$TARREG/library/freertos/10.5.1.tar.gz" . )
-mkdir -p "$TARREG/toolchain/arm-none-eabi"
-( cd "$HERE/pkg/registry/toolchain/arm-none-eabi/12.2.0" \
-  && tar czf "$TARREG/toolchain/arm-none-eabi/12.2.0.tar.gz" . )
-rm -rf out .heddle heddle.lock
-( cd "$HERE/pkg" \
-  && HEDDLE_REGISTRY="$TARREG" $HEDDLE tool install >/dev/null 2>&1 )
-check_rc "install from tarball registry" $? 0
-[ -f "$HERE/pkg/.heddle/store/library/freertos/10.5.1/include/freertos.h" ] \
-    && ok "tarball hoisted to store root" || bad "tarball wrapper not hoisted"
-( cd "$HERE/pkg" \
-  && HEDDLE_REGISTRY="$TARREG" $HEDDLE app >/dev/null 2>&1 )
-check_rc "build from tarball registry" $? 0
-check_eq "tarball dependency linked" "$(cd "$HERE/pkg" && ./out/app | head -1)" "10501"
-( cd "$HERE/pkg" && $HEDDLE env verify >/dev/null 2>&1 )
-check_rc "verify tarball store" $? 0
-rm -rf "$TARREG" "$HERE/pkg/out" "$HERE/pkg/.heddle" "$HERE/pkg/heddle.lock"
+    echo "pkg (tarball registry):"
+    TARREG="$HERE/pkg/registry-targz"
+    rm -rf "$TARREG"
+    mkdir -p "$TARREG/library/freertos"
+    ( cd "$HERE/pkg/registry/library/freertos/10.5.1" \
+      && tar czf "$TARREG/library/freertos/10.5.1.tar.gz" . )
+    mkdir -p "$TARREG/toolchain/arm-none-eabi"
+    ( cd "$HERE/pkg/registry/toolchain/arm-none-eabi/12.2.0" \
+      && tar czf "$TARREG/toolchain/arm-none-eabi/12.2.0.tar.gz" . )
+    rm -rf out .heddle heddle.lock
+    ( cd "$HERE/pkg" \
+      && HEDDLE_REGISTRY="$TARREG" $HEDDLE tool install >/dev/null 2>&1 )
+    check_rc "install from tarball registry" $? 0
+    [ -f "$HERE/pkg/.heddle/store/library/freertos/10.5.1/include/freertos.h" ] \
+        && ok "tarball hoisted to store root" || bad "tarball wrapper not hoisted"
+    ( cd "$HERE/pkg" \
+      && HEDDLE_REGISTRY="$TARREG" $HEDDLE app >/dev/null 2>&1 )
+    check_rc "build from tarball registry" $? 0
+    check_eq "tarball dependency linked" "$(cd "$HERE/pkg" && ./out/app$EXE | head -1)" "10501"
+    ( cd "$HERE/pkg" && $HEDDLE env verify >/dev/null 2>&1 )
+    check_rc "verify tarball store" $? 0
+    rm -rf "$TARREG" "$HERE/pkg/out" "$HERE/pkg/.heddle" "$HERE/pkg/heddle.lock"
+    echo
+fi
 echo
 
 echo "recipe (source package):"
@@ -286,7 +311,7 @@ check_rc "source package install" $? 0
 rm -rf out .heddle/app.graph
 $HEDDLE app >/dev/null 2>&1
 check_rc "source package build" $? 0
-check_eq "c + asm linked" "$(./out/app)" "102"
+check_eq "c + asm linked" "$(./out/app$EXE)" "102"
 
 graph=$(cat .heddle/app.graph)
 case "$graph" in
@@ -342,7 +367,7 @@ rm -rf out .heddle
 
 $HEDDLE app >/dev/null 2>&1
 check_rc "glob build" $? 0
-check_eq "glob build output" "$(./out/app)" "71"
+check_eq "glob build output" "$(./out/app$EXE)" "71"
 
 graph=$(cat .heddle/app.graph)
 case "$graph" in
@@ -368,57 +393,63 @@ expect_err "glob noop rebuild" "$out" "0 ran"
 rm -rf out .heddle
 echo
 
-echo "linker script (toolchain neutral):"
-cd "$HERE/linkconv"
-rm -rf out .heddle .linkspy
-export PATH="$HERE/linkconv/bin:$PATH"
+if [ "$FAKE_TOOLS" = 0 ]; then
+    echo "linker script (fake shell toolchain):"
+    echo "  skip (needs a unix shell to fake iar/armcc)"
+else
+    echo "linker script (toolchain neutral):"
+    cd "$HERE/linkconv"
+    rm -rf out .heddle .linkspy
+    export PATH="$HERE/linkconv/bin:$PATH"
 
-$HEDDLE -t native kernel >/dev/null 2>&1
-check_rc "gnu build" $? 0
-case "$(cat .heddle/kernel.graph)" in
-    *"-T src/kernel.ld"*)   ok "gnu passes -T" ;;
-    *)                      bad "gnu lost -T" ;;
-esac
-[ "$(wc -l < .heddle/kernel.graph)" = "2" ] \
-    && ok "gnu links in one step" || bad "gnu added a conversion step"
+    $HEDDLE -t native kernel >/dev/null 2>&1
+    check_rc "gnu build" $? 0
+    case "$(cat .heddle/kernel.graph)" in
+        *"-T src/kernel.ld"*)   ok "gnu passes -T" ;;
+        *)                      bad "gnu lost -T" ;;
+    esac
+    [ "$(wc -l < .heddle/kernel.graph)" = "2" ] \
+        && ok "gnu links in one step" || bad "gnu added a conversion step"
 
-rm -rf out .heddle
-$HEDDLE -t iar kernel >/dev/null 2>&1
-check_rc "iar build" $? 0
-graph=$(cat .heddle/kernel.graph)
-case "$graph" in
-    *"ldconv src/kernel.ld iar"*) ok "iar converts .ld to .icf" ;;
-    *)                            bad "iar did not convert: $graph" ;;
-esac
-case "$graph" in
-    *"--config=out/kernel.icf"*)  ok "iar uses --config" ;;
-    *)                            bad "iar missing --config: $graph" ;;
-esac
-case "$graph" in
-    *"--entry=reset_handler"*)    ok "iar entry is semantic" ;;
-    *)                            bad "iar entry missing: $graph" ;;
-esac
-case "$graph" in
-    *"< 1 0"*) ok "link waits for script" ;;
-    *)         bad "link does not depend on conversion: $graph" ;;
-esac
-grep -q "define region FLASH" out/kernel.icf \
-    && ok "converted icf has regions" || bad "converted icf wrong"
+    rm -rf out .heddle
+    $HEDDLE -t iar kernel >/dev/null 2>&1
+    check_rc "iar build" $? 0
+    graph=$(cat .heddle/kernel.graph)
+    case "$graph" in
+        *"ldconv src/kernel.ld iar"*) ok "iar converts .ld to .icf" ;;
+        *)                            bad "iar did not convert: $graph" ;;
+    esac
+    case "$graph" in
+        *"--config=out/kernel.icf"*)  ok "iar uses --config" ;;
+        *)                            bad "iar missing --config: $graph" ;;
+    esac
+    case "$graph" in
+        *"--entry=reset_handler"*)    ok "iar entry is semantic" ;;
+        *)                            bad "iar entry missing: $graph" ;;
+    esac
+    case "$graph" in
+        *"< 1 0"*) ok "link waits for script" ;;
+        *)         bad "link does not depend on conversion: $graph" ;;
+    esac
+    grep -q "define region FLASH" out/kernel.icf \
+        && ok "converted icf has regions" || bad "converted icf wrong"
 
-rm -rf out .heddle
-$HEDDLE -t armcc kernel >/dev/null 2>&1
-check_rc "armcc build" $? 0
-graph=$(cat .heddle/kernel.graph)
-case "$graph" in
-    *"--scatter=out/kernel.sct"*) ok "armcc uses --scatter" ;;
-    *)                            bad "armcc missing --scatter: $graph" ;;
-esac
-grep -q "^  FLASH 0x8000000" out/kernel.sct \
-    && ok "scatter has region" || bad "scatter wrong"
+    rm -rf out .heddle
+    $HEDDLE -t armcc kernel >/dev/null 2>&1
+    check_rc "armcc build" $? 0
+    graph=$(cat .heddle/kernel.graph)
+    case "$graph" in
+        *"--scatter=out/kernel.sct"*) ok "armcc uses --scatter" ;;
+        *)                            bad "armcc missing --scatter: $graph" ;;
+    esac
+    grep -q "^  FLASH 0x8000000" out/kernel.sct \
+        && ok "scatter has region" || bad "scatter wrong"
 
-rm -rf out .heddle .linkspy
-unset PATH
-export PATH="$ORIG_PATH"
+    rm -rf out .heddle .linkspy
+    unset PATH
+    export PATH="$ORIG_PATH"
+    echo
+fi
 echo
 
 echo "install:"
@@ -470,9 +501,37 @@ check_rc "uninstall" $? 0
 
 rm -rf stage .heddle
 cp heddle.toml heddle.keep.toml
-sed -e 's#arch = "x86_64"#arch = "x86_64"\nsysroot = "/opt/sysroot"#' \
-    -e 's#^\[target.mylib.install\]#[target.mylib.install]\nsysroot_lib = "out/libmylib.a"\nsysroot_include = ["include/**/*.h"]#' \
-    heddle.keep.toml > heddle.toml
+
+cat > heddle.toml <<'EOF'
+[build]
+dir = "out"
+
+[install]
+prefix = "/opt/myos"
+
+[target]
+arch = "x86_64"
+sysroot = "/opt/sysroot"
+
+[target.kernel]
+type = "exe"
+src = ["src/kernel.c"]
+
+[target.kernel.install]
+bin = "out/kernel"
+
+[target.mylib]
+type = "staticlib"
+src = ["src/mylib.c"]
+inc = ["include"]
+
+[target.mylib.install]
+lib = "out/libmylib.a"
+include = ["include/**/*.h"]
+sysroot_lib = ["out/libmylib.a"]
+sysroot_include = ["include/**/*.h"]
+EOF
+
 $HEDDLE install --destdir=./stage >/dev/null 2>&1
 check_rc "sysroot install" $? 0
 [ -f stage/opt/sysroot/lib/libmylib.a ]       && ok "sysroot lib" || bad "sysroot lib"
@@ -501,7 +560,7 @@ check_rc "init exe" $? 0
     && ok "exe files created" || bad "exe files missing"
 ( cd exe1 && $HEDDLE app >/dev/null 2>&1 )
 check_rc "generated exe builds" $? 0
-check_eq "generated exe runs" "$(cd exe1 && ./out/app)" "hello"
+check_eq "generated exe runs" "$(cd exe1 && ./out/app$EXE)" "hello"
 ( cd exe1 && $HEDDLE check >/dev/null 2>&1 )
 check_rc "generated exe checks" $? 0
 
@@ -516,7 +575,7 @@ check_rc "init exe --star" $? 0
 [ ! -f star1/heddle.toml ] && ok "no toml when --star" || bad "toml written too"
 ( cd star1 && $HEDDLE app >/dev/null 2>&1 )
 check_rc "generated star builds" $? 0
-check_eq "generated star runs" "$(cd star1 && ./out/app)" "hello"
+check_eq "generated star runs" "$(cd star1 && ./out/app$EXE)" "hello"
 
 $HEDDLE init lib starlib --star </dev/null >/dev/null 2>&1
 ( cd starlib && $HEDDLE mylib >/dev/null 2>&1 )
@@ -528,14 +587,19 @@ grep -q 'arch = "riscv32imac"' fw1/heddle.toml \
     && ok "embedded arch recorded" || bad "embedded arch wrong"
 ( cd fw1 && $HEDDLE check >/dev/null 2>&1 )
 check_rc "generated embedded checks" $? 0
-grep -q "riscv64-unknown-elf" <(cd fw1 && $HEDDLE check 2>&1) \
-    && ok "embedded derives cross prefix" || bad "embedded prefix wrong"
+cprefix=$(cd fw1 && $HEDDLE check 2>&1)
+case "$cprefix" in
+    *riscv64-unknown-elf*) ok "embedded derives cross prefix" ;;
+    *)                     bad "embedded prefix wrong: $cprefix" ;;
+esac
 
 out=$($HEDDLE init embedded fw2 --arch=nope 2>&1)
 check_rc "bad arch rejected" $? 2
 expect_err "bad arch message" "$out" "unknown arch"
 
-if command -v nasm >/dev/null 2>&1; then
+if [ -n "$EXE" ]; then
+    echo "  skip (baremetal template needs a unix shell)"
+elif command -v nasm >/dev/null 2>&1; then
     $HEDDLE init baremetal os1 </dev/null >/dev/null 2>&1
     ( cd os1 && $HEDDLE image >/dev/null 2>&1 )
     check_rc "generated baremetal builds" $? 0
@@ -599,7 +663,7 @@ check_rc "verify imported package" $? 0
 
 $HEDDLE app >/dev/null 2>&1
 check_rc "build against imported package" $? 0
-check_eq "linked against real lib name" "$(./out/app)" "131"
+check_eq "linked against real lib name" "$(./out/app$EXE)" "131"
 grep -q '\-lz ' .heddle/app.graph || grep -q '\-lz$' .heddle/app.graph \
     && ok "uses libz.a name not port name" || bad "link name wrong"
 
@@ -636,7 +700,7 @@ $HEDDLE check >/dev/null 2>&1
 check_rc "migrated cmake checks" $? 0
 $HEDDLE app >/dev/null 2>&1
 check_rc "migrated cmake builds" $? 0
-check_eq "migrated cmake runs" "$(./out/app)" "42"
+check_eq "migrated cmake runs" "$(./out/app$EXE)" "42"
 
 rm -f heddle.toml heddle.star
 rm -rf out .heddle
@@ -645,7 +709,7 @@ check_rc "migrate --star" $? 0
 grep -q "target(" heddle.star && ok "star output has target()" || bad "no target() in star"
 $HEDDLE app >/dev/null 2>&1
 check_rc "migrated star builds" $? 0
-check_eq "migrated star runs" "$(./out/app)" "42"
+check_eq "migrated star runs" "$(./out/app$EXE)" "42"
 rm -f heddle.star
 rm -rf out .heddle
 $HEDDLE migrate . >/dev/null 2>&1
@@ -673,7 +737,7 @@ grep -q '"-Wall"' heddle.toml \
 
 $HEDDLE app >/dev/null 2>&1
 check_rc "migrated xmake builds" $? 0
-check_eq "migrated xmake runs" "$(./out/app)" "42"
+check_eq "migrated xmake runs" "$(./out/app$EXE)" "42"
 
 cd "$HERE/migrate_edge"
 rm -f heddle.toml
@@ -716,7 +780,7 @@ check_rc "star project checks" $? 0
 
 $HEDDLE app >/dev/null 2>&1
 check_rc "star project builds" $? 0
-check_eq "star project runs" "$(./out/app)" "42"
+check_eq "star project runs" "$(./out/app$EXE)" "42"
 
 grep -q "src/util.c" .heddle/app.graph \
     && ok "def/slice generated util" || bad "util not in graph"
@@ -792,27 +856,31 @@ check_rc "platform project checks" $? 0
 expect_err "loop made both boards" "$out" "fw_nucleo"
 expect_err "second board" "$out" "fw_bluepill"
 
-export PATH="$HERE/star_platform/bin:$PATH"
-$HEDDLE fw_nucleo >/dev/null 2>&1
-check_rc "build fw_nucleo" $? 0
-grep -q "cortex-m4" .heddle/fw_nucleo.graph \
-    && ok "nucleo uses armv7em" || bad "nucleo arch wrong"
-grep -q -- "-mfloat-abi=hard" .heddle/fw_nucleo.graph \
-    && ok "nucleo hard float" || bad "nucleo float wrong"
+if [ "$FAKE_TOOLS" = 0 ]; then
+    echo "  skip (fake arm-none-eabi-gcc needs a unix shell)"
+else
+    export PATH="$HERE/star_platform/bin:$PATH"
+    $HEDDLE fw_nucleo >/dev/null 2>&1
+    check_rc "build fw_nucleo" $? 0
+    grep -q "cortex-m4" .heddle/fw_nucleo.graph \
+        && ok "nucleo uses armv7em" || bad "nucleo arch wrong"
+    grep -q -- "-mfloat-abi=hard" .heddle/fw_nucleo.graph \
+        && ok "nucleo hard float" || bad "nucleo float wrong"
 
-$HEDDLE fw_bluepill >/dev/null 2>&1
-check_rc "build fw_bluepill" $? 0
-grep -q "cortex-m3" .heddle/fw_bluepill.graph \
-    && ok "bluepill uses armv7m" || bad "bluepill arch wrong"
-grep -q -- "-mfloat-abi=soft" .heddle/fw_bluepill.graph \
-    && ok "bluepill soft float" || bad "bluepill float wrong"
+    $HEDDLE fw_bluepill >/dev/null 2>&1
+    check_rc "build fw_bluepill" $? 0
+    grep -q "cortex-m3" .heddle/fw_bluepill.graph \
+        && ok "bluepill uses armv7m" || bad "bluepill arch wrong"
+    grep -q -- "-mfloat-abi=soft" .heddle/fw_bluepill.graph \
+        && ok "bluepill soft float" || bad "bluepill float wrong"
 
-grep -q "arm-none-eabi-gcc" .heddle/fw_nucleo.graph \
-    && ok "star toolchain cc used" || bad "toolchain cc not used"
+    grep -q "arm-none-eabi-gcc" .heddle/fw_nucleo.graph \
+        && ok "star toolchain cc used" || bad "toolchain cc not used"
 
-out=$($HEDDLE tool plan 2>&1)
-expect_err "package object registered" "$out" "freertos"
-check_rc "package does not break check" $? 0
+    out=$($HEDDLE tool plan 2>&1)
+    expect_err "package object registered" "$out" "freertos"
+    check_rc "package does not break check" $? 0
+fi
 
 unset PATH
 export PATH="$ORIG_PATH"

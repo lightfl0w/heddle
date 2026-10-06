@@ -237,7 +237,28 @@ static void read_flags(const char *dir, TOOLCHAIN *tc, const char *user) {
     toml_free(&t);
 }
 
+static void host_fix(TOOLCHAIN *tc) {
+#if defined(_WIN32)
+    if (tc->family && !strcmp(tc->family, "gnu")) {
+        if (tc->binext && !tc->binext[0]) {
+            free(tc->binext);
+            tc->binext = sys_dup(".exe");
+        }
+
+        if (tc->soflag && !strcmp(tc->soflag, "-shared") &&
+            tc->dllpre && !strcmp(tc->dllpre, "lib")) {
+            free(tc->dllpre);
+            tc->dllpre = sys_dup("");
+        }
+    }
+#else
+    (void)tc;
+#endif
+}
+
 static void load_preset(TOOLCHAIN *tc, const TC_PRESET *p) {
+    memset(tc, 0, sizeof(*tc));
+
     tc->name     = sys_dup(p->name);
     tc->family   = sys_dup(p->family);
     tc->cc       = sys_dup(p->cc);
@@ -252,6 +273,8 @@ static void load_preset(TOOLCHAIN *tc, const TC_PRESET *p) {
     tc->dllext   = sys_dup(p->dllext);
     tc->soflag   = sys_dup(p->soflag);
     tc->platform = sys_dup(p->name);
+
+    host_fix(tc);
 }
 
 static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user) {
@@ -383,6 +406,12 @@ overlay:
         char buf[512];
 
         char *n;
+
+        free(tc->binext);
+        tc->binext = sys_dup("");
+
+        free(tc->dllpre);
+        tc->dllpre = sys_dup("lib");
 
         n = apply_prefix(prefix, tc->cc);  free(tc->cc);  tc->cc  = n;
         n = apply_prefix(prefix, tc->cxx); free(tc->cxx); tc->cxx = n;

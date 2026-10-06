@@ -2,7 +2,7 @@
 dir = "out"
 
 [toolchain.host]
-cc = "cc"
+based_on = "gcc"
 as = "nasm"
 cflags = ["-O2", "-ffreestanding", "-fno-pic", "-fno-stack-protector", "-m32", "-nostdlib"]
 

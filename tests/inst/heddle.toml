@@ -12,7 +12,7 @@ type = "exe"
 src = ["src/kernel.c"]
 
 [target.kernel.install]
-bin = "out/kernel"
+bin = "out/kernel*"
 
 [target.mylib]
 type = "staticlib"

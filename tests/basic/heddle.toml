@@ -3,7 +3,7 @@ dir = "out"
 toolchain = "auto"
 
 [toolchain.host]
-cc = "cc"
+based_on = "gcc"
 cflags = ["-O2", "-Wall"]
 
 [toolchain.debug]
