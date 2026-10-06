@@ -31,16 +31,23 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
+      - uses: xmake-io/github-action-setup-xmake@v1
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
+          path-type: inherit
           install: >-
             base-devel
             git
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-binutils
             mingw-w64-x86_64-nasm
-      - uses: xmake-io/github-action-setup-xmake@v1
+      - run: |
+          xmake --version || {
+            echo "xmake not on PATH; PATH is:"
+            echo "$PATH"
+            exit 1
+          }
       - run: xmake
       - run: bash tests/run.sh
