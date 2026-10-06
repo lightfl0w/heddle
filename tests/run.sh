@@ -76,8 +76,10 @@ echo "basic:"
 cd "$HERE/basic"
 rm -rf out .heddle
 
-$HEDDLE -C . -j4 app >/dev/null 2>&1
-check_rc "cold build" $? 0
+out=$($HEDDLE -C . -j4 -v app 2>&1)
+rc=$?
+check_rc "cold build" $rc 0
+[ $rc -eq 0 ] || echo "$out"
 check_eq "app output" "$(./out/app$EXE)" "42"
 
 $HEDDLE -C . -j4 app >/dev/null 2>&1
@@ -173,7 +175,6 @@ expect_err "check reports targets" "$out" "3 targets ok"
 rm -rf out .heddle
 
 echo
-[ "$fail" -eq 0 ]
 
 echo "os:"
 cd "$HERE/os"
@@ -976,3 +977,5 @@ rm -rf out .heddle
 echo
 
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"
+
+[ "$fail" -eq 0 ]

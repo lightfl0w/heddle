@@ -155,7 +155,7 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path,
     char *block = env_merge(env, nenv);
 
     BOOL ok = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE,
-                             CREATE_UNICODE_ENVIRONMENT, block, cwd, &si, &pi);
+                             0, block, cwd, &si, &pi);
 
     free(block);
 
