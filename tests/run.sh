@@ -600,4 +600,86 @@ cd "$HERE/vcpkg"
 rm -rf installed proj/.heddle proj/out proj/heddle.lock
 echo
 
+echo "migrate:"
+
+cd "$HERE/migrate"
+rm -f heddle.toml
+rm -rf out .heddle
+
+out=$($HEDDLE migrate . --dry-run 2>&1)
+check_rc "cmake dry-run" $? 0
+expect_err "dry-run lists targets" "$out" "3 targets"
+[ -f heddle.toml ] && bad "dry-run wrote a file" || ok "dry-run writes nothing"
+
+$HEDDLE migrate . >/dev/null 2>&1
+check_rc "cmake migrate" $? 0
+[ -f heddle.toml ] && ok "wrote heddle.toml" || bad "no heddle.toml"
+grep -q "^\[target.app\]" heddle.toml      && ok "target section" || bad "no target"
+grep -q 'type = "staticlib"' heddle.toml   && ok "static kind mapped" || bad "kind wrong"
+grep -q 'deps = \["math", "util"\]' heddle.toml \
+    && ok "link_libraries -> deps" || bad "deps wrong"
+grep -q '"-DLEVEL=3"' heddle.toml          && ok "compile_definitions -> cflags" || bad "defines wrong"
+
+$HEDDLE check >/dev/null 2>&1
+check_rc "migrated cmake checks" $? 0
+$HEDDLE app >/dev/null 2>&1
+check_rc "migrated cmake builds" $? 0
+check_eq "migrated cmake runs" "$(./out/app)" "42"
+
+out=$($HEDDLE migrate . 2>&1)
+check_rc "existing manifest refused" $? 1
+expect_err "clobber message" "$out" "exists"
+
+cd "$HERE/migrate_xm"
+rm -f heddle.toml
+rm -rf out .heddle
+
+out=$($HEDDLE migrate . --dry-run 2>&1)
+check_rc "xmake dry-run" $? 0
+expect_err "xmake lists targets" "$out" "3 targets"
+
+$HEDDLE migrate . >/dev/null 2>&1
+check_rc "xmake migrate" $? 0
+grep -q 'deps = \["math", "util"\]' heddle.toml \
+    && ok "add_deps -> deps" || bad "xmake deps wrong"
+grep -q '"-DLEVEL=3"' heddle.toml \
+    && ok "add_defines -> cflags" || bad "xmake defines wrong"
+grep -q '"-Wall"' heddle.toml \
+    && ok "add_cxflags -> cflags" || bad "xmake cflags wrong"
+
+$HEDDLE app >/dev/null 2>&1
+check_rc "migrated xmake builds" $? 0
+check_eq "migrated xmake runs" "$(./out/app)" "42"
+
+cd "$HERE/migrate_edge"
+rm -f heddle.toml
+rm -rf out .heddle
+
+$HEDDLE migrate . --from cmake >/dev/null 2>&1
+check_rc "cmake -T migrate" $? 0
+grep -q 'linker_script = "kernel.ld"' heddle.toml \
+    && ok "-T -> linker_script" || bad "-T not mapped"
+grep -q '"-lpthread"' heddle.toml \
+    && ok "system lib -> -lflag" || bad "system lib wrong"
+
+rm -f heddle.toml
+$HEDDLE migrate . --from xmake >/dev/null 2>&1
+check_rc "xmake -T migrate" $? 0
+grep -q 'linker_script = "kernel.ld"' heddle.toml \
+    && ok "xmake -T -> linker_script" || bad "xmake -T not mapped"
+grep -q '"-lpthread"' heddle.toml \
+    && ok "xmake syslinks -> -lflag" || bad "xmake syslinks wrong"
+
+out=$($HEDDLE migrate . --from nope 2>&1)
+check_rc "bad --from rejected" $? 2
+expect_err "bad --from message" "$out" "unknown --from"
+
+out=$($HEDDLE migrate /nonexistent 2>&1)
+check_rc "missing source refused" $? 1
+expect_err "missing source message" "$out" "no"
+
+rm -f heddle.toml
+rm -rf out .heddle
+echo
+
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"

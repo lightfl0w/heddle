@@ -1,0 +1,5 @@
+target("kernel")
+    set_kind("binary")
+    add_files("src/*.c")
+    add_syslinks("pthread", "m")
+    add_ldflags("-T", "kernel.ld", "-nostdlib")

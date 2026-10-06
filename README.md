@@ -32,6 +32,7 @@ heddle env verify     # 校验环境与锁文件完全一致
 heddle install        # 安装构建产物
 heddle uninstall      # 卸载
 heddle vcpkg ...      # 兼容 vcpkg 包
+heddle migrate        # 从 CMake / XMake 迁移(测试)
 ```
 
 工程根目录默认是当前目录，用 `-C` 切换：
@@ -410,6 +411,39 @@ zlib = "1.3.1"
 支持的 triplet 映射：`x64-linux` `x86-linux` `arm64-linux` `arm-linux`
 `x64-windows` `x64-windows-static` `x64-osx` `arm64-osx`
 `thumbv7m-none-eabi` `thumbv7em-none-eabihf` `arm-none-eabi`。
+
+## 从 CMake / XMake 迁移
+
+```sh
+heddle migrate                  # 读 CMakeLists.txt 或 xmake.lua
+heddle migrate ./proj           # 指定目录
+heddle migrate --from xmake     # 目录里两个都有时强制选一个
+heddle migrate --dry-run        # 只打印解析结果
+heddle migrate --out my.toml    # 换个输出名
+```
+
+读 CMakeLists.txt 或 xmake.lua，生成 `heddle.toml`。已有的 `heddle.toml`
+
+| CMake | XMake | heddle |
+| --- | --- | --- |
+| `add_executable(a ...)` | `set_kind("binary")` | `type = "exe"` |
+| `add_library(a STATIC ...)` | `set_kind("static")` | `type = "staticlib"` |
+| `add_library(a SHARED ...)` | `set_kind("shared")` | `type = "sharedlib"` |
+| `target_sources` / 列表参数 | `add_files(...)` | `src = [...]` |
+| `target_include_directories` | `add_includedirs(...)` | `inc = [...]` |
+| `target_link_libraries` | `add_deps(...)` / `add_links(...)` | `deps = [...]` |
+| `target_compile_definitions` | `add_defines(...)` | `cflags = [...]` |
+| `target_compile_options` | `add_cxflags(...)` | `cflags = [...]` |
+| `target_link_options` | `add_ldflags(...)` | `ldflags = [...]` |
+| `-T file` / `-Wl,-T,file` | `add_ldflags("-T", "file")` | `linker_script = "file"` |
+| — | `add_syslinks(...)` | `ldflags = ["-l..."]` |
+
+`target_link_libraries` 里不是本工程 target 的名字（`pthread`、`m`）会自动
+变成 `-lpthread`、`-lm`。`-T` 会被识别成语义化的 `linker_script`。
+
+转不了的会列出来，不会静默丢掉。
+
+生成的 `heddle.toml` 可以直接 `heddle <target>` 构建，也可以 `heddle check`。
 
 ## 测试
 
