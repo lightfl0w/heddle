@@ -233,10 +233,20 @@ static const char *asm_format(const PROJECT *p) {
     const char *arch = p->pkg.target.arch;
 
     if (!arch) return "elf";
-    if (!strcmp(arch, "x86_64") || !strcmp(arch, "aarch64")) return "elf64";
-    if (!strcmp(arch, "i686")) return "elf32";
 
-    return "elf";
+    int wide = !strcmp(arch, "x86_64") || !strcmp(arch, "aarch64") ||
+               !strcmp(arch, "riscv64") || !strcmp(arch, "powerpc");
+
+    if (p->target_prefix && p->target_prefix[0])
+        return wide ? "elf64" : "elf32";
+
+#if defined(_WIN32)
+    return wide ? "win64" : "win32";
+#elif defined(__APPLE__)
+    return wide ? "macho64" : "macho32";
+#else
+    return wide ? "elf64" : "elf32";
+#endif
 }
 
 static void put_incs(const TARGET *t, char *buf, size_t cap, int *len) {

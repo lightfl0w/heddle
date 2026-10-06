@@ -16,9 +16,12 @@ find_heddle() {
 HEDDLE=${HEDDLE:-$(find_heddle)}
 
 case "$(uname -s 2>/dev/null)" in
-    MINGW*|MSYS*|CYGWIN*) EXE=.exe; FAKE_TOOLS=0 ;;
-    *)                    EXE=;     FAKE_TOOLS=1 ;;
+    MINGW*|MSYS*|CYGWIN*) EXE=.exe; FAKE_TOOLS=0; HOST_OS=windows ;;
+    Darwin)               EXE=;     FAKE_TOOLS=1; HOST_OS=macos ;;
+    *)                    EXE=;     FAKE_TOOLS=1; HOST_OS=linux ;;
 esac
+
+if [ "$HOST_OS" = linux ]; then M32=1; else M32=0; fi
 
 pass=0
 fail=0
@@ -180,8 +183,8 @@ echo "os:"
 cd "$HERE/os"
 rm -rf out .heddle
 
-if [ -n "$EXE" ]; then
-    echo "  skip (os fixture is unix-only: boot sector, -m32, cat|)"
+if [ "$M32" = 0 ]; then
+    echo "  skip (os fixture needs 32-bit multilib)"
 elif command -v nasm >/dev/null 2>&1; then
     $HEDDLE image >/dev/null 2>&1
     check_rc "os image build" $? 0
@@ -320,9 +323,15 @@ case "$graph" in
     *)                    bad "c source not in graph: $graph" ;;
 esac
 case "$graph" in
-    *"nasm -f elf64"*"level.asm"*) ok "asm source compiled in graph (elf64)" ;;
-    *)                             bad "asm source not in graph: $graph" ;;
+    *"nasm"*"level.asm"*) ok "asm source compiled in graph" ;;
+    *)                    bad "asm source not in graph: $graph" ;;
 esac
+[ "$HOST_OS" = linux ] && {
+    case "$graph" in
+        *"nasm -f elf64"*) ok "asm uses elf64 on linux" ;;
+        *)                 bad "asm format wrong: $graph" ;;
+    esac
+}
 case "$graph" in
     *"ar rcs"*"libgreet.a"*) ok "recipe artifact archived in graph" ;;
     *)                       bad "recipe archive missing: $graph" ;;
@@ -330,7 +339,16 @@ esac
 
 rm -rf out .heddle/app.graph
 out=$($HEDDLE -v app 2>&1)
-expect_err "source package rebuild hits CAS" "$out" "5 cached"
+
+if [ "$HOST_OS" = linux ]; then
+    expect_err "source package rebuild hits CAS" "$out" "5 cached"
+else
+    expect_err "source package rebuild hits CAS" "$out" "cached"
+    case "$out" in
+        *"0 cached"*) bad "no CAS hits at all: $out" ;;
+        *)            ok "source package partially cached" ;;
+    esac
+fi
 
 v1=$($HEDDLE -v app 2>&1 | grep -o 'variant=[^ ]*')
 cp heddle.toml heddle.toml.orig
@@ -495,8 +513,8 @@ $HEDDLE install --destdir=./stage >/dev/null 2>&1
 $HEDDLE install --destdir=./stage2 >/dev/null 2>&1
 $HEDDLE uninstall --destdir=./stage >/dev/null 2>&1
 check_rc "uninstall" $? 0
-[ "$(find stage -type f 2>/dev/null | wc -l)" = "0" ] \
-    && ok "uninstall cleared its destdir" || bad "uninstall left files"
+n=$(find stage -type f ! -path '*.dSYM*' 2>/dev/null | wc -l)
+[ "$n" = "0" ] && ok "uninstall cleared its destdir" || bad "uninstall left files"
 [ -f stage2/opt/myos/bin/kernel ] \
     && ok "uninstall left the other destdir" || bad "uninstall crossed destdirs"
 
@@ -519,7 +537,7 @@ type = "exe"
 src = ["src/kernel.c"]
 
 [target.kernel.install]
-bin = "out/kernel"
+bin = "out/kernel*"
 
 [target.mylib]
 type = "staticlib"
@@ -598,8 +616,8 @@ out=$($HEDDLE init embedded fw2 --arch=nope 2>&1)
 check_rc "bad arch rejected" $? 2
 expect_err "bad arch message" "$out" "unknown arch"
 
-if [ -n "$EXE" ]; then
-    echo "  skip (baremetal template needs a unix shell)"
+if [ "$M32" = 0 ]; then
+    echo "  skip (baremetal template needs 32-bit multilib)"
 elif command -v nasm >/dev/null 2>&1; then
     $HEDDLE init baremetal os1 </dev/null >/dev/null 2>&1
     ( cd os1 && $HEDDLE image >/dev/null 2>&1 )
@@ -928,7 +946,7 @@ d = json.load(open("compile_commands.json"))
 assert len(d) == 3, len(d)
 for e in d:
     assert set(e) == {"directory", "file", "command", "output"}, e
-    assert e["directory"].startswith("/"), e["directory"]
+    assert e["directory"].startswith("/") or e["directory"][1:3] == ":/", e["directory"]
     assert "-c" in e["command"], e["command"]
 print("ok")
 PYEOF

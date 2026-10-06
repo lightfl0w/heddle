@@ -50,8 +50,9 @@ jobs:
             exit 1
           }
       - run: xmake
+      - run: bash tests/run.sh
       - name: diagnose
-        if: always()
+        if: failure()
         run: |
           echo "--- tools ---"
           which gcc cc ar nasm xmake || true
@@ -66,4 +67,3 @@ jobs:
           ls -la out 2>&1 || true
           echo "--- logs ---"
           for f in .heddle/*.log; do echo "== $f"; cat "$f"; done 2>&1 || true
-      - run: bash tests/run.sh
