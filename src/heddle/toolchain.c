@@ -46,9 +46,26 @@ static const TC_PRESET g_presets[] = {
 
 static const char *const g_auto[] = { "gcc", "clang", "tcc", "msvc" };
 
+static int exec_try(const char *dir, const char *prog) {
+    char full[1024];
+
+    snprintf(full, sizeof(full), "%s%s%s", dir, dir[0] ? "/" : "", prog);
+
+    if (EXEC_OK(full)) return 1;
+
+#if defined(_WIN32)
+    if (!strchr(prog, '.')) {
+        snprintf(full, sizeof(full), "%s%s%s.exe", dir, dir[0] ? "/" : "", prog);
+
+        if (EXEC_OK(full)) return 1;
+    }
+#endif
+
+    return 0;
+}
+
 static int on_path(const char *prog) {
-    if (strchr(prog, '/') || strchr(prog, '\\'))
-        return access(prog, X_OK) == 0;
+    if (strchr(prog, '/') || strchr(prog, '\\')) return exec_try("", prog);
 
     const char *path = getenv("PATH");
     if (!path) return 0;
@@ -59,14 +76,21 @@ static int on_path(const char *prog) {
     int   found = 0;
     char *dir  = copy;
 
-    while (dir && *dir && !found) {
-        char  *sep = strchr(dir, ':');
-        size_t len = sep ? (size_t)(sep - dir) : strlen(dir);
-        char   full[1024];
+    while (dir && !found) {
+        char  *c1 = strchr(dir, ':');
+        char  *c2 = strchr(dir, ';');
+        char  *sep = NULL;
 
-        snprintf(full, sizeof(full), "%.*s%s%s", (int)len, dir, len ? "/" : "", prog);
-        found = EXEC_OK(full);
+        if (c1 && c2) sep = c1 < c2 ? c1 : c2;
+        else sep = c1 ? c1 : c2;
 
+        char keep = 0;
+
+        if (sep) { keep = *sep; *sep = 0; }
+
+        found = exec_try(dir, prog);
+
+        if (sep) *sep = keep;
         if (!sep) break;
 
         dir = sep + 1;
@@ -562,13 +586,9 @@ int tc_tool_ok(const TOOLCHAIN *tc, const char *tool) {
     char       *save = NULL;
     int         ok   = 0;
 
-    for (char *d = sys_tok(copy, ":", &save); d && !ok;
-         d = sys_tok(NULL, ":", &save)) {
-        char buf[2048];
-
-        snprintf(buf, sizeof(buf), "%s/%s", d, tool);
-        ok = sys_stat(buf, &st) == 0;
-    }
+    for (char *d = sys_tok(copy, ":;", &save); d && !ok;
+        d = sys_tok(NULL, ":;", &save))
+        ok = exec_try(d, tool);
 
     free(copy);
     return ok;
