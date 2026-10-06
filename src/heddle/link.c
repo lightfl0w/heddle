@@ -71,7 +71,7 @@ static void iar_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t ca
 }
 
 static void msvc_cmd(const TOOLCHAIN *tc, const LINK_REQ *r, char *buf, size_t cap, int *len) {
-    app(buf, cap, len, "%s /Fe%s", tc->ld, r->out);
+    app(buf, cap, len, "%s /Fe %s", tc->ld, r->out);
 
     if (r->shared) app(buf, cap, len, " /LD");
 

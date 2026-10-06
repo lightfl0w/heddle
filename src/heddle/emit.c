@@ -368,7 +368,7 @@ static void build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg, const c
         addf(cmd, cap, &len, " /c /nologo");
         if (lg->cflags) addf(cmd, cap, &len, "%s", flags);
 
-        addf(cmd, cap, &len, "%s /I%s /Fo%s %s", incs, p->root, out, src);
+        addf(cmd, cap, &len, "%s /I%s /Fo %s %s", incs, p->root, out, src);
         return;
     }
 
@@ -713,7 +713,11 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
 
             addf(cmd, sizeof(cmd), &len, " > %s", out);
         } else if (t->type == TARGET_STATICLIB) {
-            addf(cmd, sizeof(cmd), &len, "%s rcs %s", p->tc.ar, out);
+            if (tc_is_msvc(p)) {
+                addf(cmd, sizeof(cmd), &len, "%s /nologo /OUT:%s", p->tc.ar, out);
+            } else {
+                addf(cmd, sizeof(cmd), &len, "%s rcs %s", p->tc.ar, out);
+            }
 
             for (int k = 0; k < t->nsrc; k++) {
                 char *obj = object_of(p, t, t->src[k]);
