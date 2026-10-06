@@ -87,6 +87,48 @@ static int run_capture(const char *cmd, char *out, size_t cap) {
     return rc == 0 ? 0 : -1;
 }
 
+int vs_env_capture(const char *install, const char *arch, char *out, size_t cap) {
+    char script[1400];
+    char cmd[2048];
+    char arg[64];
+
+    snprintf(arg, sizeof(arg), "%s", (arch && *arch) ? arch : "x64");
+    snprintf(script, sizeof(script),
+             "%s\\VC\\Auxiliary\\Build\\vcvarsall.bat", install);
+
+    if (GetFileAttributesA(script) == INVALID_FILE_ATTRIBUTES)
+        return -1;
+
+    snprintf(cmd, sizeof(cmd),
+             "cmd /d /s /c \"\"%s\" %s >nul 2>nul && set\"",
+             script, arg);
+
+    if (run_capture(cmd, out, cap) != 0)
+        return -1;
+
+    if (!out[0]) return -1;
+
+    return 0;
+}
+
+int vs_env_split(char *buf, char **items, int maxitems) {
+    int   n = 0;
+    char *line = buf;
+
+    while (line && *line && n < maxitems) {
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = 0;
+
+        size_t len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\r')) line[--len] = 0;
+        if (line[0]) items[n++] = line;
+
+        line = nl ? nl + 1 : NULL;
+    }
+
+    return n;
+}
+
 static int newest_dir(const char *base, const char *want,
                       char *out, size_t cap) {
     char pat[1400];
@@ -200,6 +242,16 @@ int vs_toolset(const char *install, const char *want, char *out, size_t cap) {
 int vs_sdk(const char *arch, char *inc, size_t icap, char *lib, size_t lcap) {
     (void)arch; (void)inc; (void)icap; (void)lib; (void)lcap;
     return -1;
+}
+
+int vs_env_capture(const char *install, const char *arch, char *out, size_t cap) {
+    (void)install; (void)arch; (void)out; (void)cap;
+    return -1;
+}
+
+int vs_env_split(char *buf, char **items, int maxitems) {
+    (void)buf; (void)items; (void)maxitems;
+    return 0;
 }
 
 #endif

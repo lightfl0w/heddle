@@ -51,6 +51,8 @@ void tc_free(TOOLCHAIN *tc);
 
 void tc_add_env(TOOLCHAIN *tc, const char *fmt, ...);
 
+void tc_add_env_raw(TOOLCHAIN *tc, const char *s);
+
 int tc_auto_count(void);
 
 const char *tc_auto_at(int i);

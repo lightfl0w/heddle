@@ -9,6 +9,7 @@
 
 #if defined(_WIN32)
 #include <io.h>
+#include <windows.h>
 #define EXEC_OK(path) (_access(path, 0) == 0)
 #else
 #include <unistd.h>
@@ -63,17 +64,33 @@ static int has_ext(const char *prog) {
 #define DIR_SEP "/"
 #endif
 
+static size_t dir_len(const char *dir) {
+    size_t n = strlen(dir);
+
+    while (n > 1 && (dir[n - 1] == '/' || dir[n - 1] == '\\')) {
+        if ((n == 3 && dir[1] == ':') || dir[n - 2] == ':') break;
+
+        n--;
+    }
+
+    return n;
+}
+
 static int exec_try(const char *dir, const char *prog) {
     char full[1024];
+    size_t n = dir_len(dir);
 
-    snprintf(full, sizeof(full), "%s%s%s", dir, dir[0] ? DIR_SEP : "", prog);
+    const char *sep = (n && dir[n - 1] != '/' && dir[n - 1] != '\\')
+                          ? DIR_SEP : "";
+
+    snprintf(full, sizeof(full), "%.*s%s%s", (int)n, dir, sep, prog);
 
     if (EXEC_OK(full)) return 1;
 
 #if defined(_WIN32)
     if (!has_ext(prog)) {
-        snprintf(full, sizeof(full), "%s%s%s.exe",
-                 dir, dir[0] ? DIR_SEP : "", prog);
+        snprintf(full, sizeof(full), "%.*s%s%s.exe",
+                 (int)n, dir, sep, prog);
 
         if (EXEC_OK(full)) return 1;
     }
@@ -116,6 +133,16 @@ static int on_path(const char *prog) {
     return found;
 }
 
+void tc_add_env_raw(TOOLCHAIN *tc, const char *s) {
+    char **next = (char **)realloc(tc->env, sizeof(char *) * (size_t)(tc->nenv + 1));
+    if (!next) return;
+
+    tc->env = next;
+    tc->env[tc->nenv] = sys_dup(s);
+
+    if (tc->env[tc->nenv]) tc->nenv++;
+}
+
 void tc_add_env(TOOLCHAIN *tc, const char *fmt, ...) {
     char    buf[4096];
     va_list ap;
@@ -124,13 +151,7 @@ void tc_add_env(TOOLCHAIN *tc, const char *fmt, ...) {
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
-    char **next = (char **)realloc(tc->env, sizeof(char *) * (size_t)(tc->nenv + 1));
-    if (!next) return;
-
-    tc->env = next;
-    tc->env[tc->nenv] = sys_dup(buf);
-
-    if (tc->env[tc->nenv]) tc->nenv++;
+    tc_add_env_raw(tc, buf);
 }
 
 static const TC_PRESET *preset_of(const char *name) {
@@ -142,12 +163,23 @@ static const TC_PRESET *preset_of(const char *name) {
     return NULL;
 }
 
+static const char *env_lookup(char **items, int n, const char *key) {
+    size_t klen = strlen(key);
+
+    for (int i = 0; i < n; i++) {
+        if (strncmp(items[i], key, klen) == 0 && items[i][klen] == '=')
+            return items[i] + klen + 1;
+    }
+
+    return NULL;
+}
+
 static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
     char install[1024];
     char toolset[1024];
     char inc[2048];
     char lib[2048];
-    char cl[1200];
+    char cl[2048];
 
     if (vs_install(install, sizeof(install)) != 0) return -1;
     if (vs_toolset(install, want, toolset, sizeof(toolset)) != 0) return -1;
@@ -157,6 +189,50 @@ static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want) {
 
     snprintf(cl, sizeof(cl), "%s\\bin\\Host%s\\%s\\cl.exe",
              toolset, arch, arch);
+
+    {
+        static char raw[131072];
+        char       *items[1024];
+        int         n;
+
+        if (vs_env_capture(install, arch, raw, sizeof(raw)) == 0 &&
+            (n = vs_env_split(raw, items, 1024)) > 0) {
+            for (int i = 0; i < n; i++)
+                tc_add_env_raw(tc, items[i]);
+
+            const char *vcdir = env_lookup(items, n, "VCToolsInstallDir");
+            char        full[2048];
+
+            if (vcdir && vcdir[0]) {
+                size_t l = strlen(vcdir);
+
+                while (l > 0 && (vcdir[l - 1] == '\\' || vcdir[l - 1] == '/'))
+                    l--;
+
+                snprintf(full, sizeof(full), "%.*s\\bin\\Host%s\\%s\\cl.exe",
+                         (int)l, vcdir, arch, arch);
+
+#ifdef _WIN32
+                if (GetFileAttributesA(full) != INVALID_FILE_ATTRIBUTES)
+                    snprintf(cl, sizeof(cl), "%s", full);
+#else
+                snprintf(cl, sizeof(cl), "%s", full);
+#endif
+            }
+
+            free(tc->cc);
+            free(tc->cxx);
+            free(tc->ar);
+            free(tc->ld);
+
+            tc->cc  = sys_dup(cl);
+            tc->cxx = sys_dup(cl);
+            tc->ld  = sys_dup(cl);
+            tc->ar  = sys_dup("lib");
+
+            return 0;
+        }
+    }
 
     free(tc->cc);
     free(tc->cxx);
