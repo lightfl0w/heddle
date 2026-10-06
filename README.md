@@ -58,6 +58,7 @@ heddle -C /path/to/proj app
 | `--prefix DIR` | 安装前缀 |
 | `--destdir DIR` | 安装暂存目录 |
 | `--dry-run` | 只打印，不执行 |
+| `--compile-db[=FILE]` | 生成 `compile_commands.json` |
 
 ## 新建工程
 

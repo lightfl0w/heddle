@@ -12,4 +12,7 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph,
 
 char *emit_artifact(const PROJECT *p, const TARGET *t);
 
+int emit_compile_db(const PROJECT *p, const char *target, const char *out,
+                    char *err, size_t errsz);
+
 #endif

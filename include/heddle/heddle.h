@@ -15,6 +15,7 @@ typedef struct {
     const char *prefix;
     const char *destdir;
     int         dry_run;
+    const char *compile_db;
 } HEDDLE_OPTS;
 
 int heddle_run(const HEDDLE_OPTS *o);
@@ -34,5 +35,7 @@ int heddle_ldconv(int argc, char **argv);
 
 int heddle_install(const HEDDLE_OPTS *o);
 int heddle_uninstall(const HEDDLE_OPTS *o);
+
+int heddle_compdb(const HEDDLE_OPTS *o);
 
 #endif

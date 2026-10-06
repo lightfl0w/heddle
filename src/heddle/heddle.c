@@ -460,3 +460,26 @@ int heddle_uninstall(const HEDDLE_OPTS *o) {
     project_free(&p);
     return rc == 0 ? 0 : 1;
 }
+
+int heddle_compdb(const HEDDLE_OPTS *o) {
+    char    err[512] = {0};
+    PROJECT p;
+
+    if (load(o, &p, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        return 1;
+    }
+
+    const char *out = o->compile_db ? o->compile_db : "compile_commands.json";
+
+    if (emit_compile_db(&p, o->target, out, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        project_free(&p);
+        return 1;
+    }
+
+    printf("heddle: wrote %s\n", out);
+
+    project_free(&p);
+    return 0;
+}

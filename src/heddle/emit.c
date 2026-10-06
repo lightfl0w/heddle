@@ -9,6 +9,10 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
+
 static int is_supported(const char *src) {
     return lang_for(src) != NULL;
 }
@@ -434,6 +438,31 @@ static void step_dep(STEP *st, int id) {
 
 
 
+static void target_incs(const PROJECT *p, const TARGET *t, char *buf,
+                        size_t cap, int *len) {
+    *len  = 0;
+    buf[0] = 0;
+
+    put_incs(t, buf, cap, len);
+    put_dep_incs(p, buf, cap, len);
+}
+
+static void target_flags(const PROJECT *p, const TARGET *t, char *buf,
+                         size_t cap, int *len) {
+    *len  = 0;
+    buf[0] = 0;
+
+    for (int k = 0; k < p->tc.ncflags; k++)
+        addf(buf, cap, len, " %s", p->tc.cflags[k]);
+
+    for (int k = 0; k < t->ncflags; k++)
+        addf(buf, cap, len, " %s", t->cflags[k]);
+}
+
+static int is_compile_unit(const TARGET *t) {
+    return t->type != TARGET_CUSTOM && t->type != TARGET_RAW;
+}
+
 static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
                         const char *want, char *err, size_t errsz) {
     for (int i = 0; i < p->ntargets; i++) {
@@ -442,21 +471,12 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of,
         const TARGET *t = &p->targets[i];
 
         char incs[8192];
-        int  ilen = 0;
-        incs[0] = 0;
-
-        put_incs(t, incs, sizeof(incs), &ilen);
-        put_dep_incs(p, incs, sizeof(incs), &ilen);
-
         char flags[8192];
+        int  ilen = 0;
         int  flen = 0;
-        flags[0] = 0;
 
-        for (int k = 0; k < p->tc.ncflags; k++)
-            addf(flags, sizeof(flags), &flen, " %s", p->tc.cflags[k]);
-
-        for (int k = 0; k < t->ncflags; k++)
-            addf(flags, sizeof(flags), &flen, " %s", t->cflags[k]);
+        target_incs(p, t, incs, sizeof(incs), &ilen);
+        target_flags(p, t, flags, sizeof(flags), &flen);
 
         if (t->type == TARGET_CUSTOM) continue;
 
@@ -860,4 +880,126 @@ fail:
     free(want);
     plan_close(&pl);
     return -1;
+}
+
+static void abs_dir(const char *root, char *buf, size_t cap) {
+    char cwd[2048];
+
+    if (!getcwd(cwd, sizeof(cwd))) cwd[0] = 0;
+
+    if (!root || !root[0] || !strcmp(root, "."))
+        snprintf(buf, cap, "%s", cwd[0] ? cwd : ".");
+    else if (root[0] == '/')
+        snprintf(buf, cap, "%s", root);
+    else
+        snprintf(buf, cap, "%s/%s", cwd, root);
+}
+
+static void json_str(FILE *f, const char *s) {
+    fputc('"', f);
+
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        if (*p == '"' || *p == '\\') fprintf(f, "\\%c", *p);
+        else if (*p == '\n') fputs("\\n", f);
+        else if (*p == '\t') fputs("\\t", f);
+        else if (*p == '\r') fputs("\\r", f);
+        else if (*p < 0x20) fprintf(f, "\\u%04x", *p);
+        else fputc(*p, f);
+    }
+
+    fputc('"', f);
+}
+
+int emit_compile_db(const PROJECT *p, const char *target, const char *out,
+                    char *err, size_t errsz) {
+    int n = p->ntargets;
+
+    char *want = (char *)calloc((size_t)n, 1);
+
+    if (!want) {
+        snprintf(err, errsz, "out of memory");
+        return -1;
+    }
+
+    if (target) {
+        int root = target_index(p, target);
+
+        if (root < 0) {
+            free(want);
+            snprintf(err, errsz, "unknown target '%s'", target);
+            return -1;
+        }
+
+        mark_closure(p, root, want);
+    } else {
+        for (int i = 0; i < n; i++) want[i] = 1;
+    }
+
+    FILE *f = fopen(out, "w");
+
+    if (!f) {
+        free(want);
+        snprintf(err, errsz, "cannot write %s", out);
+        return -1;
+    }
+
+    fputs("[\n", f);
+
+    int first = 1;
+
+    for (int i = 0; i < n; i++) {
+        const TARGET *t = &p->targets[i];
+
+        if (!want[i] || !is_compile_unit(t)) continue;
+
+        char incs[8192];
+        char flags[8192];
+        int  ilen = 0;
+        int  flen = 0;
+
+        target_incs(p, t, incs, sizeof(incs), &ilen);
+        target_flags(p, t, flags, sizeof(flags), &flen);
+
+        for (int k = 0; k < t->nsrc; k++) {
+            const LANG *lg = lang_for(t->src[k]);
+
+            if (!lg) continue;
+
+            char *obj = object_of(p, t, t->src[k]);
+
+            if (!obj) continue;
+
+            char cmd[16384];
+
+            build_cmd(p, t, lg, t->src[k], obj,
+                      incs, flags, asm_format(p), cmd, sizeof(cmd));
+
+            if (!first) fputs(",\n", f);
+
+            first = 0;
+
+            char dir[4096];
+
+            abs_dir(p->root, dir, sizeof(dir));
+
+            fputs("  {\n    \"directory\": ", f);
+            json_str(f, dir);
+            fputs(",\n    \"file\": ", f);
+            json_str(f, t->src[k]);
+            fputs(",\n    \"command\": ", f);
+            json_str(f, cmd);
+            fputs(",\n    \"output\": ", f);
+            json_str(f, obj);
+            fputs("\n  }", f);
+
+            free(obj);
+        }
+    }
+
+    fputs("\n]\n", f);
+    fclose(f);
+
+    free(want);
+    (void)errsz;
+    return 0;
 }

@@ -843,4 +843,68 @@ rm -f heddle.star.good
 rm -rf out .heddle
 echo
 
+echo "compdb:"
+
+cd "$HERE/basic"
+rm -rf out .heddle compile_commands.json
+
+$HEDDLE --compile-db app >/dev/null 2>&1
+check_rc "compile-db" $? 0
+[ -f compile_commands.json ] && ok "wrote compile_commands.json" || bad "no db file"
+
+if command -v python3 >/dev/null 2>&1; then
+    python3 - <<'PYEOF' >/tmp/cdb_check.$$
+import json
+d = json.load(open("compile_commands.json"))
+assert len(d) == 3, len(d)
+for e in d:
+    assert set(e) == {"directory", "file", "command", "output"}, e
+    assert e["directory"].startswith("/"), e["directory"]
+    assert "-c" in e["command"], e["command"]
+print("ok")
+PYEOF
+    [ "$(cat /tmp/cdb_check.$$)" = "ok" ] \
+        && ok "db is valid clang json" || bad "db json wrong"
+    rm -f /tmp/cdb_check.$$
+else
+    echo "  skip (no python3)"
+fi
+
+grep -q "src/util/util.c" compile_commands.json \
+    && ok "covers dependency target" || bad "missing dep source"
+grep -q "app/main.c" compile_commands.json \
+    && ok "covers root target" || bad "missing root source"
+
+rm -f compile_commands.json
+$HEDDLE --compile-db util >/dev/null 2>&1
+python3 -c "import json; d=json.load(open('compile_commands.json')); assert len(d)==1, len(d)" 2>/dev/null \
+    && ok "single target closure" || bad "closure wrong"
+
+rm -f compile_commands.json db.json
+$HEDDLE --compile-db=db.json app >/dev/null 2>&1
+[ -f db.json ] && [ ! -f compile_commands.json ] \
+    && ok "custom filename" || bad "custom filename not honored"
+
+rm -f db.json
+$HEDDLE --compile-db >/dev/null 2>&1
+python3 -c "import json; assert len(json.load(open('compile_commands.json')))==3" 2>/dev/null \
+    && ok "all targets mode" || bad "all mode wrong"
+
+cd "$HERE/os"
+rm -rf out .heddle compile_commands.json
+$HEDDLE --compile-db image >/dev/null 2>&1
+check_rc "os compile-db" $? 0
+grep -q "nasm" compile_commands.json \
+    && ok "assembler in db" || bad "assembler missing"
+grep -q '"file": "src/kernel.c"' compile_commands.json \
+    && ok "c in db" || bad "c missing"
+! grep -q "os.img" compile_commands.json \
+    && ok "custom target excluded" || bad "custom leaked"
+
+rm -f compile_commands.json
+cd "$HERE/basic"
+rm -f compile_commands.json
+rm -rf out .heddle
+echo
+
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"

@@ -48,7 +48,8 @@ static int usage(const char *prog) {
             "  --offline         never contact the registry\n"
             "  --prefix DIR      install prefix (required for install)\n"
             "  --destdir DIR     stage under DIR, do not touch the system\n"
-            "  --dry-run         print the install plan only\n",
+            "  --dry-run         print the install plan only\n"
+            "  --compile-db[=FILE]  write compile_commands.json and exit\n",
             prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog);
     return 2;
 }
@@ -115,6 +116,8 @@ static int parse(int argc, char **argv, ARGS *a) {
         }
 
         if (!strcmp(arg, "--no-cache"))       o->no_cache = 1;
+        else if (!strncmp(arg, "--compile-db", 12))
+            o->compile_db = arg[12] == '=' ? arg + 13 : "compile_commands.json";
         else if (!strcmp(arg, "--offline"))   o->offline = 1;
         else if (!strcmp(arg, "-v"))          o->verbose = 1;
         else if (!strcmp(arg, "--verbose"))    o->verbose = 1;
@@ -174,7 +177,7 @@ static int parse(int argc, char **argv, ARGS *a) {
     }
 
     if (a->list_tools || a->check_only || a->tool_install || a->tool_plan ||
-        a->env_verify || a->do_install || a->do_uninstall)
+        a->env_verify || a->do_install || a->do_uninstall || o->compile_db)
         return 0;
 
     if (!o->target) return usage(argv[0]);
@@ -206,6 +209,7 @@ int main(int argc, char **argv) {
     if (rc) return rc;
     if (a.list_tools)   return heddle_toolchains();
     if (a.check_only)   return heddle_check(&a.o);
+    if (a.o.compile_db) return heddle_compdb(&a.o);
     if (a.do_install)   return heddle_install(&a.o);
     if (a.do_uninstall) return heddle_uninstall(&a.o);
     if (a.tool_install) return heddle_tool_install(&a.o);
