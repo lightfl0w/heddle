@@ -893,10 +893,13 @@ static void abs_dir(const char *root, char *buf, size_t cap) {
 
     if (!root || !root[0] || !strcmp(root, "."))
         snprintf(buf, cap, "%s", cwd[0] ? cwd : ".");
-    else if (root[0] == '/')
+    else if (root[0] == '/' || (root[0] && root[1] == ':'))
         snprintf(buf, cap, "%s", root);
     else
         snprintf(buf, cap, "%s/%s", cwd, root);
+
+    for (char *q = buf; *q; q++)
+        if (*q == '\\') *q = '/';
 }
 
 static void json_str(FILE *f, const char *s) {

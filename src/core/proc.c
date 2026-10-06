@@ -119,7 +119,10 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path,
     size_t len = 0;
 
     for (int i = 0; argv[i]; i++) {
-        if (i) append_arg(cmdline, cap, &len, " ");
+        if (i && len + 1 < cap) {
+            cmdline[len++] = ' ';
+            cmdline[len]   = 0;
+        }
 
         append_arg(cmdline, cap, &len, argv[i]);
     }
