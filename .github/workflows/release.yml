@@ -2,7 +2,8 @@ name: release
 
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -24,9 +25,11 @@ jobs:
       - id: vars
         env:
           SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -Eeuo pipefail
-          echo "version=0.1.0-alpha" >> "$GITHUB_OUTPUT"
+          version="${REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "commit=${SHA:0:12}" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
@@ -64,10 +67,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y nasm
 
       - run: xmake
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        shell: bash
 
       - run: bash tests/run.sh
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        shell: bash
 
   build:
     name: build (${{ matrix.target }})
@@ -111,7 +114,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y zip unzip
 
       - name: build
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        shell: bash
         env:
           VERSION: ${{ needs.metadata.outputs.version }}
           COMMIT: ${{ needs.metadata.outputs.commit }}
@@ -124,7 +127,7 @@ jobs:
           BUILD_DATE="${{ needs.metadata.outputs.date }}" ./scripts/release/package.sh
 
       - name: verify
-        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        shell: bash
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -173,6 +176,7 @@ jobs:
           REPO: ${{ github.repository }}
           RUN: ${{ github.run_id }}
           SERVER: ${{ github.server_url }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -Eeuo pipefail
           cd dist
@@ -184,7 +188,7 @@ jobs:
           {
             echo "heddle ${VERSION}"
             echo
-            echo "Rolling alpha build from \`main\`."
+            echo "Release build from tag \`${TAG}\`."
             echo
             echo "| field | value |"
             echo "| --- | --- |"
@@ -200,18 +204,15 @@ jobs:
             echo '```'
           } > ../notes.md
 
-      - name: tag and publish
+      - name: publish release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
           VERSION: ${{ needs.metadata.outputs.version }}
-          COMMIT: ${{ needs.metadata.outputs.commit }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
-          tag="v${VERSION}"
-          git tag -f "$tag" "$SHA"
-          git push -f origin "refs/tags/$tag"
+          tag="$TAG"
           if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$tag" dist/* --repo "$REPO" --clobber
             gh release edit "$tag" --repo "$REPO" --notes-file notes.md --prerelease --latest=false
