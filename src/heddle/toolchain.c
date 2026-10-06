@@ -46,16 +46,34 @@ static const TC_PRESET g_presets[] = {
 
 static const char *const g_auto[] = { "gcc", "clang", "tcc", "msvc" };
 
+#if defined(_WIN32)
+#define DIR_SEP "\\"
+
+static int has_ext(const char *prog) {
+    const char *slash = strrchr(prog, '/');
+    const char *bs    = strrchr(prog, '\\');
+    const char *base  = slash;
+
+    if (bs && (!base || bs > base)) base = bs;
+    base = base ? base + 1 : prog;
+
+    return strchr(base, '.') != NULL;
+}
+#else
+#define DIR_SEP "/"
+#endif
+
 static int exec_try(const char *dir, const char *prog) {
     char full[1024];
 
-    snprintf(full, sizeof(full), "%s%s%s", dir, dir[0] ? "/" : "", prog);
+    snprintf(full, sizeof(full), "%s%s%s", dir, dir[0] ? DIR_SEP : "", prog);
 
     if (EXEC_OK(full)) return 1;
 
 #if defined(_WIN32)
-    if (!strchr(prog, '.')) {
-        snprintf(full, sizeof(full), "%s%s%s.exe", dir, dir[0] ? "/" : "", prog);
+    if (!has_ext(prog)) {
+        snprintf(full, sizeof(full), "%s%s%s.exe",
+                 dir, dir[0] ? DIR_SEP : "", prog);
 
         if (EXEC_OK(full)) return 1;
     }
@@ -77,18 +95,16 @@ static int on_path(const char *prog) {
     char *dir  = copy;
 
     while (dir && !found) {
-        char  *c1 = strchr(dir, ':');
-        char  *c2 = strchr(dir, ';');
-        char  *sep = NULL;
-
-        if (c1 && c2) sep = c1 < c2 ? c1 : c2;
-        else sep = c1 ? c1 : c2;
-
+#if defined(_WIN32)
+        char *sep = strchr(dir, ';');
+#else
+        char *sep = strchr(dir, ':');
+#endif
         char keep = 0;
 
         if (sep) { keep = *sep; *sep = 0; }
 
-        found = exec_try(dir, prog);
+        if (dir[0]) found = exec_try(dir, prog);
 
         if (sep) *sep = keep;
         if (!sep) break;
