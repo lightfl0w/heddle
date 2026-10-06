@@ -474,7 +474,8 @@ echo
 echo "install:"
 cd "$HERE/inst"
 rm -rf out .heddle stage
-
+cp heddle.toml heddle.toml.inst
+sed "s|out/kernel\*|out/kernel$EXE|" heddle.toml.inst > heddle.toml
 $HEDDLE kernel >/dev/null 2>&1
 $HEDDLE mylib >/dev/null 2>&1
 
@@ -489,7 +490,7 @@ expect_err "dry-run maps etc" "$out" "etc/mylib/app.conf"
 $HEDDLE install --destdir=./stage >/dev/null 2>&1
 check_rc "install" $? 0
 
-for f in bin/kernel lib/libmylib.a include/net/mylib.h \
+for f in bin/kernel$EXE lib/libmylib.a include/net/mylib.h \
          share/mylib/README.md etc/mylib/app.conf \
          rootfs/usr/bin/app rootfs/etc/app.conf; do
     [ -f "stage/opt/myos/$f" ] && ok "installed $f" || bad "missing $f"
@@ -499,7 +500,7 @@ rm -rf stage2 .heddle
 $HEDDLE install mylib --destdir=./stage2 >/dev/null 2>&1
 check_rc "install single target" $? 0
 [ -f stage2/opt/myos/lib/libmylib.a ] && ok "single target lib" || bad "single target lib"
-[ ! -f stage2/opt/myos/bin/kernel ]   && ok "single target skips others" || bad "single target leaked"
+[ ! -f "stage2/opt/myos/bin/kernel$EXE" ] && ok "single target skips others" || bad "single target leaked"
 
 cp heddle.toml heddle.notprefix.toml
 grep -v '^prefix' heddle.notprefix.toml | grep -v '^\[install\]' > heddle.toml
@@ -521,7 +522,7 @@ n=$(find stage -type f ! -path '*.dSYM*' 2>/dev/null | wc -l)
 rm -rf stage .heddle
 cp heddle.toml heddle.keep.toml
 
-cat > heddle.toml <<'EOF'
+cat > heddle.toml <<EOF
 [build]
 dir = "out"
 
@@ -537,7 +538,7 @@ type = "exe"
 src = ["src/kernel.c"]
 
 [target.kernel.install]
-bin = "out/kernel*"
+bin = "out/kernel$EXE"
 
 [target.mylib]
 type = "staticlib"
@@ -556,6 +557,7 @@ check_rc "sysroot install" $? 0
 [ -f stage/opt/sysroot/lib/libmylib.a ]       && ok "sysroot lib" || bad "sysroot lib"
 [ -f stage/opt/sysroot/include/net/mylib.h ]  && ok "sysroot include" || bad "sysroot include"
 mv heddle.keep.toml heddle.toml
+mv heddle.toml.inst heddle.toml
 
 rm -rf out .heddle stage stage2
 echo
@@ -862,7 +864,7 @@ cp heddle.star heddle.star.orig
 sed "s|out/app\*|out/app$EXE|" heddle.star.orig > heddle.star
 b=$($HEDDLE app 2>&1) || echo "$b"
 b=$($HEDDLE mylib 2>&1) || echo "$b"
-out=$($HEDDLE install --destdir=./stage --prefix=/opt/x 2>&1)
+out=$($HEDDLE install --destdir=./stage --prefix=opt/x 2>&1)
 rc=$?
 check_rc "star install" $rc 0
 [ $rc -eq 0 ] || echo "$out"

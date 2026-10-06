@@ -385,12 +385,22 @@ static int glob_expand_list(char **pats, int np, EXPAND_ITEM **out, int *n,
     return 0;
 }
 
+static const char *strip_root(const char *p) {
+    while (*p == '/') p++;
+
+    if (p[1] == ':') p += 2;
+
+    while (*p == '/' || *p == '\\') p++;
+
+    return p;
+}
+
 static char *dest_join(const char *destdir, const char *prefix, const char *sub,
                        const char *leaf) {
     const char *pfx = prefix;
 
     if (destdir && destdir[0])
-        while (*pfx == '/') pfx++;
+        pfx = strip_root(prefix);
 
     char *root = join(destdir && destdir[0] ? destdir : "", pfx);
     char *full = join3(root, sub, leaf);
@@ -471,7 +481,7 @@ static char *dest_join_abs(const char *destdir, const char *absroot,
     const char *root = absroot;
 
     if (destdir && destdir[0])
-        while (*root == '/') root++;
+        root = strip_root(absroot);
 
     char *a = join(destdir && destdir[0] ? destdir : "", root);
     char *b = join3(a, sub, leaf);
