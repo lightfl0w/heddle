@@ -2,6 +2,7 @@
 
 #include "emit.h"
 #include "init.h"
+#include "version.h"
 #include "migrate.h"
 #include "vcpkg.h"
 
@@ -113,6 +114,15 @@ static int parse(int argc, char **argv, ARGS *a) {
 
             fprintf(stderr, "heddle: unknown env subcommand '%s'\n", arg);
             return 2;
+        }
+
+        if (!strcmp(arg, "--version")) {
+            printf("heddle %s\n", heddle_version_string());
+            exit(0);
+        }
+        if (!strcmp(arg, "-V")) {
+            printf("heddle %s\n", heddle_version_string());
+            exit(0);
         }
 
         if (!strcmp(arg, "--no-cache"))       o->no_cache = 1;

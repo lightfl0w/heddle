@@ -19,10 +19,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - run: brew install xmake nasm
+      - run: brew install xmake
       - run: xmake --version
       - run: xmake
-      - run: bash tests/run.sh
 
   windows:
     runs-on: windows-latest

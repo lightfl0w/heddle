@@ -1,4 +1,5 @@
 #include "build.h"
+#include "version.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,10 @@ static int parse_options(int argc, char **argv, OPTIONS *o) {
     for (int i = 1; i < argc; i++) {
         const char *value = NULL;
 
+        if (!strcmp(argv[i], "--version") || !strcmp(argv[i], "-V")) {
+            printf("loom %s\n", heddle_version_string());
+            exit(0);
+        } else 
         if (!strcmp(argv[i], "-f") && i + 1 < argc) {
             o->file = argv[++i];
         } else if (opt_inline(argv[i], "-f", &value)) {

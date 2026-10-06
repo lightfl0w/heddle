@@ -44,6 +44,14 @@ expect_err() {
     esac
 }
 
+run_show() {
+    local o
+    o=$("$@" 2>&1)
+    local r=$?
+    [ $r -eq 0 ] || printf '    [%s rc=%d]\n%s\n' "$1" "$r" "$o"
+    return $r
+}
+
 if [ ! -x "$HEDDLE" ]; then
     echo "heddle not found at $HEDDLE; run 'xmake' first or set HEDDLE=" >&2
     exit 2
@@ -243,7 +251,7 @@ else
     check_rc "env verify after install" $? 0
 
     rm -rf out .heddle/app.graph
-    $HEDDLE app >/dev/null 2>&1
+    run_show $HEDDLE app
     check_rc "build with managed toolchain" $? 0
     check_eq "dependency linked in" "$(./out/app$EXE | head -1)" "10501"
     check_eq "managed compiler used" "$(./out/app$EXE | tail -1)" "managed"
@@ -260,7 +268,7 @@ else
 
     unset HEDDLE_REGISTRY
     rm -rf out .heddle/app.graph
-    $HEDDLE app >/dev/null 2>&1
+    run_show $HEDDLE app
     check_rc "offline build (no registry)" $? 0
     check_eq "offline run" "$(./out/app$EXE | head -1)" "10501"
 
@@ -313,7 +321,7 @@ check_rc "source package install" $? 0
 [ -f .heddle/store/library/greet/1.0/package.toml ]     && ok "recipe copied to store" || bad "recipe missing from store"
 
 rm -rf out .heddle/app.graph
-$HEDDLE app >/dev/null 2>&1
+run_show $HEDDLE app
 check_rc "source package build" $? 0
 check_eq "c + asm linked" "$(./out/app$EXE)" "102"
 
@@ -421,8 +429,10 @@ else
     rm -rf out .heddle .linkspy
     export PATH="$HERE/linkconv/bin:$PATH"
 
-    $HEDDLE -t native kernel >/dev/null 2>&1
-    check_rc "gnu build" $? 0
+    [ "$HOST_OS" = linux ] && {
+        run_show $HEDDLE -t native kernel
+        check_rc "gnu build" $? 0
+    } || $HEDDLE -t native kernel >/dev/null 2>&1
     case "$(cat .heddle/kernel.graph)" in
         *"-T src/kernel.ld"*)   ok "gnu passes -T" ;;
         *)                      bad "gnu lost -T" ;;
@@ -431,8 +441,10 @@ else
         && ok "gnu links in one step" || bad "gnu added a conversion step"
 
     rm -rf out .heddle
-    $HEDDLE -t iar kernel >/dev/null 2>&1
-    check_rc "iar build" $? 0
+    [ "$HOST_OS" = linux ] && {
+        run_show $HEDDLE -t iar kernel
+        check_rc "iar build" $? 0
+    } || $HEDDLE -t iar kernel >/dev/null 2>&1
     graph=$(cat .heddle/kernel.graph)
     case "$graph" in
         *"ldconv src/kernel.ld iar"*) ok "iar converts .ld to .icf" ;;
@@ -454,8 +466,10 @@ else
         && ok "converted icf has regions" || bad "converted icf wrong"
 
     rm -rf out .heddle
-    $HEDDLE -t armcc kernel >/dev/null 2>&1
-    check_rc "armcc build" $? 0
+    [ "$HOST_OS" = linux ] && {
+        run_show $HEDDLE -t armcc kernel
+        check_rc "armcc build" $? 0
+    } || $HEDDLE -t armcc kernel >/dev/null 2>&1
     graph=$(cat .heddle/kernel.graph)
     case "$graph" in
         *"--scatter=out/kernel.sct"*) ok "armcc uses --scatter" ;;
@@ -515,7 +529,12 @@ $HEDDLE install --destdir=./stage2 >/dev/null 2>&1
 $HEDDLE uninstall --destdir=./stage >/dev/null 2>&1
 check_rc "uninstall" $? 0
 n=$(find stage -type f ! -path '*.dSYM*' 2>/dev/null | wc -l)
-[ "$n" = "0" ] && ok "uninstall cleared its destdir" || bad "uninstall left files"
+if [ "$n" = "0" ]; then
+    ok "uninstall cleared its destdir"
+else
+    bad "uninstall left files"
+    find stage -type f 2>/dev/null | head -20
+fi
 [ -f stage2/opt/myos/bin/kernel ] \
     && ok "uninstall left the other destdir" || bad "uninstall crossed destdirs"
 

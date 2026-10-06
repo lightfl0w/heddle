@@ -1,0 +1,223 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  metadata:
+    name: version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.vars.outputs.version }}
+      commit: ${{ steps.vars.outputs.commit }}
+      date: ${{ steps.vars.outputs.date }}
+    steps:
+      - id: vars
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          echo "version=0.1.0-alpha" >> "$GITHUB_OUTPUT"
+          echo "commit=${SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: runner.os == 'Linux'
+        uses: xmake-io/github-action-setup-xmake@v1
+
+      - if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          path-type: inherit
+          install: >-
+            base-devel
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-binutils
+            mingw-w64-x86_64-nasm
+
+      - if: runner.os == 'Windows'
+        uses: xmake-io/github-action-setup-xmake@v1
+
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
+      - run: xmake
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+
+      - run: bash tests/run.sh
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+
+  build:
+    name: build (${{ matrix.target }})
+    needs: [metadata, test]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: linux-x86_64 }
+          - { os: windows-latest, target: windows-x86_64 }
+          - { os: macos-13,       target: darwin-x86_64 }
+          - { os: macos-14,       target: darwin-arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: runner.os == 'Linux'
+        uses: xmake-io/github-action-setup-xmake@v1
+
+      - if: runner.os == 'macOS'
+        run: brew install xmake
+
+      - if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          path-type: inherit
+          install: >-
+            base-devel
+            zip
+            unzip
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-binutils
+
+      - if: runner.os == 'Windows'
+        uses: xmake-io/github-action-setup-xmake@v1
+
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zip unzip
+
+      - name: build
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+          BUILD_TARGET: ${{ matrix.target }}
+          TARGET: ${{ matrix.target }}
+          DIST: dist
+        run: |
+          set -Eeuo pipefail
+          xmake
+          BUILD_DATE="${{ needs.metadata.outputs.date }}" ./scripts/release/package.sh
+
+      - name: verify
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -Eeuo pipefail
+          pkg="heddle-${{ needs.metadata.outputs.version }}-${TARGET}"
+          exe=""
+          rm -rf verify
+          mkdir -p verify
+          if [ "${TARGET%%-*}" = windows ]; then
+            exe=".exe"
+            unzip -q "dist/${pkg}.zip" -d verify
+          else
+            tar -xzf "dist/${pkg}.tar.gz" -C verify
+          fi
+          test -s "verify/${pkg}/bin/heddle${exe}"
+          test -s "verify/${pkg}/bin/loom${exe}"
+          test -s "verify/${pkg}/VERSION"
+          grep -qxF "${{ needs.metadata.outputs.version }}" "verify/${pkg}/VERSION"
+          "./verify/${pkg}/bin/heddle" --version | grep -F "${{ needs.metadata.outputs.version }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heddle-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: publish
+    needs: [metadata, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: assemble release assets
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.run_id }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -Eeuo pipefail
+          cd dist
+          if find . -maxdepth 1 -type f -empty | grep -q .; then
+            echo "::error::empty release asset"
+            exit 1
+          fi
+          sha256sum heddle-*.tar.gz heddle-*.zip > SHA256SUMS.txt
+          {
+            echo "heddle ${VERSION}"
+            echo
+            echo "Rolling alpha build from \`main\`."
+            echo
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| commit | \`${COMMIT}\` |"
+            echo "| run | [${RUN}](${SERVER}/${REPO}/actions/runs/${RUN}) |"
+            echo
+            echo "Each archive contains \`bin/heddle\` and \`bin/loom\`."
+            echo
+            echo "### Packages"
+            echo
+            echo '```'
+            sed 's/^/  /' SHA256SUMS.txt
+            echo '```'
+          } > ../notes.md
+
+      - name: tag and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+          tag="v${VERSION}"
+          git tag -f "$tag" "$SHA"
+          git push -f origin "refs/tags/$tag"
+          if gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --repo "$REPO" --clobber
+            gh release edit "$tag" --repo "$REPO" --notes-file notes.md --prerelease --latest=false
+          else
+            gh release create "$tag" dist/* --repo "$REPO" \
+              --title "heddle ${VERSION}" \
+              --notes-file notes.md \
+              --prerelease --latest=false
+          fi
