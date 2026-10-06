@@ -858,13 +858,18 @@ rm -rf out .heddle
 
 cd "$HERE/star_install"
 rm -rf out .heddle stage
-$HEDDLE app >/dev/null 2>&1
-$HEDDLE mylib >/dev/null 2>&1
-$HEDDLE install --destdir=./stage --prefix=/opt/x >/dev/null 2>&1
-check_rc "star install" $? 0
-[ -f stage/opt/x/bin/app ]         && ok "star install bin" || bad "star install bin"
+cp heddle.star heddle.star.orig
+sed "s|out/app\*|out/app$EXE|" heddle.star.orig > heddle.star
+b=$($HEDDLE app 2>&1) || echo "$b"
+b=$($HEDDLE mylib 2>&1) || echo "$b"
+out=$($HEDDLE install --destdir=./stage --prefix=/opt/x 2>&1)
+rc=$?
+check_rc "star install" $rc 0
+[ $rc -eq 0 ] || echo "$out"
+[ -f "stage/opt/x/bin/app$EXE" ]    && ok "star install bin" || bad "star install bin"
 [ -f stage/opt/x/lib/libmylib.a ]  && ok "star install lib" || bad "star install lib"
 [ -f stage/opt/x/include/mylib.h ] && ok "star install include" || bad "star install include"
+mv heddle.star.orig heddle.star
 rm -rf out .heddle stage
 
 cd "$HERE/star_platform"

@@ -19,8 +19,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: xmake-io/github-action-setup-xmake@v1
-      - run: brew install nasm
+      - run: brew install xmake nasm
+      - run: xmake --version
       - run: xmake
       - run: bash tests/run.sh
 
