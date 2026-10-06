@@ -56,6 +56,9 @@ typedef struct {
 } PKG_MANIFEST;
 
 int  pkg_manifest_load(PKG_MANIFEST *m, const char *root, char *err, size_t errsz);
+int  pkg_manifest_finalize(PKG_MANIFEST *m, char *err, size_t errsz);
+void pkg_manifest_add(PKG_MANIFEST *m, PKG_KIND kind, const char *name,
+                      const char *version, const char *source);
 void pkg_manifest_free(PKG_MANIFEST *m);
 int  pkg_target_resolve(TARGET_PROFILE *t, char *err, size_t errsz);
 int  pkg_install(PKG_MANIFEST *m, int offline, int verbose, char *err, size_t errsz);

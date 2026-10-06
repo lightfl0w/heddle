@@ -11,6 +11,8 @@
 #include <unistd.h>
 #endif
 
+static int g_star;
+
 static char *join(const char *a, const char *b) {
     if (!a || !a[0] || !strcmp(a, ".")) return sys_dup(b);
 
@@ -160,6 +162,16 @@ static int gen_exe(const char *dir, int force) {
         "src = [\"src/*.c\"]\n"
         "inc = [\"src\"]\n";
 
+    const char *star =
+        "build(dir = \"out\")\n"
+        "\n"
+        "target(\n"
+        "    name = \"app\",\n"
+        "    type = \"exe\",\n"
+        "    src = glob(\"src/*.c\"),\n"
+        "    inc = [\"src\"],\n"
+        ")\n";
+
     const char *main_c =
         "#include <stdio.h>\n"
         "\n"
@@ -168,14 +180,14 @@ static int gen_exe(const char *dir, int force) {
         "    return 0;\n"
         "}\n";
 
-    char *a = join(dir, "heddle.toml");
+    char *a = join(dir, g_star ? "heddle.star" : "heddle.toml");
     char *b = join(dir, "src/main.c");
 
     int rc = 0;
 
     if (!a || !b) rc = -1;
     else {
-        if (write_file(a, toml, force) != 0) rc = -1;
+        if (write_file(a, g_star ? star : toml, force) != 0) rc = -1;
         if (write_file(b, main_c, force) != 0) rc = -1;
     }
 
@@ -202,6 +214,19 @@ static int gen_lib(const char *dir, int force) {
         "lib = \"out/libmylib.a\"\n"
         "include = [\"include/**/*.h\"]\n";
 
+    const char *star =
+        "build(dir = \"out\")\n"
+        "\n"
+        "target(\n"
+        "    name = \"mylib\",\n"
+        "    type = \"staticlib\",\n"
+        "    src = glob(\"src/*.c\"),\n"
+        "    inc = [\"include\"],\n"
+        ")\n"
+        "\n"
+        "install(target = \"mylib\", lib = [\"out/libmylib.a\"], "
+        "include = [\"include/**/*.h\"])\n";
+
     const char *h =
         "#ifndef MYLIB_H\n"
         "#define MYLIB_H\n"
@@ -217,7 +242,7 @@ static int gen_lib(const char *dir, int force) {
         "    return 0;\n"
         "}\n";
 
-    char *a = join(dir, "heddle.toml");
+    char *a = join(dir, g_star ? "heddle.star" : "heddle.toml");
     char *b = join(dir, "include/mylib.h");
     char *c2 = join(dir, "src/mylib.c");
 
@@ -225,7 +250,7 @@ static int gen_lib(const char *dir, int force) {
 
     if (!a || !b || !c2) rc = -1;
     else {
-        if (write_file(a, toml, force) != 0) rc = -1;
+        if (write_file(a, g_star ? star : toml, force) != 0) rc = -1;
         if (write_file(b, h, force) != 0) rc = -1;
         if (write_file(c2, c, force) != 0) rc = -1;
     }
@@ -447,6 +472,7 @@ int heddle_init(int argc, char **argv) {
             list_types();
             printf("\noptions:\n"
                    "  --arch NAME   target arch for 'embedded'\n"
+                   "  --star        write heddle.star instead of heddle.toml\n"
                    "  --force       overwrite existing files\n"
                    "  --list        list project types\n");
             return 0;
@@ -454,6 +480,7 @@ int heddle_init(int argc, char **argv) {
 
         if (!strcmp(a, "--list")) { list_types(); return 0; }
         if (!strcmp(a, "--force")) { force = 1; continue; }
+        if (!strcmp(a, "--star"))  { g_star = 1; continue; }
 
         if (!strncmp(a, "--arch=", 7)) { arch = a + 7; continue; }
 

@@ -26,6 +26,8 @@ static int load(const HEDDLE_OPTS *o, PROJECT *p, char *err, size_t errsz) {
         return -1;
     }
 
+    project_set_target(o->target);
+
     if (project_load(p, ".", o->toolchain, err, errsz) != 0)
         return -1;
 

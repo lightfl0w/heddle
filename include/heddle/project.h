@@ -55,10 +55,16 @@ typedef struct {
     char        *target_prefix;
     char        *target_sysroot;
 
+    char        *tc_based;
+    char        *tc_cc;
+    char        *tc_family;
+
     TARGET *targets;
     int     ntargets;
     int     cap;
 } PROJECT;
+
+void project_set_target(const char *name);
 
 int project_load(PROJECT *p, const char *root, const char *toolchain,
                   char *err, size_t errsz);

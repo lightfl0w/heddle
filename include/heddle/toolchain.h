@@ -42,6 +42,11 @@ int  tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name,
                 const char *extra_cflags,
                 char *err, size_t errsz);
 
+int  tc_load_star(TOOLCHAIN *tc, const char *name, const char *based,
+                  const char *cc, const char *family,
+                  const char *prefix, const char *sysroot,
+                  const char *extra_cflags, char *err, size_t errsz);
+
 void tc_free(TOOLCHAIN *tc);
 
 void tc_add_env(TOOLCHAIN *tc, const char *fmt, ...);

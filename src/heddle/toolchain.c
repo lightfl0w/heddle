@@ -94,6 +94,8 @@ void tc_add_env(TOOLCHAIN *tc, const char *fmt, ...) {
 }
 
 static const TC_PRESET *preset_of(const char *name) {
+    if (!name || !name[0]) return NULL;
+
     for (int i = 0; i < (int)(sizeof(g_presets) / sizeof(g_presets[0])); i++)
         if (!strcmp(g_presets[i].name, name)) return &g_presets[i];
 
@@ -414,6 +416,94 @@ overlay:
         free(copy);
     }
 
+    return 0;
+}
+
+int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based,
+                 const char *cc, const char *family,
+                 const char *prefix, const char *sysroot,
+                 const char *extra_cflags,
+                 char *err, size_t errsz) {
+    memset(tc, 0, sizeof(*tc));
+
+    const TC_PRESET *p = preset_of(based && based[0] ? based : NULL);
+
+    if (!p && family && family[0]) p = preset_of(family);
+    if (!p) p = preset_of(name);
+    if (!p) p = preset_of("gcc");
+
+    const char *base = p->name;
+
+    if (!p) {
+        snprintf(err, errsz, "unknown toolchain '%s'", base);
+        return -1;
+    }
+
+    load_preset(tc, p);
+
+    free(tc->name);
+    free(tc->family);
+    free(tc->cc);
+    free(tc->cxx);
+    free(tc->ar);
+    free(tc->ld);
+
+    tc->name   = sys_dup(name);
+    tc->family = sys_dup(family && family[0] ? family : p->family);
+
+    char pfx2[512];
+    snprintf(pfx2, sizeof(pfx2), "%s", p->cc);
+
+    tc->cc  = cc && cc[0] ? sys_dup(cc) : sys_dup(p->cc);
+    tc->cxx = cc && cc[0] ? apply_prefix("", cc) : sys_dup(p->cxx);
+    tc->ar  = sys_dup(p->ar);
+    tc->ld  = sys_dup(tc->cc);
+
+    if (cc && cc[0] && p->cxx[0]) {
+        free(tc->cxx);
+
+        const char *dash = strrchr(cc, '-');
+        char        base2[512];
+
+        if (dash && strstr(cc, "gcc")) {
+            size_t n = (size_t)(dash - cc);
+            snprintf(base2, sizeof(base2), "%.*s-g++", (int)n, cc);
+            tc->cxx = sys_dup(base2);
+        } else {
+            tc->cxx = sys_dup(p->cxx);
+        }
+    }
+
+    if (prefix && prefix[0]) {
+        char *n;
+
+        n = apply_prefix(prefix, tc->cc);  free(tc->cc);  tc->cc  = n;
+        n = apply_prefix(prefix, tc->cxx); free(tc->cxx); tc->cxx = n;
+        n = apply_prefix(prefix, tc->ar);  free(tc->ar);  tc->ar  = n;
+        n = apply_prefix(prefix, tc->ld);  free(tc->ld);  tc->ld  = n;
+
+        free(tc->platform);
+        tc->platform = sys_dup(p->name);
+
+        if (sysroot && sysroot[0]) {
+            add_flag(&tc->cflags, &tc->ncflags, "--sysroot");
+            add_flag(&tc->cflags, &tc->ncflags, sysroot);
+        }
+    }
+
+    if (extra_cflags && extra_cflags[0]) {
+        char *copy = sys_dup(extra_cflags);
+        char *save = NULL;
+        char *tok;
+
+        for (tok = sys_tok(copy, " \t", &save); tok;
+             tok = sys_tok(NULL, " \t", &save))
+            add_flag(&tc->cflags, &tc->ncflags, tok);
+
+        free(copy);
+    }
+
+    (void)pfx2;
     return 0;
 }
 

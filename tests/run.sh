@@ -510,6 +510,18 @@ $HEDDLE init lib lib1 </dev/null >/dev/null 2>&1
 check_rc "generated lib builds" $? 0
 [ -f lib1/include/mylib.h ] && ok "lib header created" || bad "lib header missing"
 
+$HEDDLE init exe star1 --star </dev/null >/dev/null 2>&1
+check_rc "init exe --star" $? 0
+[ -f star1/heddle.star ] && ok "star manifest created" || bad "no heddle.star"
+[ ! -f star1/heddle.toml ] && ok "no toml when --star" || bad "toml written too"
+( cd star1 && $HEDDLE app >/dev/null 2>&1 )
+check_rc "generated star builds" $? 0
+check_eq "generated star runs" "$(cd star1 && ./out/app)" "hello"
+
+$HEDDLE init lib starlib --star </dev/null >/dev/null 2>&1
+( cd starlib && $HEDDLE mylib >/dev/null 2>&1 )
+check_rc "generated star lib builds" $? 0
+
 $HEDDLE init embedded fw1 --arch=riscv32imac </dev/null >/dev/null 2>&1
 check_rc "init embedded" $? 0
 grep -q 'arch = "riscv32imac"' fw1/heddle.toml \
@@ -626,6 +638,18 @@ $HEDDLE app >/dev/null 2>&1
 check_rc "migrated cmake builds" $? 0
 check_eq "migrated cmake runs" "$(./out/app)" "42"
 
+rm -f heddle.toml heddle.star
+rm -rf out .heddle
+$HEDDLE migrate . --star >/dev/null 2>&1
+check_rc "migrate --star" $? 0
+grep -q "target(" heddle.star && ok "star output has target()" || bad "no target() in star"
+$HEDDLE app >/dev/null 2>&1
+check_rc "migrated star builds" $? 0
+check_eq "migrated star runs" "$(./out/app)" "42"
+rm -f heddle.star
+rm -rf out .heddle
+$HEDDLE migrate . >/dev/null 2>&1
+
 out=$($HEDDLE migrate . 2>&1)
 check_rc "existing manifest refused" $? 1
 expect_err "clobber message" "$out" "exists"
@@ -679,6 +703,143 @@ check_rc "missing source refused" $? 1
 expect_err "missing source message" "$out" "no"
 
 rm -f heddle.toml
+rm -rf out .heddle
+echo
+
+echo "star:"
+
+cd "$HERE/star"
+rm -rf out .heddle
+
+$HEDDLE check >/dev/null 2>&1
+check_rc "star project checks" $? 0
+
+$HEDDLE app >/dev/null 2>&1
+check_rc "star project builds" $? 0
+check_eq "star project runs" "$(./out/app)" "42"
+
+grep -q "src/util.c" .heddle/app.graph \
+    && ok "def/slice generated util" || bad "util not in graph"
+grep -q "libmath.a" .heddle/app.graph \
+    && ok "math target built" || bad "math missing"
+grep -q -- "-DLEVEL=3" .heddle/app.graph \
+    && ok "target cflags applied" || bad "cflags missing"
+
+cp heddle.star heddle.star.good
+
+cat > heddle.star <<'EOF'
+build(dir = "out")
+target(name = "bad", type = "exe", src = ["src/nope.c"])
+EOF
+out=$($HEDDLE check 2>&1)
+check_rc "missing source rejected" $? 1
+expect_err "missing source message" "$out" "missing source"
+
+cat > heddle.star <<'EOF'
+build(dir = "out")
+target(name = "t", type = &&&)
+EOF
+out=$($HEDDLE check 2>&1)
+check_rc "parse error rejected" $? 1
+expect_err "parse error has line" "$out" "heddle.star:2"
+
+cat > heddle.star <<'EOF'
+build(dir = "out")
+i = 0
+while i < 3:
+    i = i + 1
+EOF
+out=$($HEDDLE check 2>&1)
+check_rc "while rejected" $? 1
+expect_err "while message" "$out" "not supported"
+
+cp heddle.star.good heddle.star
+rm -f heddle.star.good
+rm -rf out .heddle
+
+cd "$HERE/star_full"
+rm -rf out .heddle
+
+out=$($HEDDLE check 2>&1)
+check_rc "star full checks" $? 0
+expect_err "two boards generated" "$out" "fw_nucleo"
+expect_err "second board" "$out" "fw_bluepill"
+
+out=$($HEDDLE tool plan 2>&1)
+check_rc "star tool plan" $? 0
+expect_err "target_config arch" "$out" "armv7em"
+expect_err "derived prefix" "$out" "arm-none-eabi-"
+expect_err "package listed" "$out" "freertos"
+
+rm -rf out .heddle
+
+cd "$HERE/star_install"
+rm -rf out .heddle stage
+$HEDDLE app >/dev/null 2>&1
+$HEDDLE mylib >/dev/null 2>&1
+$HEDDLE install --destdir=./stage --prefix=/opt/x >/dev/null 2>&1
+check_rc "star install" $? 0
+[ -f stage/opt/x/bin/app ]         && ok "star install bin" || bad "star install bin"
+[ -f stage/opt/x/lib/libmylib.a ]  && ok "star install lib" || bad "star install lib"
+[ -f stage/opt/x/include/mylib.h ] && ok "star install include" || bad "star install include"
+rm -rf out .heddle stage
+
+cd "$HERE/star_platform"
+rm -rf out .heddle
+
+out=$($HEDDLE check 2>&1)
+check_rc "platform project checks" $? 0
+expect_err "loop made both boards" "$out" "fw_nucleo"
+expect_err "second board" "$out" "fw_bluepill"
+
+export PATH="$HERE/star_platform/bin:$PATH"
+$HEDDLE fw_nucleo >/dev/null 2>&1
+check_rc "build fw_nucleo" $? 0
+grep -q "cortex-m4" .heddle/fw_nucleo.graph \
+    && ok "nucleo uses armv7em" || bad "nucleo arch wrong"
+grep -q -- "-mfloat-abi=hard" .heddle/fw_nucleo.graph \
+    && ok "nucleo hard float" || bad "nucleo float wrong"
+
+$HEDDLE fw_bluepill >/dev/null 2>&1
+check_rc "build fw_bluepill" $? 0
+grep -q "cortex-m3" .heddle/fw_bluepill.graph \
+    && ok "bluepill uses armv7m" || bad "bluepill arch wrong"
+grep -q -- "-mfloat-abi=soft" .heddle/fw_bluepill.graph \
+    && ok "bluepill soft float" || bad "bluepill float wrong"
+
+grep -q "arm-none-eabi-gcc" .heddle/fw_nucleo.graph \
+    && ok "star toolchain cc used" || bad "toolchain cc not used"
+
+out=$($HEDDLE tool plan 2>&1)
+expect_err "package object registered" "$out" "freertos"
+check_rc "package does not break check" $? 0
+
+unset PATH
+export PATH="$ORIG_PATH"
+rm -rf out .heddle
+
+cd "$HERE/star"
+rm -rf out .heddle
+cp heddle.star heddle.star.good
+cat > heddle.toml <<'EOF'
+[build]
+dir = "out"
+[target.toml_only]
+type = "exe"
+src = ["src/util.c"]
+EOF
+out=$($HEDDLE check 2>&1)
+expect_err "star overrides toml" "$out" "app"
+case "$out" in
+    *toml_only*) bad "toml used when star present" ;;
+    *)           ok "toml ignored when star present" ;;
+esac
+rm -f heddle.toml
+out=$($HEDDLE check 2>&1)
+check_rc "toml fallback checks" $? 0
+expect_err "toml fallback selected" "$out" "app"
+cp heddle.star.good heddle.star
+rm -f heddle.star.good
 rm -rf out .heddle
 echo
 

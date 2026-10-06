@@ -2,6 +2,7 @@
 #include "lang.h"
 #include "project.h"
 #include "recipe.h"
+#include "star.h"
 #include "sys.h"
 
 #include <stdio.h>
@@ -461,17 +462,174 @@ static int auto_depends(PROJECT *p, char *err, size_t errsz) {
     return 0;
 }
 
+static char *dup_opt(const char *s) {
+    return s ? sys_dup(s) : NULL;
+}
+
+static const char *g_want_target;
+
+void project_set_target(const char *name) {
+    g_want_target = name;
+}
+
+static int add_target_from_cfg(PROJECT *p, STAR_TARGET *st, char *err, size_t errsz) {
+    if (project_target(p, st->name)) {
+        snprintf(err, errsz, "duplicate target '%s'", st->name);
+        return -1;
+    }
+
+    TARGET *t = target_add(p, st->name, "");
+
+    if (!t) { snprintf(err, errsz, "out of memory"); return -1; }
+
+    if (st->type && parse_type(st->type, &t->type) != 0) {
+        snprintf(err, errsz, "target '%s': unknown type '%s'", st->name, st->type);
+        return -1;
+    }
+
+    for (int i = 0; i < st->nsrc; i++)  vec_add(&t->src, &t->nsrc, st->src[i]);
+    for (int i = 0; i < st->ninc; i++)  vec_add(&t->inc, &t->ninc, st->inc[i]);
+    for (int i = 0; i < st->ndeps; i++) vec_add(&t->deps, &t->ndeps, st->deps[i]);
+    for (int i = 0; i < st->ncflags; i++) vec_add(&t->cflags, &t->ncflags, st->cflags[i]);
+    for (int i = 0; i < st->nldflags; i++) vec_add(&t->ldflags, &t->nldflags, st->ldflags[i]);
+
+    if (st->ldscript) t->ldscript = sys_dup(st->ldscript);
+    if (st->entry)    t->entry    = sys_dup(st->entry);
+    if (st->out)      t->out      = sys_dup(st->out);
+
+    if (t->type != TARGET_CUSTOM && t->nsrc == 0) {
+        snprintf(err, errsz, "target '%s': no sources", st->name);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int project_load_star(PROJECT *p, const char *root, const char *toolchain,
+                             char *err, size_t errsz) {
+    char cfgpath[2048];
+    snprintf(cfgpath, sizeof(cfgpath), "%s/heddle.star", root);
+
+    STAR_CFG cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.root = sys_dup(root);
+
+    if (star_run(cfgpath, &cfg, err, errsz) != 0) {
+        star_cfg_free(&cfg);
+        return -1;
+    }
+
+    const STAR_PLATFORM *plat = NULL;
+
+    if (g_want_target) {
+        for (int i = 0; i < cfg.ntg; i++) {
+            if (strcmp(cfg.tg[i].name, g_want_target)) continue;
+            if (!cfg.tg[i].platform) continue;
+
+            for (int k = 0; k < cfg.npl; k++)
+                if (!strcmp(cfg.pl[k].name, cfg.tg[i].platform))
+                    plat = &cfg.pl[k];
+        }
+    }
+
+    if (!plat)
+        for (int i = 0; i < cfg.ntg; i++)
+            if (cfg.tg[i].platform) {
+                for (int k = 0; k < cfg.npl; k++)
+                    if (!strcmp(cfg.pl[k].name, cfg.tg[i].platform))
+                        plat = &cfg.pl[k];
+            }
+
+    if (!plat && cfg.npl) plat = &cfg.pl[0];
+
+    if (cfg.npl) {
+        for (int i = 0; i < cfg.ntg; i++) {
+            if (!cfg.tg[i].platform) continue;
+
+            for (int k = 0; k < cfg.npl; k++) {
+                const STAR_PLATFORM *q = &cfg.pl[k];
+
+                if (strcmp(q->name, cfg.tg[i].platform)) continue;
+
+                if (plat && q->toolchain && plat->toolchain &&
+                    strcmp(q->toolchain, plat->toolchain)) {
+                    snprintf(err, errsz,
+                             "targets span toolchains '%s' and '%s'; "
+                             "build one platform at a time",
+                             plat->toolchain, q->toolchain);
+                    star_cfg_free(&cfg);
+                    return -1;
+                }
+            }
+        }
+    }
+
+    p->build_dir = project_path(root, cfg.build_dir ? cfg.build_dir : "out");
+
+    const char *tcname = toolchain ? toolchain
+                                   : (plat && plat->toolchain ? plat->toolchain
+                                   : (cfg.toolchain ? cfg.toolchain : "auto"));
+
+    p->toolchain_name = sys_dup(tcname);
+
+    for (int i = 0; i < cfg.ntc; i++) {
+        if (strcmp(cfg.tc_name[i], tcname)) continue;
+
+        p->tc_based = dup_opt(cfg.tc_based[i]);
+        p->tc_cc    = dup_opt(cfg.tc_cc[i]);
+    }
+
+    p->pkg.root     = sys_dup(root);
+    p->pkg.manifest = sys_dup(cfgpath);
+    p->pkg.lock_path = project_path(root, "heddle.lock");
+    p->pkg.store    = cfg.store ? project_path(root, cfg.store)
+                                : project_path(root, ".heddle/store");
+
+    p->pkg.target.arch    = dup_opt(plat && plat->arch ? plat->arch : cfg.arch);
+    p->pkg.target.abi     = dup_opt(plat && plat->abi ? plat->abi : cfg.abi);
+    p->pkg.target.float_k = dup_opt(plat && plat->flt ? plat->flt : cfg.flt);
+    p->pkg.target.sysroot = dup_opt(plat && plat->sysroot ? plat->sysroot
+                                                          : cfg.sysroot);
+
+    for (int i = 0; i < cfg.ntc; i++)
+        pkg_manifest_add(&p->pkg, PKG_KIND_TOOLCHAIN, cfg.tc_name[i],
+                         NULL, cfg.tc_cc[i]);
+
+    for (int i = 0; i < cfg.ndep; i++)
+        pkg_manifest_add(&p->pkg, PKG_KIND_LIBRARY, cfg.dep_name[i],
+                         cfg.dep_ver[i], cfg.dep_src[i]);
+
+    for (int i = 0; i < cfg.ntg; i++)
+        if (add_target_from_cfg(p, &cfg.tg[i], err, errsz) != 0) {
+            star_cfg_free(&cfg);
+            return -1;
+        }
+
+    star_cfg_free(&cfg);
+    return 0;
+}
+
+static int project_load_star_finish(PROJECT *p, const char *root,
+                                    const char *toolchain,
+                                    char *err, size_t errsz);
+
 int project_load(PROJECT *p, const char *root, const char *toolchain,
                  char *err, size_t errsz) {
     memset(p, 0, sizeof(*p));
 
     p->root = sys_dup(root ? root : ".");
 
+    char star[2048];
     char cfg[2048];
+
+    snprintf(star, sizeof(star), "%s/heddle.star", p->root);
     snprintf(cfg, sizeof(cfg), "%s/heddle.toml", p->root);
 
+    if (path_exists(star))
+        return project_load_star_finish(p, p->root, toolchain, err, errsz);
+
     if (!path_exists(cfg)) {
-        snprintf(err, errsz, "cannot read %s", cfg);
+        snprintf(err, errsz, "cannot read %s or %s", cfg, star);
         return -1;
     }
 
@@ -556,6 +714,9 @@ void project_free(PROJECT *p) {
 
     free(p->target_prefix);
     free(p->target_sysroot);
+    free(p->tc_based);
+    free(p->tc_cc);
+    free(p->tc_family);
 
     pkg_manifest_free(&p->pkg);
 
@@ -578,4 +739,57 @@ TARGET *project_target(PROJECT *p, const char *name) {
         if (!strcmp(p->targets[i].name, name)) return &p->targets[i];
 
     return NULL;
+}
+
+static int project_load_star_finish(PROJECT *p, const char *root,
+                                    const char *toolchain,
+                                    char *err, size_t errsz) {
+    lang_init_builtin();
+
+    if (project_load_star(p, root, toolchain, err, errsz) != 0) {
+        project_free(p);
+        return -1;
+    }
+
+    if (pkg_manifest_finalize(&p->pkg, err, errsz) != 0) {
+        project_free(p);
+        return -1;
+    }
+
+    p->target_prefix  = sys_dup(p->pkg.toolchain_prefix);
+    p->target_sysroot = sys_dup(p->pkg.sysroot);
+
+    pkg_prepend_path(&p->pkg);
+
+    char flags[1024];
+    snprintf(flags, sizeof(flags), "%s %s", p->pkg.target.cpu, p->pkg.target.fpu);
+
+    int trc;
+
+    if (p->tc_cc || p->tc_based)
+        trc = tc_load_star(&p->tc, p->toolchain_name, p->tc_based, p->tc_cc,
+                           p->tc_family, p->target_prefix, p->target_sysroot,
+                           flags, err, errsz);
+    else
+        trc = tc_load_ex(&p->tc, root, p->toolchain_name, p->target_prefix,
+                         p->target_sysroot, flags, err, errsz);
+
+    if (trc != 0) {
+        project_free(p);
+        return -1;
+    }
+
+    if (!dir_exists(p->build_dir)) sys_mkpath(p->build_dir);
+
+    if (load_store_recipes(p, err, errsz) != 0) {
+        project_free(p);
+        return -1;
+    }
+
+    if (auto_depends(p, err, errsz) != 0) {
+        project_free(p);
+        return -1;
+    }
+
+    return 0;
 }

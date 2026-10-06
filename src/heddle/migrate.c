@@ -582,6 +582,50 @@ int migrate_write(const MIG_SET *s, const char *out, char *err, size_t errsz) {
     return 0;
 }
 
+static void star_list(FILE *f, const char *key, char **v, int n) {
+    if (!n) return;
+
+    fprintf(f, "    %s = [", key);
+
+    for (int i = 0; i < n; i++)
+        fprintf(f, "%s\"%s\"", i ? ", " : "", v[i]);
+
+    fputs("],\n", f);
+}
+
+static int migrate_write_star(const MIG_SET *s, const char *out,
+                              char *err, size_t errsz) {
+    FILE *f = fopen(out, "w");
+
+    if (!f) {
+        snprintf(err, errsz, "cannot write %.200s", out);
+        return -1;
+    }
+
+    fputs("build(dir = \"out\")\n", f);
+
+    for (int i = 0; i < s->n; i++) {
+        const MIG_TARGET *t = &s->items[i];
+
+        fprintf(f, "\ntarget(\n    name = \"%s\",\n", t->name);
+        fprintf(f, "    type = \"%s\",\n", t->type ? t->type : "exe");
+
+        star_list(f, "src", t->src, t->nsrc);
+        star_list(f, "inc", t->inc, t->ninc);
+        star_list(f, "deps", t->deps, t->ndeps);
+        star_list(f, "cflags", t->cflags, t->ncflags);
+        star_list(f, "ldflags", t->ldflags, t->nldflags);
+
+        if (t->ldscript)
+            fprintf(f, "    linker_script = \"%s\",\n", t->ldscript);
+
+        fputs(")\n", f);
+    }
+
+    fclose(f);
+    return 0;
+}
+
 void migrate_print(const MIG_SET *s) {
     printf("heddle: %d target%s\n", s->n, s->n == 1 ? "" : "s");
 
@@ -619,6 +663,7 @@ static void migrate_usage(void) {
            "options:\n"
            "  --from cmake|xmake   force the source format\n"
            "  --out FILE           output file (default heddle.toml)\n"
+           "  --star               write heddle.star instead of heddle.toml\n"
            "  --dry-run            print the plan, write nothing\n");
 }
 
@@ -627,6 +672,7 @@ int heddle_migrate(int argc, char **argv) {
     const char *from    = arg_opt(argc, argv, "--from");
     const char *out     = arg_opt(argc, argv, "--out");
     int         dry     = 0;
+    int         star    = 0;
 
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
@@ -635,6 +681,7 @@ int heddle_migrate(int argc, char **argv) {
         }
 
         if (!strcmp(argv[i], "--dry-run")) { dry = 1; continue; }
+        if (!strcmp(argv[i], "--star"))    { star = 1; continue; }
 
         if (!strncmp(argv[i], "--", 2)) {
             if (!strchr(argv[i], '=')) i++;
@@ -707,7 +754,7 @@ int heddle_migrate(int argc, char **argv) {
     }
 
     char def_out[4096];
-    snprintf(def_out, sizeof(def_out), "%s/heddle.toml", dir);
+    snprintf(def_out, sizeof(def_out), "%s/heddle.%s", dir, star ? "star" : "toml");
 
     const char *target_out = out ? out : def_out;
 
@@ -718,7 +765,10 @@ int heddle_migrate(int argc, char **argv) {
         return 1;
     }
 
-    if (migrate_write(&s, target_out, err, sizeof(err)) != 0) {
+    int wrc = star ? migrate_write_star(&s, target_out, err, sizeof(err))
+                   : migrate_write(&s, target_out, err, sizeof(err));
+
+    if (wrc != 0) {
         fprintf(stderr, "heddle: %s\n", err);
         migrate_free(&s);
         return 1;

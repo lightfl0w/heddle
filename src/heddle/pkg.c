@@ -1,6 +1,7 @@
 #include "pkg.h"
 
 #include "hash.h"
+#include "star.h"
 #include "sys.h"
 #include "toml.h"
 #include "vcpkg.h"
@@ -253,6 +254,73 @@ static void resolve_store(PKG_MANIFEST *m) {
     }
 }
 
+int pkg_manifest_finalize(PKG_MANIFEST *m, char *err, size_t errsz) {
+    if (pkg_target_resolve(&m->target, err, errsz) != 0) return -1;
+
+    free(m->toolchain_prefix);
+    free(m->sysroot);
+
+    m->toolchain_prefix = sys_dup(m->target.prefix);
+    m->sysroot          = sys_dup(m->target.sysroot ? m->target.sysroot : "");
+
+    resolve_store(m);
+    return 0;
+}
+
+void pkg_manifest_add(PKG_MANIFEST *m, PKG_KIND kind, const char *name,
+                      const char *version, const char *source) {
+    PKG_SPEC s;
+    memset(&s, 0, sizeof(s));
+
+    s.kind    = kind;
+    s.name    = sys_dup(name);
+    s.version = sys_dup(version && version[0] ? version : "latest");
+
+    if (source && source[0]) s.source = parse_source(source);
+
+    list_push(kind == PKG_KIND_TOOLCHAIN ? &m->tools : &m->deps, &s);
+}
+
+static int pkg_manifest_load_star(PKG_MANIFEST *m, const char *star_path,
+                                 char *err, size_t errsz) {
+    STAR_CFG cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.root = sys_dup(m->root);
+
+    if (star_run(star_path, &cfg, err, errsz) != 0) {
+        star_cfg_free(&cfg);
+        return -1;
+    }
+
+    m->store = cfg.store ? path_join(m->root, cfg.store)
+                         : path_join3(m->root, ".heddle", "store");
+
+    const STAR_PLATFORM *plat = NULL;
+
+    for (int i = 0; i < cfg.npl; i++) {
+        plat = &cfg.pl[i];
+        break;
+    }
+
+    m->target.arch    = dup_opt(plat && plat->arch ? plat->arch : cfg.arch);
+    m->target.abi     = dup_opt(plat && plat->abi ? plat->abi : cfg.abi);
+    m->target.float_k = dup_opt(plat && plat->flt ? plat->flt : cfg.flt);
+    m->target.sysroot = dup_opt(plat && plat->sysroot ? plat->sysroot
+                                                      : cfg.sysroot);
+
+    for (int i = 0; i < cfg.ntc; i++)
+        pkg_manifest_add(m, PKG_KIND_TOOLCHAIN, cfg.tc_name[i], NULL,
+                         cfg.tc_cc[i]);
+
+    for (int i = 0; i < cfg.ndep; i++)
+        pkg_manifest_add(m, PKG_KIND_LIBRARY, cfg.dep_name[i],
+                         cfg.dep_ver[i], cfg.dep_src[i]);
+
+    star_cfg_free(&cfg);
+
+    return pkg_manifest_finalize(m, err, errsz);
+}
+
 int pkg_manifest_load(PKG_MANIFEST *m, const char *root,
                       char *err, size_t errsz) {
     memset(m, 0, sizeof(*m));
@@ -260,13 +328,23 @@ int pkg_manifest_load(PKG_MANIFEST *m, const char *root,
     m->root = sys_dup(root ? root : ".");
 
     char cfg[2048];
-    snprintf(cfg, sizeof(cfg), "%s/heddle.toml", m->root);
+    char star[2048];
 
-    m->manifest  = sys_dup(cfg);
+    snprintf(cfg, sizeof(cfg), "%s/heddle.toml", m->root);
+    snprintf(star, sizeof(star), "%s/heddle.star", m->root);
+
     m->lock_path = path_join(m->root, "heddle.lock");
 
+    if (exists(star)) {
+        m->manifest = sys_dup(star);
+
+        return pkg_manifest_load_star(m, star, err, errsz);
+    }
+
+    m->manifest = sys_dup(cfg);
+
     if (!exists(cfg)) {
-        snprintf(err, errsz, "cannot read %s", cfg);
+        snprintf(err, errsz, "cannot read %s or %s", cfg, star);
         return -1;
     }
 

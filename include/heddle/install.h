@@ -42,6 +42,7 @@ typedef struct {
 } INSTALL_PLAN;
 
 int  install_load(INSTALL_SET *s, const PROJECT *p, char *err, size_t errsz);
+INSTALL_RULE *install_add(INSTALL_SET *s, const char *name);
 void install_free(INSTALL_SET *s);
 
 INSTALL_RULE *install_rule(INSTALL_SET *s, const char *target);

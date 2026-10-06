@@ -1,0 +1,22 @@
+#!/bin/sh
+compile=0
+for a in "$@"; do [ "$a" = "-c" ] && compile=1; done
+
+args=""
+skip=0
+prev=""
+for a in "$@"; do
+  if [ "$skip" = 1 ]; then prev="$a"; skip=0; continue; fi
+  case "$a" in
+    -m*|-mfpu=*|-mfloat-abi=*) continue ;;
+    -T) skip=1; continue ;;
+    -e) skip=1; entry_pending=1; continue ;;
+  esac
+  if [ "$entry_pending" = 1 ]; then args="$args -Wl,-e,$a"; entry_pending=0; continue; fi
+  args="$args '$a'"
+done
+
+if [ "$compile" = 0 ]; then
+  eval exec cc -nostdlib -Wl,--build-id=none $args
+fi
+eval exec cc $args

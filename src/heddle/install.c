@@ -1,6 +1,7 @@
 #include "install.h"
 
 #include "glob.h"
+#include "star.h"
 #include "hash.h"
 #include "sys.h"
 #include "toml.h"
@@ -108,9 +109,69 @@ static INSTALL_RULE *rule_add(INSTALL_SET *s, const char *name) {
     return r;
 }
 
+INSTALL_RULE *install_add(INSTALL_SET *s, const char *name) {
+    return rule_add(s, name);
+}
+
+static void dup_list(char **src, int n, char ***dst, int *dn, const char *root) {
+    for (int i = 0; i < n; i++) {
+        char *full = project_path(root, src[i]);
+
+        if (!full) continue;
+
+        char **next = (char **)realloc(*dst, sizeof(char *) * (size_t)(*dn + 1));
+
+        if (!next) { free(full); continue; }
+
+        *dst = next;
+        (*dst)[(*dn)++] = full;
+    }
+}
+
+static int install_load_star(INSTALL_SET *s, const PROJECT *p,
+                             const char *star_path, char *err, size_t errsz) {
+    STAR_CFG cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.root = sys_dup(p->root);
+
+    if (star_run(star_path, &cfg, err, errsz) != 0) {
+        star_cfg_free(&cfg);
+        return -1;
+    }
+
+    for (int i = 0; i < cfg.ntg; i++) {
+        STAR_TARGET *t = &cfg.tg[i];
+
+        if (!t->n_i_bin && !t->n_i_lib && !t->n_i_include &&
+            !t->n_i_share && !t->n_i_etc && !t->i_rootfs)
+            continue;
+
+        INSTALL_RULE *r = install_add(s, t->name);
+
+        if (!r) continue;
+
+        dup_list(t->i_bin, t->n_i_bin, &r->bin, &r->nbin, p->root);
+        dup_list(t->i_lib, t->n_i_lib, &r->lib, &r->nlib, p->root);
+        dup_list(t->i_include, t->n_i_include, &r->include, &r->ninc, p->root);
+        dup_list(t->i_share, t->n_i_share, &r->share, &r->nshare, p->root);
+        dup_list(t->i_etc, t->n_i_etc, &r->etc, &r->netc, p->root);
+
+        if (t->i_rootfs) r->rootfs = sys_dup(t->i_rootfs);
+    }
+
+    star_cfg_free(&cfg);
+    return 0;
+}
+
 int install_load(INSTALL_SET *s, const PROJECT *p, char *err, size_t errsz) {
     char cfg[4096];
+    char star[4096];
+
     snprintf(cfg, sizeof(cfg), "%s/heddle.toml", p->root);
+    snprintf(star, sizeof(star), "%s/heddle.star", p->root);
+
+    if (exists(star))
+        return install_load_star(s, p, star, err, errsz);
 
     TOML t;
     toml_init(&t);

@@ -1,6 +1,6 @@
 # heddle
 
-构建工具。读 `heddle.toml`，生成依赖图，增量执行。
+构建工具。读 `heddle.star` 或 `heddle.toml`，生成依赖图，增量执行。
 
 引擎是 loom（`src/core`），负责 DAG 调度、内容哈希增量、头文件扫描和 CAS 缓存。
 
@@ -28,11 +28,11 @@ heddle check          # 只做配置静态检查
 heddle toolchains     # 列出探测到的工具链
 heddle tool install   # 恢复工具链 + 依赖，写/修 heddle.lock
 heddle tool plan      # 只打印包解析计划
-heddle env verify     # 校验环境与锁文件完全一致
+heddle env verify     # 校验环境与锁文件一致
 heddle install        # 安装构建产物
 heddle uninstall      # 卸载
-heddle vcpkg ...      # 兼容 vcpkg 包
-heddle migrate        # 从 CMake / XMake 迁移(测试)
+heddle vcpkg ...      # 读 vcpkg port / 导入已构建的树
+heddle migrate        # 从 CMake / XMake 迁移
 ```
 
 工程根目录默认是当前目录，用 `-C` 切换：
@@ -54,10 +54,10 @@ heddle -C /path/to/proj app
 | `--remote URL` | 远程 CAS，目录或 `http(s)://` |
 | `--no-cache` | 关闭缓存 |
 | `--registry DIR\|URL` | 包 registry，默认 `$HEDDLE_REGISTRY` |
-| `--offline` | 禁止访问 registry |
+| `--offline` | 不访问 registry |
 | `--prefix DIR` | 安装前缀 |
 | `--destdir DIR` | 安装暂存目录 |
-| `--dry-run` | 只打印安装计划 |
+| `--dry-run` | 只打印，不执行 |
 
 ## 新建工程
 
@@ -65,6 +65,7 @@ heddle -C /path/to/proj app
 heddle init                 # 交互选择类型
 heddle init embedded fw     # 指定类型和目录
 heddle init lib --force     # 覆盖已存在的文件
+heddle init exe app --star  # 生成 heddle.star 而不是 heddle.toml
 heddle init --list          # 列出类型
 ```
 
@@ -72,24 +73,19 @@ heddle init --list          # 列出类型
 | --- | --- |
 | `exe` | 本机可执行，一个 `src/main.c` |
 | `lib` | 静态库 + 公共头 + 安装规则 |
-| `embedded` | 交叉目标（`--arch` 选架构）+ 链接脚本 + `entry` |
+| `embedded` | 交叉目标 + 链接脚本 + `entry`，架构用 `--arch` 选 |
 | `baremetal` | 引导扇区 + 内核 + 磁盘镜像，演示 `raw` / `custom` |
 
-`embedded` 的架构用 `--arch` 指定，不指定就交互选择：
+`embedded` 支持 `armv7em` `armv7m` `armv6m` `armv8m` `cortex-m7` `aarch64`
+`riscv32imac` `riscv64` `xtensa` `avr` `msp430`。生成的 `[target] arch`
+会自动推出编译器前缀和编译参数。
 
-```sh
-heddle init embedded fw --arch=armv7em
-```
+`--star` 生成 `heddle.star`（`exe` 和 `lib`），不加就是 `heddle.toml`。
+默认不覆盖已有文件，`--force` 才覆盖。
 
-支持 `armv7em` `armv7m` `armv6m` `armv8m` `cortex-m7` `aarch64`
-`riscv32imac` `riscv64` `xtensa` `avr` `msp430`。
-生成的 `[target] arch` 会自动推出编译器前缀和编译参数，不用手写。
+## 工具链与依赖
 
-默认不覆盖已有文件
-
-## 工具链与依赖的统一管理
-
-`heddle tool install` 同时恢复工具链和所有依赖，落到工程内的隔离 store。
+`heddle tool install` 同时恢复工具链和依赖，落到工程内的隔离 store。
 
 ```toml
 [toolchain]
@@ -109,12 +105,82 @@ float = "hard"
 heddle tool plan      # 看解析结果，不动文件
 heddle tool install   # 恢复工具链 + 依赖，写 heddle.lock
 heddle app            # 用被管理的交叉编译器和依赖构建
-heddle env verify     # 校验当前环境与锁完全一致
+heddle env verify     # 校验当前环境与锁一致
 ```
 
 细节见 [工具链与依赖](docs/packages.md)。
 
-## heddle.toml
+## 配置
+
+工程用 `heddle.star`（Starlark 子集）或 `heddle.toml`。两者都在时 `.star` 优先，
+`.toml` 作为回退。
+
+### heddle.star
+
+```python
+project(name = "firmware", build_dir = "out", default_toolchain = "arm-none-eabi")
+
+toolchain(name = "arm-none-eabi", family = "gcc",
+          cc = "arm-none-eabi-gcc", ar = "arm-none-eabi-ar")
+
+nucleo = platform(name = "nucleo_f4", arch = "armv7em", abi = "eabihf",
+                  float = "hard", toolchain = "arm-none-eabi")
+bluepill = platform(name = "bluepill_f1", arch = "armv7m", abi = "eabi",
+                    float = "soft", toolchain = "arm-none-eabi")
+
+freertos = package(name = "freertos", version = "10.5.1")
+
+def firmware(board, chip, platform):
+    return target(
+        name = "fw_" + board,
+        type = "exe",
+        src = ["src/" + chip + ".c"],
+        deps = [freertos],
+        platform = platform,
+        linker_script = "boards/" + board + ".ld",
+        entry = "reset_handler",
+    )
+
+BOARDS = {"nucleo": ("f4", nucleo), "bluepill": ("f1", bluepill)}
+
+for board, (chip, platform) in BOARDS.items():
+    firmware(board, chip, platform)
+```
+
+`project` / `toolchain` / `platform` / `package` 返回对象，可以赋给变量、
+放进列表和字典，再传给 `target`。`deps` 里放 package 对象是包依赖（链接
+`-l`），放字符串是依赖另一个 target。一个 `.star` 里可以有多个 platform，
+构建哪个 target 就按它绑定的 platform 推 arch/abi/float：
+
+```sh
+heddle fw_nucleo     # -mcpu=cortex-m4 -mfloat-abi=hard
+heddle fw_bluepill   # -mcpu=cortex-m3 -mfloat-abi=soft
+```
+
+`build(dir = ...)` 和 `target_config(...)` 也认，等价于 `project`/`platform`
+的简化写法，适合单配置工程。
+
+能用的东西：
+
+| 功能 | 写法 |
+| --- | --- |
+| 函数 | `def f(a, b): return ...` |
+| 循环 | `for x in list:`，`for k, v in dict.items():`，`for k, (a, b) in ...` |
+| 条件 | `if` / `elif` / `else` |
+| 列表、元组、字典 | `[1, 2]`，`(1, 2)`，`{"a": 1}` |
+| 下标、切片 | `L[0]`，`L[1:3]` |
+| 字符串 | `"a" + "b"`，`"v" + str(n)` |
+| 内置 | `glob("src/*.c")`，`len`，`range`，`str` |
+| 声明 | `project` `platform` `toolchain` `package` `target` `install` `build` `target_config` |
+
+尾随逗号（`[1, 2,]`、`{"a": 1,}`）也认。
+
+`while`、`import`、`class`、`lambda`、`global` 不支持，写了会报错并指出行号。
+
+`target(...)` 的键：`name` `type` `src` `inc` `deps` `cflags` `ldflags`
+`linker_script` `entry` `out` `platform`。
+
+### heddle.toml
 
 ```toml
 [build]
@@ -146,7 +212,7 @@ deps = ["util"]          # 依赖另一个目标，自动拓扑排序
 | 键 | 含义 |
 | --- | --- |
 | `type` | 必填，见下 |
-| `src` | 必填，源文件列表，每个生成一个 .o，支持 `*` `**` `?` 通配 |
+| `src` | 必填，源文件，每个生成一个 .o，支持 `*` `**` `?` 通配 |
 | `inc` | 头文件搜索目录 |
 | `deps` | 依赖的目标名 |
 | `cflags` | 本目标额外的编译选项 |
@@ -154,20 +220,18 @@ deps = ["util"]          # 依赖另一个目标，自动拓扑排序
 
 `cflags` 和工具链的 `cflags` 叠加，工具链的在前。
 
-`src` 里可以写通配，构建时展开成实际文件：
+`src` 里的通配在构建时展开，按路径去重排序，重名不会编译两次：
 
 ```toml
 [target.app]
 type = "exe"
-src = ["app/*.c", "src/**/*.c"] 
+src = ["app/*.c", "src/**/*.c"]
 ```
 
-展开后按路径去重排序，重名不会编译两次。
+#### type
 
-### type
-
-`type` 是目标种类，产物格式和后缀由工具链的 `objext`/`binext`/`libext`/`dllext` 决定，
-跟 `.exe` 这个后缀没关系。Linux 上 `type = "exe"` 出来的是 ELF。
+`type` 是目标种类，产物格式和后缀由工具链的 `objext`/`binext`/`libext`/`dllext`
+决定，跟 `.exe` 这个后缀没关系。Linux 上 `type = "exe"` 出来的是 ELF。
 
 | type | 别名 | 含义 | host/gcc/clang | mingw |
 | --- | --- | --- | --- | --- |
@@ -177,7 +241,7 @@ src = ["app/*.c", "src/**/*.c"]
 | `raw` | — | 单个源直接产出二进制，不链接 | `format = "bin"` 时是裸二进制 | 同 |
 | `custom` | — | 跑一条自定义命令 | 需 `cmd` 与 `out` | 同 |
 
-`raw` 用于引导扇区这类不需要链接的产物：
+`raw` 用于引导扇区这类不链接的产物：
 
 ```toml
 [target.mbr]
@@ -187,7 +251,7 @@ format = "bin"
 out = "out/mbr.bin"
 ```
 
-`custom` 用于执行自定义命令，`cmd` 里的命令交给 shell 执行：
+`custom` 的 `cmd` 交给 shell 执行：
 
 ```toml
 [target.image]
@@ -199,7 +263,7 @@ deps = ["mbr", "kernel"]
 
 ### 语言与插件
 
-源文件按扩展名选编译器，内置这些：
+源文件按扩展名选编译器：
 
 | 扩展名 | 工具 | 说明 |
 | --- | --- | --- |
@@ -208,8 +272,8 @@ deps = ["mbr", "kernel"]
 | `.asm` | `as` | NASM，`-f` 由 `[target] arch` 决定（`elf`/`elf32`/`elf64`） |
 | `.S` `.s` | `cc` | GAS |
 
-链接脚本用 `linker_script` 声明，改脚本会触发重链接。这是语义声明，
-具体参数由当前工具链的 `family` 决定，不写死 `-T`：
+链接脚本用 `linker_script` 声明，改脚本会触发重链接。它只声明意图，
+具体参数由工具链的 `family` 决定：
 
 ```toml
 [target.kernel]
@@ -220,9 +284,7 @@ entry = "reset_handler"
 ldflags = ["-nostdlib", "-m32"]
 ```
 
-详见下面的 [family](#family)。
-
-加一门新语言只需在配置里声明：
+加一门新语言在配置里声明：
 
 ```toml
 [lang.mine]
@@ -248,7 +310,7 @@ detected toolchains (auto uses the first match):
   msvc     -      cl
 ```
 
-探测到了就填 `cflags`（`-t` 选中的那个 section）；想固定工具链就直接写：
+想固定工具链就直接写：
 
 ```toml
 [toolchain.myarm]
@@ -259,9 +321,10 @@ cflags = ["-mcpu=cortex-m4", "-O2"]
 ```
 
 预设：`host` `linux` `gcc` `clang` `macos` `mingw` `armcc` `iar` `msvc`。
-可覆盖字段：`family` `cc` `cxx` `ar` `ld` `cflags` `ldflags` `objext` `binext` `libext` `dllpre` `dllext` `soflag` `platform`。
+可覆盖字段：`family` `cc` `cxx` `ar` `ld` `cflags` `ldflags` `objext` `binext`
+`libext` `dllpre` `dllext` `soflag` `platform`。
 
-找不到编译器或工具链名写错会直接报错，不静默回退。
+找不到编译器或工具链名写错会直接报错。
 
 ### family
 
@@ -285,7 +348,8 @@ entry = "reset_handler"
 | `iar` | `--config=kernel.icf` | `--entry=reset_handler` |
 | `msvc` | `/DEF:kernel.def` | `/ENTRY:reset_handler` |
 
-`armcc` 和 `iar` 拿到 `.ld` 时会先转成 `.sct`/`.icf`（一个构建步骤，改了 `.ld` 会重链）。
+`armcc` 和 `iar` 拿到 `.ld` 时会先转成 `.sct`/`.icf`，转换是一个构建步骤，
+改了 `.ld` 会重链。
 
 ### 多包
 
@@ -293,10 +357,10 @@ entry = "reset_handler"
 
 ```toml
 [package]
-deps = ["vendor/greet"] 
+deps = ["vendor/greet"]
 ```
 
-子包的目标和根配置共用一个命名空间，所以根里可以直接 `deps = ["greet"]`。
+子包的目标和根配置共用一个命名空间，根里可以直接 `deps = ["greet"]`。
 
 ## 静态检查
 
@@ -304,13 +368,13 @@ deps = ["vendor/greet"]
 
 - 依赖的目标存在，且不是 `exe`
 - 目标之间无环
-- 源文件存在、路径不出工程、扩展名是 `.c` `.cc` `.cpp` `.cxx` `.c++` `.S` 之一
+- 源文件存在、路径不出工程、扩展名受支持
 - 一个源文件没有被两个目标同时声明
 - `inc` 目录存在
 
 ```
-$ heddle -C . --check
-heddle: 2 targets ok, toolchain=host platform=host
+$ heddle check
+heddle: 2 targets ok, toolchain=gcc platform=gcc
   greet            staticlib  src=1 inc=1 deps=0
   hello            exe        src=1 inc=1 deps=1
 ```
@@ -365,32 +429,34 @@ heddle uninstall --destdir=./pkg    # 按安装日志删
 | `include` | `<prefix>/include/`，保留通配基准目录下的相对路径 |
 | `share` | `<prefix>/share/<target>/`，取文件名 |
 | `etc` | `<prefix>/etc/<target>/`，取文件名 |
-| `rootfs` | 把整个目录树镜像到 `<prefix>/rootfs/` |
+| `rootfs` | 整个目录树镜像到 `<prefix>/rootfs/` |
 | `sysroot_lib` | `<sysroot>/lib/`，sysroot 取 `[target] sysroot` |
 | `sysroot_include` | `<sysroot>/include/` |
 
 `--destdir DIR` 时全部落在 `DIR` 下（`DIR/<prefix>/...`），不动系统。
-不写 `--prefix` 也不写 `[install] prefix` 会直接报错，不会默认装到 `/usr/local`。
+不写 `--prefix` 也不写 `[install] prefix` 会报错，不会默认装到 `/usr/local`。
 
 安装会写一份日志到 `.heddle/install/<hash>.log`，记录装了哪些文件。
 `heddle uninstall` 只删日志里的文件，日志按 `destdir + prefix` 区分，
-所以卸 A 目录不会碰 B 目录。
+卸 A 目录不会碰 B 目录。
 
-## vcpkg 兼容
+`.star` 工程里用 `install(target = "...", bin = [...], ...)` 声明，键名相同。
 
-`heddle vcpkg` 把 vcpkg 的 port 和已构建的 `installed/` 目录接进 heddle 的
-store 和锁文件。
+## vcpkg
+
+`heddle vcpkg` 读 vcpkg 的 port 信息，或把已构建的 `installed/` 树收进
+heddle 的 store 和锁文件。
 
 ```sh
 heddle vcpkg show ports/zlib                 # 读 vcpkg.json
-heddle vcpkg triplet x64-linux 
+heddle vcpkg triplet x64-linux               # 打印对应的 [target] 片段
 heddle vcpkg check .                         # 判断是不是 vcpkg registry
 heddle vcpkg import ports/zlib --from installed --triplet x64-linux
 ```
 
 `import` 把 `installed/<triplet>/{include,lib,bin,share}` 收进
 `<store>/library/<name>/<version>/`，算出内容哈希，并更新 `heddle.lock`。
-之后工程里就能像普通依赖一样声明：
+之后工程里像普通依赖一样声明：
 
 ```toml
 [dependencies]
@@ -398,8 +464,8 @@ zlib = "1.3.1"
 ```
 
 构建时自动加 `-I<store>/.../include` 和 `-L<store>/.../lib -l<真实库名>`。
-库名从 `lib/` 里的文件名推出来（`libz.a` → `-lz`），不用手动写，
-所以 port 名和库名不一致也没关系（`zlib` port 的库是 `libz`）。
+库名从 `lib/` 里的文件名推出来（`libz.a` → `-lz`），所以 port 名和库名
+不一致也没关系（`zlib` port 的库是 `libz`）。
 
 | 命令 | 含义 |
 | --- | --- |
@@ -412,6 +478,8 @@ zlib = "1.3.1"
 `x64-windows` `x64-windows-static` `x64-osx` `arm64-osx`
 `thumbv7m-none-eabi` `thumbv7em-none-eabihf` `arm-none-eabi`。
 
+heddle 不跑 CMake，所以不能直接从 vcpkg registry 构建 port；用 `import` 把 vcpkg 编好的树接进来。
+
 ## 从 CMake / XMake 迁移
 
 ```sh
@@ -420,9 +488,10 @@ heddle migrate ./proj           # 指定目录
 heddle migrate --from xmake     # 目录里两个都有时强制选一个
 heddle migrate --dry-run        # 只打印解析结果
 heddle migrate --out my.toml    # 换个输出名
+heddle migrate --star           # 生成 heddle.star
 ```
 
-读 CMakeLists.txt 或 xmake.lua，生成 `heddle.toml`。已有的 `heddle.toml`
+（`--from cmake` / `--from xmake`。）生成的清单里已有的同名文件不会覆盖。
 
 | CMake | XMake | heddle |
 | --- | --- | --- |
@@ -438,12 +507,12 @@ heddle migrate --out my.toml    # 换个输出名
 | `-T file` / `-Wl,-T,file` | `add_ldflags("-T", "file")` | `linker_script = "file"` |
 | — | `add_syslinks(...)` | `ldflags = ["-l..."]` |
 
-`target_link_libraries` 里不是本工程 target 的名字（`pthread`、`m`）会自动
-变成 `-lpthread`、`-lm`。`-T` 会被识别成语义化的 `linker_script`。
+`target_link_libraries` 里不是本工程 target 的名字（`pthread`、`m`）会变成
+`-lpthread`、`-lm`。`-T` 会识别成语义化的 `linker_script`。
 
-转不了的会列出来，不会静默丢掉。
+转不了的会列出来，不会静默丢掉（比如 xmake 的 `remove_files` 和全局的`include_directories`）。
 
-生成的 `heddle.toml` 可以直接 `heddle <target>` 构建，也可以 `heddle check`。
+生成的清单可以直接 `heddle <target>` 构建，也可以 `heddle check`。
 
 ## 测试
 
@@ -467,4 +536,4 @@ build.txt                loom 自身的构建图，用于自举
 ## 文档
 
 - [语言插件](docs/language-plugins.md)：内置语言、声明新语言、占位符、C 接口
-- [工具链与依赖](docs/packages.md)：统一包管理、交叉 target 推导、锁文件、离线缓存、环境校验
+- [工具链与依赖](docs/packages.md)：工具链与依赖管理、交叉 target 推导、锁文件、离线缓存、环境校验
