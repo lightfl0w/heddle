@@ -11,6 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: xmake-io/github-action-setup-xmake@v1
+      - uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '>=3.28'
+      - run: cmake --version
       - run: sudo apt-get update && sudo apt-get install -y nasm
       - run: xmake
       - run: bash tests/run.sh
@@ -42,6 +46,12 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-binutils
             mingw-w64-x86_64-nasm
+      - uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '>=3.28'
+      - run: |
+          set -Eeuo pipefail
+          cmake --version
       - run: |
           xmake --version || {
             echo "xmake not on PATH; PATH is:"

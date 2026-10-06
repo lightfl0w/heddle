@@ -66,6 +66,17 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y nasm
 
+      - uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '>=3.28'
+
+      - if: runner.os == 'Linux'
+        run: cmake --version
+
+      - if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --version
+
       - name: build & test (Linux)
         if: runner.os == 'Linux'
         shell: bash
