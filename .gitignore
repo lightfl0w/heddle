@@ -12,3 +12,4 @@ out/
 *.obj
 *.exe
 dist/
+build-heddle-cmake/

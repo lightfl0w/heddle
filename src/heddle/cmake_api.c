@@ -398,6 +398,17 @@ static const char *map_type(const char *t) {
     return "exe";
 }
 
+static int is_internal(const char *nm, const char *ty) {
+    static const char *known[] = {"ALL_BUILD", "ZERO_CHECK", "INSTALL", "RUN_TESTS",
+                                  "PACKAGE", "edit_cache", "rebuild_cache", NULL};
+    if (ty && !strcmp(ty, "UTILITY")) return 1;
+    if (!nm) return 0;
+    for (int i = 0; known[i]; i++)
+        if (!strcmp(nm, known[i])) return 1;
+    return !strncmp(nm, "Nightly", 7) || !strncmp(nm, "Continuous", 10) ||
+           !strncmp(nm, "Experimental", 12);
+}
+
 static void id_to_name(const char *id, char *out, size_t cap) {
     const char *c = id ? strstr(id, "::") : NULL;
     size_t      n = c ? (size_t)(c - id) : (id ? strlen(id) : 0);
@@ -467,7 +478,7 @@ static void add_link(MIG_TARGET *t, const JV *j) {
 }
 
 static void add_deps(MIG_SET *m, MIG_TARGET *t, const JV *j) {
-    const char *keys[] = {"dependencies", "linkLibraries", NULL};
+    const char *keys[] = {"linkLibraries", "dependencies", NULL};
 
     for (int k = 0; keys[k]; k++) {
         JV *a = jv_get(j, keys[k]);
@@ -615,7 +626,7 @@ int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
         if (!tg) continue;
 
         const char *ty = jv_str(jv_get(tg, "type"));
-        if (ty && !strcmp(ty, "INTERFACE_LIBRARY")) {
+        if ((ty && !strcmp(ty, "INTERFACE_LIBRARY")) || is_internal(nm, ty)) {
             jv_free(tg);
             continue;
         }
