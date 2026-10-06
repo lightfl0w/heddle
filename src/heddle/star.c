@@ -21,7 +21,6 @@ STAR *star_none(void) {
 
 static STAR *alloc(STAR_KIND k) {
     STAR *v = (STAR *)calloc(1, sizeof(STAR));
-
     if (v) v->kind = k;
 
     return v;
@@ -29,7 +28,6 @@ static STAR *alloc(STAR_KIND k) {
 
 STAR *star_str(const char *s) {
     STAR *v = alloc(STAR_STR);
-
     if (v) v->s = sys_dup(s ? s : "");
 
     return v;
@@ -37,7 +35,6 @@ STAR *star_str(const char *s) {
 
 STAR *star_num(double n) {
     STAR *v = alloc(STAR_NUM);
-
     if (v) v->num = n;
 
     return v;
@@ -45,7 +42,6 @@ STAR *star_num(double n) {
 
 STAR *star_bool(int b) {
     STAR *v = alloc(STAR_BOOL);
-
     if (v) v->b = b ? 1 : 0;
 
     return v;
@@ -62,7 +58,6 @@ void star_free(STAR *v) {
     if (!v || v == &g_none) return;
 
     free(v->s);
-
     if (v->kind == STAR_LIST)
         for (int i = 0; i < v->n; i++) star_free(v->items[i]);
 
@@ -85,13 +80,11 @@ STAR *star_dup(const STAR *v) {
     if (!v) return star_none();
 
     STAR *d = alloc(v->kind);
-
     if (!d) return star_none();
 
     d->s   = v->s;
     d->num = v->num;
     d->b   = v->b;
-
     if (v->kind == STAR_STR) {
         d->s = sys_dup(v->s);
     } else if (v->kind == STAR_LIST) {
@@ -125,7 +118,6 @@ void star_dict_put(STAR *d, const char *k, STAR *v) {
 
     STAR **nv = (STAR **)realloc(d->vals, sizeof(STAR *) * (size_t)(d->n + 1));
     char **nk = (char **)realloc(d->keys, sizeof(char *) * (size_t)(d->n + 1));
-
     if (!nv || !nk) {
         star_free(v);
         return;
@@ -177,7 +169,6 @@ static int is_int(double n) {
 
 static char *num_str(double n) {
     char buf[64];
-
     if (is_int(n)) snprintf(buf, sizeof(buf), "%.0f", n);
     else snprintf(buf, sizeof(buf), "%g", n);
 
@@ -188,7 +179,6 @@ static void append(char **dst, const char *tail) {
     char  *s = *dst ? *dst : sys_dup("");
     size_t n = strlen(s) + strlen(tail) + 1;
     char  *r = (char *)malloc(n);
-
     if (r) snprintf(r, n, "%s%s", s, tail);
 
     free(s);
@@ -212,14 +202,11 @@ void star_add(STAR *a, const STAR *b) {
     } else if (a->kind == STAR_STR || a->kind == STAR_NUM || a->kind == STAR_BOOL) {
         char *l = as_text(a);
         char *r = as_text(b);
-
         free(a->s);
         a->s    = sys_dup("");
         a->kind = STAR_STR;
-
         append(&a->s, l);
         append(&a->s, r);
-
         free(l);
         free(r);
     }
@@ -274,7 +261,6 @@ static void tok_add(LEX *l, TT t, const char *s, double num, int line) {
     if (l->n == l->cap) {
         int  cap = l->cap ? l->cap * 2 : 64;
         TOK *v   = (TOK *)realloc(l->v, sizeof(TOK) * (size_t)cap);
-
         if (!v) return;
 
         l->v   = v;
@@ -298,24 +284,19 @@ static void lex_free(LEX *l) {
 
 static int star_lex(const char *src, const char *file, LEX *out, char *err, size_t errsz) {
     memset(out, 0, sizeof(*out));
-    out->file = sys_dup(file);
-
+    out->file        = sys_dup(file);
     const char *p    = src;
     int         line = 1;
-
-    int indents[64];
-    int depth  = 0;
-    indents[0] = 0;
-
+    int         indents[64];
+    int         depth = 0;
+    indents[0]        = 0;
     int at_line_start = 1;
     int line_blank    = 0;
     int bdepth        = 0;
-
     while (*p) {
         if (at_line_start && !line_blank && bdepth == 0) {
             const char *q   = p;
             int         col = 0;
-
             while (*q == ' ') {
                 q++;
                 col++;
@@ -377,7 +358,6 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
             char   q   = *p++;
             size_t cap = 32, n = 0;
             char  *buf = (char *)malloc(cap);
-
             if (!buf) {
                 snprintf(err, errsz, "oom");
                 return -1;
@@ -385,7 +365,6 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
 
             while (*p && *p != q) {
                 char c = *p++;
-
                 if (c == '\\' && *p) {
                     char e = *p++;
                     if (e == 'n') c = '\n';
@@ -423,10 +402,8 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
         if (isdigit((unsigned char)*p)) {
             char  *end = NULL;
             double v   = strtod(p, &end);
-
             char   buf[64];
             size_t n = (size_t)(end - p);
-
             if (n >= sizeof(buf)) n = sizeof(buf) - 1;
 
             memcpy(buf, p, n);
@@ -438,12 +415,10 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
 
         if (isalpha((unsigned char)*p) || *p == '_') {
             const char *b = p;
-
             while (isalnum((unsigned char)*p) || *p == '_') p++;
 
             char   buf[256];
             size_t n = (size_t)(p - b);
-
             if (n >= sizeof(buf)) n = sizeof(buf) - 1;
 
             memcpy(buf, b, n);
@@ -453,7 +428,6 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
         }
 
         char c = *p++;
-
         switch (c) {
         case '(':
             bdepth++;
@@ -519,7 +493,6 @@ static int star_lex(const char *src, const char *file, LEX *out, char *err, size
     }
 
     tok_add(out, T_NEWLINE, NULL, 0, line);
-
     while (depth > 0) {
         depth--;
         tok_add(out, T_DEDENT, NULL, 0, line);
@@ -542,20 +515,16 @@ typedef struct {
 } SCOPE;
 
 typedef struct {
-    LEX lex;
-    int pos;
-
-    SCOPE *scopes[64];
-    int    nscope;
-
+    LEX       lex;
+    int       pos;
+    SCOPE    *scopes[64];
+    int       nscope;
     STAR_CFG *cfg;
     char     *cwd;
-
-    char err[512];
-    int  failed;
-
-    int   loop_depth;
-    STAR *ret;
+    char      err[512];
+    int       failed;
+    int       loop_depth;
+    STAR     *ret;
 } INTERP;
 
 static STAR *eval_expr(INTERP *I);
@@ -591,7 +560,6 @@ static SCOPE *scope_push(INTERP *I) {
     if (I->nscope >= 64) return NULL;
 
     SCOPE *s = (SCOPE *)calloc(1, sizeof(SCOPE));
-
     if (s) I->scopes[I->nscope++] = s;
 
     return s;
@@ -601,7 +569,6 @@ static void scope_pop(INTERP *I) {
     if (I->nscope <= 0) return;
 
     SCOPE *s = I->scopes[--I->nscope];
-
     for (int i = 0; i < s->n; i++) {
         free(s->v[i].name);
         star_free(s->v[i].val);
@@ -628,7 +595,6 @@ static int var_set(INTERP *I, const char *name, STAR *val) {
             }
 
     SCOPE *s = I->scopes[I->nscope - 1];
-
     if (s->n >= MAX_VARS) return -1;
 
     s->v[s->n].name = sys_dup(name);
@@ -650,13 +616,11 @@ static int truthy(const STAR *v) {
 
 STAR *star_userfn(char **params, int nparams, int body_pos) {
     STAR *v = alloc(STAR_USERFN);
-
     if (!v) return star_none();
 
     v->params   = (char **)calloc((size_t)(nparams ? nparams : 1), sizeof(char *));
     v->nparams  = nparams;
     v->body_pos = body_pos;
-
     for (int i = 0; i < nparams; i++) v->params[i] = sys_dup(params[i]);
 
     return v;
@@ -668,10 +632,8 @@ static STAR *eval_primary(INTERP *I);
 
 static STAR *eval_call(INTERP *I, const char *name, STAR *args, STAR *kw) {
     STAR *fn = var_get(I, name);
-
     if (fn && fn->kind == STAR_USERFN) {
         SCOPE *s = scope_push(I);
-
         if (!s) {
             ierr(I, "too deep", "");
             return star_none();
@@ -679,16 +641,12 @@ static STAR *eval_call(INTERP *I, const char *name, STAR *args, STAR *kw) {
 
         for (int i = 0; i < fn->nparams; i++) {
             STAR *v = i < args->n ? star_dup(args->items[i]) : star_none();
-
             var_set(I, fn->params[i], v);
         }
 
         int save = I->pos;
-
-        I->pos = fn->body_pos;
-
-        STAR *r = eval_block(I, 0);
-
+        I->pos   = fn->body_pos;
+        STAR *r  = eval_block(I, 0);
         if (I->ret) {
             r      = I->ret;
             I->ret = NULL;
@@ -696,20 +654,17 @@ static STAR *eval_call(INTERP *I, const char *name, STAR *args, STAR *kw) {
 
         I->pos = save;
         scope_pop(I);
-
         return r ? r : star_none();
     }
 
     STAR *r = call_builtin(I, name, args, kw);
-
     return r ? r : star_none();
 }
 
 static STAR *eval_args(INTERP *I, STAR **kw_out) {
     STAR *args = star_list();
     STAR *kw   = star_dict();
-
-    *kw_out = kw;
+    *kw_out    = kw;
 
     if (accept(I, T_RP)) return args;
 
@@ -719,7 +674,6 @@ static STAR *eval_args(INTERP *I, STAR **kw_out) {
             snprintf(key, sizeof(key), "%s", peek(I)->s);
             next(I);
             next(I);
-
             STAR *v = eval_expr(I);
             star_dict_put(kw, key, v);
         } else {
@@ -739,9 +693,7 @@ static STAR *eval_args(INTERP *I, STAR **kw_out) {
 static STAR *eval_index(INTERP *I, STAR *base) {
     if (peek(I)->t == T_COLON) {
         next(I);
-
         int hi = base->n;
-
         if (peek(I)->t != T_RB) {
             STAR *hv = eval_expr(I);
             hi       = (int)star_as_num(hv, base->n);
@@ -749,20 +701,16 @@ static STAR *eval_index(INTERP *I, STAR *base) {
         }
 
         accept(I, T_RB);
-
         STAR *l = star_list();
-
         for (int i = 0; i < hi && i < base->n; i++) star_list_add(l, star_dup(base->items[i]));
 
         return l;
     }
 
     STAR *idx = eval_expr(I);
-
     if (accept(I, T_COLON)) {
         int lo = (int)star_as_num(idx, 0);
         int hi = base->n;
-
         if (peek(I)->t != T_RB) {
             STAR *hv = eval_expr(I);
             hi       = (int)star_as_num(hv, base->n);
@@ -771,19 +719,15 @@ static STAR *eval_index(INTERP *I, STAR *base) {
 
         accept(I, T_RB);
         star_free(idx);
-
         STAR *l = star_list();
-
         for (int i = lo; i < hi && i < base->n; i++) star_list_add(l, star_dup(base->items[i]));
 
         return l;
     }
 
     accept(I, T_RB);
-
     if (base->kind == STAR_DICT && idx->kind == STAR_STR) {
         STAR *v = star_get(base, idx->s);
-
         star_free(idx);
         return star_dup(v ? v : star_none());
     }
@@ -791,7 +735,6 @@ static STAR *eval_index(INTERP *I, STAR *base) {
     if (base->kind == STAR_LIST) {
         int   i = (int)star_as_num(idx, 0);
         STAR *v = star_at(base, i);
-
         star_free(idx);
         return star_dup(v ? v : star_none());
     }
@@ -803,7 +746,6 @@ static STAR *eval_index(INTERP *I, STAR *base) {
 static STAR *eval_unary(INTERP *I) {
     if (accept(I, T_MINUS)) {
         STAR *v = eval_unary(I);
-
         if (v->kind == STAR_NUM) {
             STAR *r = star_num(-v->num);
             star_free(v);
@@ -824,12 +766,9 @@ static STAR *postfix(INTERP *I, STAR *v) {
             char m[256];
             snprintf(m, sizeof(m), "%s", peek(I)->s);
             next(I);
-
             accept(I, T_LP) ? accept(I, T_RP) : 0;
-
             if (!strcmp(m, "keys") && v->kind == STAR_DICT) {
                 STAR *l = star_list();
-
                 for (int i = 0; i < v->n; i++) star_list_add(l, star_str(v->keys[i]));
 
                 star_free(v);
@@ -839,10 +778,8 @@ static STAR *postfix(INTERP *I, STAR *v) {
 
             if (!strcmp(m, "items") && v->kind == STAR_DICT) {
                 STAR *l = star_list();
-
                 for (int i = 0; i < v->n; i++) {
                     STAR *pair = star_list();
-
                     star_list_add(pair, star_str(v->keys[i]));
                     star_list_add(pair, star_dup(v->vals[i]));
                     star_list_add(l, pair);
@@ -855,7 +792,6 @@ static STAR *postfix(INTERP *I, STAR *v) {
 
             if (!strcmp(m, "values") && v->kind == STAR_DICT) {
                 STAR *l = star_list();
-
                 for (int i = 0; i < v->n; i++) star_list_add(l, star_dup(v->vals[i]));
 
                 star_free(v);
@@ -868,9 +804,7 @@ static STAR *postfix(INTERP *I, STAR *v) {
 
         if (peek(I)->t == T_LB) {
             next(I);
-
             STAR *r = eval_index(I, v);
-
             star_free(v);
             v = r;
             continue;
@@ -896,18 +830,14 @@ static int cmp_vals(const STAR *a, const STAR *b) {
 
 static STAR *eval_mul(INTERP *I) {
     STAR *v = eval_unary(I);
-
     for (;;) {
         TT t = peek(I)->t;
-
         if (t != T_STAR && t != T_SLASH && t != T_PERCENT) return v;
 
         next(I);
-        STAR *r = eval_unary(I);
-
+        STAR  *r = eval_unary(I);
         double a = star_as_num(v, 0), b = star_as_num(r, 0);
         double o;
-
         if (t == T_STAR) o = a * b;
         else if (t == T_SLASH) o = b ? a / b : 0;
         else o = b ? a - b * (double)(long long)(a / b) : 0;
@@ -920,15 +850,12 @@ static STAR *eval_mul(INTERP *I) {
 
 static STAR *eval_add(INTERP *I) {
     STAR *v = eval_mul(I);
-
     for (;;) {
         TT t = peek(I)->t;
-
         if (t != T_PLUS && t != T_MINUS) return v;
 
         next(I);
         STAR *r = eval_mul(I);
-
         if (t == T_PLUS) {
             star_add(v, r);
             star_free(r);
@@ -943,17 +870,14 @@ static STAR *eval_add(INTERP *I) {
 
 static STAR *eval_cmp(INTERP *I) {
     STAR *v = eval_add(I);
-
     for (;;) {
         TT t = peek(I)->t;
-
         if (t != T_EQ && t != T_NE && t != T_LT && t != T_LE && t != T_GT && t != T_GE) return v;
 
         next(I);
         STAR *r = eval_add(I);
         int   c = cmp_vals(v, r);
         int   o = 0;
-
         if (t == T_EQ) o = c == 0 && v->kind == r->kind;
         else if (t == T_NE) o = !(c == 0 && v->kind == r->kind);
         else if (t == T_LT) o = c < 0;
@@ -975,7 +899,6 @@ static STAR *eval_expr(INTERP *I) {
 
 static STAR *eval_primary(INTERP *I) {
     TOK *t = peek(I);
-
     if (t->t == T_NUM) {
         next(I);
         return star_num(t->num);
@@ -987,14 +910,11 @@ static STAR *eval_primary(INTERP *I) {
 
     if (t->t == T_LB) {
         next(I);
-
         STAR *l = star_list();
-
         if (accept(I, T_RB)) return postfix(I, l);
 
         for (;;) {
             star_list_add(l, eval_expr(I));
-
             if (accept(I, T_COMMA)) {
                 if (peek(I)->t == T_RB) {
                     next(I);
@@ -1012,21 +932,17 @@ static STAR *eval_primary(INTERP *I) {
 
     if (t->t == T_LC) {
         next(I);
-
         STAR *d = star_dict();
-
         if (accept(I, T_RC)) return postfix(I, d);
 
         for (;;) {
             STAR *k = eval_expr(I);
             accept(I, T_COLON);
             STAR *v = eval_expr(I);
-
-            char kb[512];
+            char  kb[512];
             snprintf(kb, sizeof(kb), "%s", star_as_str(k) ? star_as_str(k) : "");
             star_dict_put(d, kb, v);
             star_free(k);
-
             if (accept(I, T_COMMA)) {
                 if (peek(I)->t == T_RC) {
                     next(I);
@@ -1044,14 +960,10 @@ static STAR *eval_primary(INTERP *I) {
 
     if (t->t == T_LP) {
         next(I);
-
         STAR *v = eval_expr(I);
-
         if (peek(I)->t == T_COMMA) {
             STAR *l = star_list();
-
             star_list_add(l, v);
-
             while (accept(I, T_COMMA)) {
                 if (peek(I)->t == T_RP) break;
 
@@ -1068,26 +980,21 @@ static STAR *eval_primary(INTERP *I) {
 
     if (t->t == T_NAME) {
         next(I);
-
         if (!strcmp(t->s, "True")) return star_bool(1);
         if (!strcmp(t->s, "False")) return star_bool(0);
         if (!strcmp(t->s, "None")) return star_none();
 
         if (peek(I)->t == T_LP) {
             next(I);
-
             STAR *kw   = NULL;
             STAR *args = eval_args(I, &kw);
-
-            STAR *r = eval_call(I, t->s, args, kw);
-
+            STAR *r    = eval_call(I, t->s, args, kw);
             star_free(args);
             star_free(kw);
             return postfix(I, r);
         }
 
         STAR *v = var_get(I, t->s);
-
         return postfix(I, star_dup(v ? v : star_none()));
     }
 
@@ -1104,20 +1011,16 @@ struct PAT {
 
 static int parse_pattern(INTERP *I, PAT *p) {
     memset(p, 0, sizeof(*p));
-
     if (accept(I, T_LP)) {
         for (;;) {
             PAT sub;
-
             if (!parse_pattern(I, &sub)) return 0;
 
             PAT *ns = (PAT *)realloc(p->sub, sizeof(PAT) * (size_t)(p->nsub + 1));
-
             if (!ns) return 0;
 
             p->sub            = ns;
             p->sub[p->nsub++] = sub;
-
             if (accept(I, T_COMMA)) continue;
 
             accept(I, T_RP);
@@ -1168,9 +1071,7 @@ static int is_unsupported(const char *w) {
 
 static void skip_block(INTERP *I) {
     accept(I, T_NEWLINE);
-
     int depth = 0;
-
     while (peek(I)->t != T_EOF) {
         if (peek(I)->t == T_INDENT) {
             depth++;
@@ -1203,16 +1104,13 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
     }
 
     STAR *last = star_none();
-
     while (!I->failed && !I->ret && peek(I)->t != T_DEDENT && peek(I)->t != T_EOF) {
         if (accept(I, T_NEWLINE)) continue;
 
         TOK *t = peek(I);
-
         if (t->t == T_NAME && !strcmp(t->s, "def")) {
             next(I);
             TOK *nm = next(I);
-
             if (nm->t != T_NAME) {
                 ierr(I, "bad def", "");
                 break;
@@ -1220,13 +1118,10 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
 
             char *params[32];
             int   np = 0;
-
             accept(I, T_LP);
-
             if (!accept(I, T_RP)) {
                 for (;;) {
                     TOK *p = next(I);
-
                     if (p->t == T_NAME && np < 32) params[np++] = p->s;
 
                     if (accept(I, T_COMMA)) continue;
@@ -1238,13 +1133,9 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
 
             accept(I, T_COLON);
             accept(I, T_NEWLINE);
-
             int body = I->pos;
-
             accept(I, T_INDENT);
-
             int depth = 1;
-
             while (depth > 0 && peek(I)->t != T_EOF) {
                 if (accept(I, T_INDENT)) depth++;
                 else if (accept(I, T_DEDENT)) depth--;
@@ -1257,17 +1148,13 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
 
         if (t->t == T_NAME && !strcmp(t->s, "if")) {
             next(I);
-
             int done = 0;
-
             for (;;) {
                 if (done) {
                     skip_block(I);
                 } else {
                     STAR *c = eval_expr(I);
-
                     accept(I, T_COLON);
-
                     if (truthy(c)) {
                         star_free(last);
                         last = eval_block(I, 1);
@@ -1287,7 +1174,6 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
                 if (!strcmp(peek(I)->s, "else")) {
                     next(I);
                     accept(I, T_COLON);
-
                     if (!done) {
                         star_free(last);
                         last = eval_block(I, 1);
@@ -1305,13 +1191,10 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
 
         if (t->t == T_NAME && !strcmp(t->s, "for")) {
             next(I);
-
             PAT pat;
             memset(&pat, 0, sizeof(pat));
-
             for (;;) {
                 PAT one;
-
                 if (!parse_pattern(I, &one)) {
                     free_pattern(&pat);
                     ierr(I, "for: bad loop variable", "");
@@ -1319,7 +1202,6 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
                 }
 
                 PAT *ns = (PAT *)realloc(pat.sub, sizeof(PAT) * (size_t)(pat.nsub + 1));
-
                 if (!ns) {
                     free_pattern(&one);
                     free_pattern(&pat);
@@ -1328,7 +1210,6 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
 
                 pat.sub             = ns;
                 pat.sub[pat.nsub++] = one;
-
                 if (accept(I, T_COMMA)) continue;
 
                 break;
@@ -1342,11 +1223,9 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
             }
 
             next(I);
-
             STAR *it = eval_expr(I);
             accept(I, T_COLON);
             accept(I, T_NEWLINE);
-
             if (peek(I)->t != T_INDENT) {
                 ierr(I, "for: need block", "");
                 break;
@@ -1354,9 +1233,7 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
 
             int body  = I->pos;
             int depth = 1;
-
             accept(I, T_INDENT);
-
             while (depth > 0 && peek(I)->t != T_EOF) {
                 if (accept(I, T_INDENT)) depth++;
                 else if (accept(I, T_DEDENT)) depth--;
@@ -1366,13 +1243,10 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
             if (it->kind == STAR_DICT || it->kind == STAR_LIST) {
                 for (int i = 0; i < it->n && !I->failed && !I->ret; i++) {
                     scope_push(I);
-
                     if (it->kind == STAR_DICT) {
                         bind_pattern(I, &pat, star_str(it->keys[i]));
-
                         if (pat.nsub || !pat.name) {
                             STAR *pair = star_list();
-
                             star_list_add(pair, star_str(it->keys[i]));
                             star_list_add(pair, star_dup(it->vals[i]));
                             bind_pattern(I, &pat, pair);
@@ -1391,21 +1265,18 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
                     last = eval_block(I, 0);
                     I->loop_depth--;
                     I->pos = save;
-
                     scope_pop(I);
                 }
             }
 
             star_free(it);
             free_pattern(&pat);
-
         for_done:
             continue;
         }
 
         if (t->t == T_NAME && !strcmp(t->s, "return")) {
             next(I);
-
             if (peek(I)->t == T_NEWLINE) I->ret = star_none();
             else I->ret = eval_expr(I);
 
@@ -1415,7 +1286,6 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
 
         if (t->t == T_NAME && is_unsupported(t->s)) {
             char msg[256];
-
             snprintf(msg, sizeof(msg), "%s:%d: '%s' is not supported", I->lex.file, t->line, t->s);
             ierr(I, "%s", msg);
             break;
@@ -1438,7 +1308,6 @@ static STAR *eval_block(INTERP *I, int newline_terminated) {
             snprintf(name, sizeof(name), "%s", t->s);
             next(I);
             next(I);
-
             STAR *v = eval_expr(I);
             var_set(I, name, v);
             skip_line(I);
@@ -1460,7 +1329,6 @@ static STAR *b_len(INTERP *, STAR *a, STAR *) {
 
 static STAR *b_range(INTERP *, STAR *a, STAR *) {
     int lo = 0, hi = 0;
-
     if (a->n == 1) hi = (int)star_as_num(a->items[0], 0);
     else if (a->n >= 2) {
         lo = (int)star_as_num(a->items[0], 0);
@@ -1468,7 +1336,6 @@ static STAR *b_range(INTERP *, STAR *a, STAR *) {
     }
 
     STAR *l = star_list();
-
     for (int i = lo; i < hi; i++) star_list_add(l, star_num(i));
 
     return l;
@@ -1476,7 +1343,6 @@ static STAR *b_range(INTERP *, STAR *a, STAR *) {
 
 static STAR *b_str(INTERP *, STAR *a, STAR *) {
     STAR *v = a->n ? a->items[0] : star_none();
-
     if (v->kind == STAR_STR) return star_dup(v);
     if (v->kind == STAR_BOOL) return star_str(v->b ? "True" : "False");
     if (v->kind == STAR_NUM) return star_str(num_str(v->num));
@@ -1486,23 +1352,17 @@ static STAR *b_str(INTERP *, STAR *a, STAR *) {
 }
 
 static STAR *b_glob(INTERP *I, STAR *a, STAR *) {
-    STAR *l = star_list();
-
+    STAR       *l    = star_list();
     const char *base = I->cwd ? I->cwd : ".";
-
     for (int i = 0; i < a->n; i++) {
         const char *pat = star_as_str(a->items[i]);
-
         if (!pat) continue;
 
-        char       *dir = NULL;
-        const char *gp  = pat;
-
+        char       *dir    = NULL;
+        const char *gp     = pat;
         const char *star_c = strpbrk(pat, "*?");
-
         if (star_c) {
             const char *slash = NULL;
-
             for (const char *q = pat; q < star_c; q++)
                 if (*q == '/') slash = q;
 
@@ -1516,13 +1376,10 @@ static STAR *b_glob(INTERP *I, STAR *a, STAR *) {
 
         GLOB_LIST g;
         glob_init(&g);
-
         glob_dir(dir ? dir : base, gp, &g);
-
         for (int k = 0; k < g.n; k++) {
             if (dir) {
                 char *full = (char *)malloc(strlen(dir) + strlen(g.items[k]) + 2);
-
                 if (full) {
                     sprintf(full, "%s/%s", dir, g.items[k]);
                     star_list_add(l, star_str(full));
@@ -1551,19 +1408,16 @@ static void cfg_at(char ***v, int idx, const char *s) {
 static char *kw_dup(STAR *kw, const char *k) {
     STAR       *v = star_get(kw, k);
     const char *s = v ? star_as_str(v) : NULL;
-
     return s ? sys_dup(s) : NULL;
 }
 
 static const char *kw_str(STAR *kw, const char *k) {
     STAR *v = star_get(kw, k);
-
     return v ? star_as_str(v) : NULL;
 }
 
 static void set(char **slot, STAR *kw, const char *key) {
     const char *v = kw_str(kw, key);
-
     if (!v) return;
 
     free(*slot);
@@ -1572,10 +1426,8 @@ static void set(char **slot, STAR *kw, const char *key) {
 
 static STAR *obj_new(const char *kind, const char *name) {
     STAR *d = star_dict();
-
     star_dict_put(d, "__kind", star_str(kind));
     star_dict_put(d, "name", star_str(name ? name : ""));
-
     return d;
 }
 
@@ -1586,7 +1438,6 @@ static const char *obj_name(const STAR *v) {
 
     if (v->kind == STAR_DICT) {
         STAR *n = star_get(v, "name");
-
         if (n && n->kind == STAR_STR) return n->s;
     }
 
@@ -1598,7 +1449,6 @@ static STAR *h_project(INTERP *I, STAR *, STAR *kw) {
     set(&I->cfg->build_dir, kw, "build_dir");
     set(&I->cfg->toolchain, kw, "default_toolchain");
     set(&I->cfg->store, kw, "store");
-
     return star_none();
 }
 
@@ -1606,7 +1456,6 @@ static STAR *h_build(INTERP *I, STAR *, STAR *kw) {
     set(&I->cfg->build_dir, kw, "dir");
     set(&I->cfg->toolchain, kw, "toolchain");
     set(&I->cfg->store, kw, "store");
-
     return star_none();
 }
 
@@ -1615,7 +1464,6 @@ static STAR *h_target_config(INTERP *I, STAR *, STAR *kw) {
     set(&I->cfg->abi, kw, "abi");
     set(&I->cfg->flt, kw, "float");
     set(&I->cfg->sysroot, kw, "sysroot");
-
     return star_none();
 }
 
@@ -1623,10 +1471,8 @@ static STAR *h_toolchain(INTERP *I, STAR *, STAR *kw) {
     const char *name = kw_str(kw, "name");
     const char *cc   = kw_str(kw, "cc");
     const char *base = kw_str(kw, "based_on");
-
     if (name) {
         int i = I->cfg->ntc++;
-
         cfg_at(&I->cfg->tc_name, i, name);
         cfg_at(&I->cfg->tc_cc, i, cc ? cc : "");
         cfg_at(&I->cfg->tc_based, i, base ? base : "");
@@ -1637,7 +1483,6 @@ static STAR *h_toolchain(INTERP *I, STAR *, STAR *kw) {
 
 static STAR *h_platform(INTERP *I, STAR *, STAR *kw) {
     const char *name = kw_str(kw, "name");
-
     if (!name) {
         ierr(I, "platform(): missing name", "");
         return star_none();
@@ -1645,17 +1490,14 @@ static STAR *h_platform(INTERP *I, STAR *, STAR *kw) {
 
     STAR_PLATFORM p;
     memset(&p, 0, sizeof(p));
-
     p.name      = sys_dup(name);
     p.arch      = kw_dup(kw, "arch");
     p.abi       = kw_dup(kw, "abi");
     p.flt       = kw_dup(kw, "float");
     p.sysroot   = kw_dup(kw, "sysroot");
     p.toolchain = kw_dup(kw, "toolchain");
-
     STAR_PLATFORM *np =
         (STAR_PLATFORM *)realloc(I->cfg->pl, sizeof(STAR_PLATFORM) * (size_t)(I->cfg->npl + 1));
-
     if (!np) {
         ierr(I, "out of memory", "");
         return star_none();
@@ -1663,7 +1505,6 @@ static STAR *h_platform(INTERP *I, STAR *, STAR *kw) {
 
     I->cfg->pl                = np;
     I->cfg->pl[I->cfg->npl++] = p;
-
     return obj_new("platform", name);
 }
 
@@ -1671,10 +1512,8 @@ static STAR *h_package(INTERP *I, STAR *, STAR *kw) {
     const char *name = kw_str(kw, "name");
     const char *ver  = kw_str(kw, "version");
     const char *src  = kw_str(kw, "source");
-
     if (name) {
         int i = I->cfg->ndep++;
-
         cfg_at(&I->cfg->dep_name, i, name);
         cfg_at(&I->cfg->dep_ver, i, ver ? ver : "latest");
         cfg_at(&I->cfg->dep_src, i, src ? src : "");
@@ -1685,14 +1524,12 @@ static STAR *h_package(INTERP *I, STAR *, STAR *kw) {
 
 STAR_TARGET *star_cfg_add_target(STAR_CFG *c, const char *name) {
     STAR_TARGET *tg = (STAR_TARGET *)realloc(c->tg, sizeof(STAR_TARGET) * (size_t)(c->ntg + 1));
-
     if (!tg) return NULL;
 
     c->tg = tg;
     memset(&c->tg[c->ntg], 0, sizeof(STAR_TARGET));
     c->tg[c->ntg].name = sys_dup(name);
     c->ntg++;
-
     return &c->tg[c->ntg - 1];
 }
 
@@ -1708,12 +1545,10 @@ static const char *type_name(const char *t) {
 
 static void tg_list(STAR *kw, const char *key, char ***out, int *n) {
     STAR *v = star_get(kw, key);
-
     if (!v || v->kind != STAR_LIST) return;
 
     for (int i = 0; i < v->n; i++) {
         const char *sv = star_as_str(v->items[i]);
-
         if (!sv) continue;
 
         cfg_at(out, (*n)++, sv);
@@ -1722,14 +1557,12 @@ static void tg_list(STAR *kw, const char *key, char ***out, int *n) {
 
 static STAR *h_install(INTERP *I, STAR *, STAR *kw) {
     const char *name = kw_str(kw, "target");
-
     if (!name) {
         ierr(I, "install(): missing target", "");
         return star_none();
     }
 
     STAR_TARGET *t = NULL;
-
     for (int i = 0; i < I->cfg->ntg; i++)
         if (!strcmp(I->cfg->tg[i].name, name)) t = &I->cfg->tg[i];
 
@@ -1743,25 +1576,20 @@ static STAR *h_install(INTERP *I, STAR *, STAR *kw) {
     tg_list(kw, "include", &t->i_include, &t->n_i_include);
     tg_list(kw, "share", &t->i_share, &t->n_i_share);
     tg_list(kw, "etc", &t->i_etc, &t->n_i_etc);
-
     t->i_rootfs = kw_dup(kw, "rootfs");
-
     return star_none();
 }
 
 static void tg_deps(STAR *kw, STAR_TARGET *t) {
     STAR *v = star_get(kw, "deps");
-
     if (!v || v->kind != STAR_LIST) return;
 
     for (int i = 0; i < v->n; i++) {
         STAR       *item = v->items[i];
         const char *n    = obj_name(item);
-
         if (!n) continue;
 
         STAR *k = item->kind == STAR_DICT ? star_get(item, "__kind") : NULL;
-
         if (k && k->kind == STAR_STR && !strcmp(k->s, "package"))
             cfg_at(&t->pkgdeps, t->npkgdeps++, n);
         else cfg_at(&t->deps, t->ndeps++, n);
@@ -1770,43 +1598,35 @@ static void tg_deps(STAR *kw, STAR_TARGET *t) {
 
 static char *ref_name(STAR *kw, const char *key) {
     STAR *v = star_get(kw, key);
-
     if (!v) return NULL;
 
     const char *n = obj_name(v);
-
     return n ? sys_dup(n) : NULL;
 }
 
 static STAR *h_target(INTERP *I, STAR *, STAR *kw) {
     const char *name = kw_str(kw, "name");
-
     if (!name) {
         ierr(I, "target(): missing name", "");
         return star_none();
     }
 
     STAR_TARGET *t = star_cfg_add_target(I->cfg, name);
-
     if (!t) {
         ierr(I, "out of memory", "");
         return star_none();
     }
 
     t->type = sys_dup(type_name(kw_str(kw, "type")));
-
     tg_list(kw, "src", &t->src, &t->nsrc);
     tg_list(kw, "inc", &t->inc, &t->ninc);
     tg_deps(kw, t);
     tg_list(kw, "cflags", &t->cflags, &t->ncflags);
     tg_list(kw, "ldflags", &t->ldflags, &t->nldflags);
-
     t->ldscript = kw_dup(kw, "linker_script");
     t->entry    = kw_dup(kw, "entry");
     t->out      = kw_dup(kw, "out");
-
     t->platform = ref_name(kw, "platform");
-
     return star_none();
 }
 
@@ -1827,7 +1647,6 @@ static STAR *call_builtin(INTERP *I, const char *name, STAR *args, STAR *kw) {
     char msg[256];
     snprintf(msg, sizeof(msg), "%s: unknown function '%s'", I->lex.file, name);
     ierr(I, "%s", msg);
-
     return star_none();
 }
 
@@ -1835,7 +1654,6 @@ void star_cfg_free(STAR_CFG *c) {
     free(c->root);
     free(c->file);
     free(c->project_name);
-
     for (int i = 0; i < c->npl; i++) {
         free(c->pl[i].name);
         free(c->pl[i].arch);
@@ -1846,7 +1664,6 @@ void star_cfg_free(STAR_CFG *c) {
     }
 
     free(c->pl);
-
     free(c->build_dir);
     free(c->toolchain);
     free(c->store);
@@ -1854,7 +1671,6 @@ void star_cfg_free(STAR_CFG *c) {
     free(c->abi);
     free(c->flt);
     free(c->sysroot);
-
     for (int i = 0; i < c->ntc; i++) {
         free(c->tc_name[i]);
         free(c->tc_cc[i]);
@@ -1864,7 +1680,6 @@ void star_cfg_free(STAR_CFG *c) {
     free(c->tc_name);
     free(c->tc_cc);
     free(c->tc_based);
-
     for (int i = 0; i < c->ndep; i++) {
         free(c->dep_name[i]);
         free(c->dep_ver[i]);
@@ -1874,17 +1689,14 @@ void star_cfg_free(STAR_CFG *c) {
     free(c->dep_name);
     free(c->dep_ver);
     free(c->dep_src);
-
     for (int i = 0; i < c->ntg; i++) {
         STAR_TARGET *t = &c->tg[i];
-
         free(t->name);
         free(t->type);
         free(t->ldscript);
         free(t->entry);
         free(t->out);
         free(t->platform);
-
         for (int k = 0; k < t->nsrc; k++) free(t->src[k]);
         for (int k = 0; k < t->ninc; k++) free(t->inc[k]);
         for (int k = 0; k < t->ndeps; k++) free(t->deps[k]);
@@ -1903,7 +1715,6 @@ void star_cfg_free(STAR_CFG *c) {
         free(t->i_share);
         free(t->i_etc);
         free(t->i_rootfs);
-
         free(t->src);
         free(t->inc);
         free(t->deps);
@@ -1918,7 +1729,6 @@ void star_cfg_free(STAR_CFG *c) {
 
 static char *slurp(const char *path, char *err, size_t errsz) {
     FILE *f = fopen(path, "rb");
-
     if (!f) {
         snprintf(err, errsz, "cannot read %s", path);
         return NULL;
@@ -1927,9 +1737,7 @@ static char *slurp(const char *path, char *err, size_t errsz) {
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
     fseek(f, 0, SEEK_SET);
-
     char *buf = (char *)malloc((size_t)n + 1);
-
     if (!buf) {
         fclose(f);
         snprintf(err, errsz, "out of memory");
@@ -1944,30 +1752,22 @@ static char *slurp(const char *path, char *err, size_t errsz) {
 
 int star_run(const char *path, STAR_CFG *cfg, char *err, size_t errsz) {
     char *src = slurp(path, err, errsz);
-
     if (!src) return -1;
 
     star_init();
-
     INTERP I;
     memset(&I, 0, sizeof(I));
-
     I.cfg = cfg;
     I.cwd = cfg->root;
-
     if (star_lex(src, path, &I.lex, err, errsz) != 0) {
         free(src);
         return -1;
     }
 
     free(src);
-
     scope_push(&I);
-
     eval_block_top(&I);
-
     int failed = I.failed;
-
     if (failed) snprintf(err, errsz, "%s", I.err);
 
     scope_pop(&I);

@@ -10,11 +10,9 @@ typedef struct {
 } THREAD_START;
 
 static DWORD WINAPI thread_trampoline(LPVOID p) {
-    THREAD_START *s = (THREAD_START *)p;
-
+    THREAD_START *s     = (THREAD_START *)p;
     void *(*fn)(void *) = s->fn;
     void *arg           = s->arg;
-
     free(s);
     fn(arg);
     return 0;
@@ -26,8 +24,7 @@ int thread_create(THREAD *t, void *(*fn)(void *), void *arg) {
 
     s->fn  = fn;
     s->arg = arg;
-
-    *t = CreateThread(NULL, 0, thread_trampoline, s, 0, NULL);
+    *t     = CreateThread(NULL, 0, thread_trampoline, s, 0, NULL);
     if (!*t) {
         free(s);
         return -1;

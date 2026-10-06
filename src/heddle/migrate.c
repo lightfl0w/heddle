@@ -13,7 +13,6 @@ static void push(char ***v, int *n, const char *s) {
 
     *v       = next;
     (*v)[*n] = sys_dup(s);
-
     if ((*v)[*n]) (*n)++;
 }
 
@@ -22,9 +21,8 @@ static MIG_TARGET *target_add(MIG_SET *s, const char *name) {
         if (!strcmp(s->items[i].name, name)) return &s->items[i];
 
     if (s->n == s->cap) {
-        int newcap = s->cap ? s->cap * 2 : 8;
-
-        MIG_TARGET *items = (MIG_TARGET *)realloc(s->items, sizeof(MIG_TARGET) * (size_t)newcap);
+        int         newcap = s->cap ? s->cap * 2 : 8;
+        MIG_TARGET *items  = (MIG_TARGET *)realloc(s->items, sizeof(MIG_TARGET) * (size_t)newcap);
         if (!items) return NULL;
 
         s->items = items;
@@ -33,7 +31,6 @@ static MIG_TARGET *target_add(MIG_SET *s, const char *name) {
 
     MIG_TARGET *t = &s->items[s->n++];
     memset(t, 0, sizeof(*t));
-
     t->name = sys_dup(name);
     return t;
 }
@@ -47,7 +44,6 @@ static MIG_TARGET *target_get(MIG_SET *s, const char *name) {
 
 static void warn(MIG_SET *s, const char *fmt, const char *a) {
     char buf[1024];
-
     snprintf(buf, sizeof(buf), fmt, a);
     push(&s->warn, &s->nwarn, buf);
 }
@@ -55,11 +51,9 @@ static void warn(MIG_SET *s, const char *fmt, const char *a) {
 void migrate_free(MIG_SET *s) {
     for (int i = 0; i < s->n; i++) {
         MIG_TARGET *t = &s->items[i];
-
         free(t->name);
         free(t->type);
         free(t->ldscript);
-
         for (int k = 0; k < t->nsrc; k++) free(t->src[k]);
         for (int k = 0; k < t->ninc; k++) free(t->inc[k]);
         for (int k = 0; k < t->ndeps; k++) free(t->deps[k]);
@@ -82,7 +76,6 @@ void migrate_free(MIG_SET *s) {
 
 static char *slurp(const char *path, char *err, size_t errsz) {
     FILE *f = fopen(path, "rb");
-
     if (!f) {
         snprintf(err, errsz, "cannot read %s", path);
         return NULL;
@@ -91,9 +84,7 @@ static char *slurp(const char *path, char *err, size_t errsz) {
     fseek(f, 0, SEEK_END);
     long n = ftell(f);
     fseek(f, 0, SEEK_SET);
-
     char *buf = (char *)malloc((size_t)n + 1);
-
     if (!buf) {
         fclose(f);
         snprintf(err, errsz, "out of memory");
@@ -109,7 +100,6 @@ static char *slurp(const char *path, char *err, size_t errsz) {
 static void strip_comments(char *s) {
     int q    = 0;
     int line = 0;
-
     for (char *p = s; *p; p++) {
         if (*p == '\n') {
             line = 0;
@@ -126,7 +116,6 @@ static void strip_comments(char *s) {
 
         if (!line && *p == '#') {
             char *e = p;
-
             while (*e && *e != '\n') *e++ = ' ';
 
             line = 1;
@@ -148,7 +137,6 @@ static void args_free(CMAKE_ARGS *a) {
 
 static void split_args_ex(const char *s, const char *end, CMAKE_ARGS *out, int commas) {
     const char *p = s;
-
     while (p < end) {
         while (p < end && (isspace((unsigned char)*p) || (commas && *p == ','))) p++;
 
@@ -156,11 +144,9 @@ static void split_args_ex(const char *s, const char *end, CMAKE_ARGS *out, int c
 
         size_t cap = 64, n = 0;
         char  *buf = (char *)malloc(cap);
-
         if (!buf) return;
 
         int q = 0;
-
         while (p < end && (q || (commas ? (*p != ',' && !isspace((unsigned char)*p))
                                         : !isspace((unsigned char)*p)))) {
             if (*p == '"') {
@@ -183,7 +169,6 @@ static void split_args_ex(const char *s, const char *end, CMAKE_ARGS *out, int c
         }
 
         buf[n] = 0;
-
         if (n) push(&out->args, &out->n, buf);
 
         free(buf);
@@ -206,10 +191,8 @@ static const char *kind_of_cmake(const char *kw) {
 static void mig_resolve(MIG_SET *s) {
     for (int i = 0; i < s->n; i++) {
         MIG_TARGET *t = &s->items[i];
-
         for (int k = 0; k < t->ndeps;) {
             const char *d = t->deps[k];
-
             if (target_get(s, d)) {
                 k++;
                 continue;
@@ -217,9 +200,7 @@ static void mig_resolve(MIG_SET *s) {
 
             char l[1024];
             snprintf(l, sizeof(l), "-l%s", d);
-
             push(&t->ldflags, &t->nldflags, l);
-
             free(t->deps[k]);
             memmove(&t->deps[k], &t->deps[k + 1], sizeof(char *) * (size_t)(t->ndeps - k - 1));
             t->ndeps--;
@@ -234,20 +215,16 @@ static int is_scope(const char *s) {
 
 int migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
     char *text = slurp(path, err, errsz);
-
     if (!text) return -1;
 
     strip_comments(text);
-
     const char *p = text;
-
     while (*p) {
         while (*p && (isspace((unsigned char)*p) || *p == ')')) p++;
 
         if (!*p) break;
 
         const char *name_b = p;
-
         while (*p && (isalnum((unsigned char)*p) || *p == '_')) p++;
 
         if (p == name_b) {
@@ -257,7 +234,6 @@ int migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
 
         char   name[128];
         size_t nl = (size_t)(p - name_b);
-
         if (nl >= sizeof(name)) {
             p++;
             continue;
@@ -265,16 +241,13 @@ int migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
 
         memcpy(name, name_b, nl);
         name[nl] = 0;
-
         while (*p && isspace((unsigned char)*p)) p++;
 
         if (*p != '(') continue;
 
         p++;
-
         const char *ab    = p;
         int         depth = 1;
-
         while (*p && depth) {
             if (*p == '(') depth++;
             else if (*p == ')') depth--;
@@ -284,40 +257,32 @@ int migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
         CMAKE_ARGS a;
         memset(&a, 0, sizeof(a));
         split_args(ab, p, &a);
-
         if (*p == ')') p++;
 
         if (!strcasecmp(name, "add_executable") && a.n >= 1) {
             MIG_TARGET *t = target_add(s, a.args[0]);
-
             if (t) {
                 free(t->type);
                 t->type = sys_dup("exe");
-
                 for (int i = 1; i < a.n; i++) push(&t->src, &t->nsrc, a.args[i]);
             }
         } else if (!strcasecmp(name, "add_library") && a.n >= 2) {
             MIG_TARGET *t = target_add(s, a.args[0]);
-
             if (t) {
                 free(t->type);
                 t->type = sys_dup(kind_of_cmake(a.args[1]));
-
                 for (int i = 2; i < a.n; i++) push(&t->src, &t->nsrc, a.args[i]);
             }
         } else if (!strcasecmp(name, "target_sources") && a.n >= 2) {
             MIG_TARGET *t = target_get(s, a.args[0]);
-
             for (int i = 1; i < a.n && t; i++)
                 if (!is_scope(a.args[i])) push(&t->src, &t->nsrc, a.args[i]);
         } else if (!strcasecmp(name, "target_include_directories") && a.n >= 2) {
             MIG_TARGET *t = target_get(s, a.args[0]);
-
             for (int i = 1; i < a.n && t; i++)
                 if (!is_scope(a.args[i])) push(&t->inc, &t->ninc, a.args[i]);
         } else if (!strcasecmp(name, "target_link_libraries") && a.n >= 2) {
             MIG_TARGET *t = target_get(s, a.args[0]);
-
             for (int i = 1; i < a.n && t; i++) {
                 if (is_scope(a.args[i])) continue;
 
@@ -327,7 +292,6 @@ int migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
             }
         } else if (!strcasecmp(name, "target_compile_definitions") && a.n >= 2) {
             MIG_TARGET *t = target_get(s, a.args[0]);
-
             for (int i = 1; i < a.n && t; i++) {
                 if (is_scope(a.args[i])) continue;
 
@@ -337,12 +301,10 @@ int migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
             }
         } else if (!strcasecmp(name, "target_compile_options") && a.n >= 2) {
             MIG_TARGET *t = target_get(s, a.args[0]);
-
             for (int i = 1; i < a.n && t; i++)
                 if (!is_scope(a.args[i])) push(&t->cflags, &t->ncflags, a.args[i]);
         } else if (!strcasecmp(name, "target_link_options") && a.n >= 2) {
             MIG_TARGET *t = target_get(s, a.args[0]);
-
             for (int i = 1; i < a.n && t; i++) {
                 if (is_scope(a.args[i])) continue;
 
@@ -359,7 +321,6 @@ int migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
                 }
 
                 size_t vl = strlen(a.args[i]);
-
                 if (vl > 4 && !strncmp(a.args[i], "-Wl,", 4) && !strncmp(a.args[i] + 4, "-T,", 3)) {
                     free(t->ldscript);
                     t->ldscript = sys_dup(a.args[i] + 7);
@@ -388,7 +349,6 @@ int migrate_load_cmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
     }
 
     free(text);
-
     if (s->n == 0) {
         snprintf(err, errsz, "%s: no add_executable/add_library found", path);
         return -1;
@@ -411,7 +371,6 @@ static void lua_strip(char *s) {
     for (char *p = s; *p; p++) {
         if (p[0] == '-' && p[1] == '-') {
             char *e = p;
-
             while (*e && *e != '\n') *e++ = ' ';
 
             break;
@@ -422,10 +381,8 @@ static void lua_strip(char *s) {
 static CMAKE_ARGS lua_args(const char *line) {
     CMAKE_ARGS a;
     memset(&a, 0, sizeof(a));
-
     const char *lp = strchr(line, '(');
     const char *rp = lp ? strrchr(lp, ')') : NULL;
-
     if (!lp || !rp) return a;
 
     split_args_ex(lp + 1, rp, &a, 1);
@@ -436,11 +393,9 @@ static const char *lua_fn(const char *line, char *buf, size_t cap) {
     while (*line && isspace((unsigned char)*line)) line++;
 
     const char *b = line;
-
     while (*line && (isalnum((unsigned char)*line) || *line == '_')) line++;
 
     size_t n = (size_t)(line - b);
-
     if (!n || n >= cap) return NULL;
 
     while (*line && isspace((unsigned char)*line)) line++;
@@ -454,7 +409,6 @@ static const char *lua_fn(const char *line, char *buf, size_t cap) {
 
 int migrate_load_xmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
     FILE *f = fopen(path, "r");
-
     if (!f) {
         snprintf(err, errsz, "cannot read %s", path);
         return -1;
@@ -462,16 +416,12 @@ int migrate_load_xmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
 
     char        line[8192];
     MIG_TARGET *cur = NULL;
-
     while (fgets(line, sizeof(line), f)) {
         lua_strip(line);
-
         char fn[64];
-
         if (!lua_fn(line, fn, sizeof(fn))) continue;
 
         CMAKE_ARGS a = lua_args(line);
-
         if (!strcasecmp(fn, "target") && a.n >= 1) {
             cur = target_add(s, a.args[0]);
         } else if (!cur) {
@@ -485,7 +435,6 @@ int migrate_load_xmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
         } else if (!strcasecmp(fn, "remove_files")) {
             for (int i = 0; i < a.n; i++) {
                 int hit = 0;
-
                 for (int k = 0; k < cur->nsrc; k++) {
                     if (strcmp(cur->src[k], a.args[i])) continue;
 
@@ -540,7 +489,6 @@ int migrate_load_xmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
     }
 
     fclose(f);
-
     if (s->n == 0) {
         snprintf(err, errsz, "%s: no target() found", path);
         return -1;
@@ -555,7 +503,6 @@ int migrate_load_xmake(MIG_SET *s, const char *path, char *err, size_t errsz) {
 
 static void emit_qstr(FILE *f, const char *s) {
     fputc('"', f);
-
     for (const char *p = s; *p; p++) {
         if (*p == '"' || *p == '\\') fputc('\\', f);
         fputc(*p, f);
@@ -568,7 +515,6 @@ static void emit_list(FILE *f, const char *key, char **v, int n) {
     if (!n) return;
 
     fprintf(f, "%s = [", key);
-
     for (int i = 0; i < n; i++) {
         if (i) fputs(", ", f);
         emit_qstr(f, v[i]);
@@ -579,31 +525,25 @@ static void emit_list(FILE *f, const char *key, char **v, int n) {
 
 int migrate_write(const MIG_SET *s, const char *out, char *err, size_t errsz) {
     FILE *f = fopen(out, "w");
-
     if (!f) {
         snprintf(err, errsz, "cannot write %s", out);
         return -1;
     }
 
     fputs("[build]\ndir = \"out\"\n", f);
-
     for (int i = 0; i < s->n; i++) {
         const MIG_TARGET *t = &s->items[i];
-
         fprintf(f, "\n[target.");
         for (const char *p = t->name; *p; p++) fputc(*p, f);
         fputs("]\ntype = \"", f);
         for (const char *p = t->type ? t->type : "exe"; *p; p++) fputc(*p, f);
         fputs("\"\n", f);
-
         emit_list(f, "src", t->src, t->nsrc);
         emit_list(f, "inc", t->inc, t->ninc);
-
         if (t->ndeps) emit_list(f, "deps", t->deps, t->ndeps);
 
         emit_list(f, "cflags", t->cflags, t->ncflags);
         emit_list(f, "ldflags", t->ldflags, t->nldflags);
-
         if (t->ldscript) {
             fputs("linker_script = ", f);
             emit_qstr(f, t->ldscript);
@@ -619,7 +559,6 @@ static void star_list(FILE *f, const char *key, char **v, int n) {
     if (!n) return;
 
     fprintf(f, "    %s = [", key);
-
     for (int i = 0; i < n; i++) {
         if (i) fputs(", ", f);
         emit_qstr(f, v[i]);
@@ -630,29 +569,24 @@ static void star_list(FILE *f, const char *key, char **v, int n) {
 
 static int migrate_write_star(const MIG_SET *s, const char *out, char *err, size_t errsz) {
     FILE *f = fopen(out, "w");
-
     if (!f) {
         snprintf(err, errsz, "cannot write %.200s", out);
         return -1;
     }
 
     fputs("build(dir = \"out\")\n", f);
-
     for (int i = 0; i < s->n; i++) {
         const MIG_TARGET *t = &s->items[i];
-
         fputs("\ntarget(\n    name = ", f);
         emit_qstr(f, t->name);
         fputs(",\n    type = ", f);
         emit_qstr(f, t->type ? t->type : "exe");
         fputs(",\n", f);
-
         star_list(f, "src", t->src, t->nsrc);
         star_list(f, "inc", t->inc, t->ninc);
         star_list(f, "deps", t->deps, t->ndeps);
         star_list(f, "cflags", t->cflags, t->ncflags);
         star_list(f, "ldflags", t->ldflags, t->nldflags);
-
         if (t->ldscript) {
             fputs("    linker_script = ", f);
             emit_qstr(f, t->ldscript);
@@ -668,24 +602,20 @@ static int migrate_write_star(const MIG_SET *s, const char *out, char *err, size
 
 void migrate_print(const MIG_SET *s) {
     printf("heddle: %d target%s\n", s->n, s->n == 1 ? "" : "s");
-
     for (int i = 0; i < s->n; i++) {
         const MIG_TARGET *t = &s->items[i];
-
         printf("  %-16s %-10s src=%d inc=%d deps=%d\n", t->name, t->type ? t->type : "exe", t->nsrc,
                t->ninc, t->ndeps);
     }
 
     if (s->nwarn) {
         printf("heddle: %d note%s\n", s->nwarn, s->nwarn == 1 ? "" : "s");
-
         for (int i = 0; i < s->nwarn; i++) printf("  - %s\n", s->warn[i]);
     }
 }
 
 static const char *arg_opt(int argc, char **argv, const char *name) {
     size_t n = strlen(name);
-
     for (int i = 0; i < argc; i++) {
         if (!strcmp(argv[i], name) && i + 1 < argc) return argv[i + 1];
         if (!strncmp(argv[i], name, n) && argv[i][n] == '=') return argv[i] + n + 1;
@@ -722,10 +652,8 @@ int heddle_migrate(int argc, char **argv) {
     int         dry        = 0;
     int         star       = 0;
     int         no_api     = 0;
-
-    char *cargs[64];
-    int   ncargs = 0;
-
+    char       *cargs[64];
+    int         ncargs = 0;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
             migrate_usage();
@@ -769,13 +697,10 @@ int heddle_migrate(int argc, char **argv) {
 
     char cmake[4096];
     char xmake[4096];
-
     snprintf(cmake, sizeof(cmake), "%s/CMakeLists.txt", dir);
     snprintf(xmake, sizeof(xmake), "%s/xmake.lua", dir);
-
     const char *src  = NULL;
     int         kind = 0;
-
     if (from) {
         if (!strcmp(from, "cmake")) {
             src  = cmake;
@@ -789,7 +714,6 @@ int heddle_migrate(int argc, char **argv) {
         }
     } else {
         SYS_STAT st;
-
         if (sys_stat(cmake, &st) == 0) {
             src  = cmake;
             kind = 1;
@@ -805,7 +729,6 @@ int heddle_migrate(int argc, char **argv) {
     }
 
     SYS_STAT st;
-
     if (sys_stat(src, &st) != 0) {
         fprintf(stderr, "heddle: cannot read %s\n", src);
         return 1;
@@ -813,18 +736,14 @@ int heddle_migrate(int argc, char **argv) {
 
     MIG_SET s;
     memset(&s, 0, sizeof(s));
-
     char err[512] = {0};
-
-    int rc;
-
+    int  rc;
     if (kind == 1 && !no_api) {
         if (cmake_api_load(&s, dir, cmakebuild, config, cargs, ncargs, err, sizeof(err)) == 0) {
             rc = 0;
         } else {
             fprintf(stderr, "heddle: cmake api import failed: %s\n", err);
             fprintf(stderr, "heddle: falling back to textual CMakeLists.txt\n");
-
             memset(&s, 0, sizeof(s));
             rc = migrate_load_cmake(&s, src, err, sizeof(err));
         }
@@ -842,7 +761,6 @@ int heddle_migrate(int argc, char **argv) {
 
     printf("heddle: from %s\n", src);
     migrate_print(&s);
-
     if (dry) {
         migrate_free(&s);
         return 0;
@@ -850,9 +768,7 @@ int heddle_migrate(int argc, char **argv) {
 
     char def_out[4096];
     snprintf(def_out, sizeof(def_out), "%s/heddle.%s", dir, star ? "star" : "toml");
-
     const char *target_out = out ? out : def_out;
-
     if (sys_stat(target_out, &st) == 0) {
         fprintf(stderr, "heddle: %s exists, use --out to pick another name\n", target_out);
         migrate_free(&s);
@@ -861,7 +777,6 @@ int heddle_migrate(int argc, char **argv) {
 
     int wrc = star ? migrate_write_star(&s, target_out, err, sizeof(err))
                    : migrate_write(&s, target_out, err, sizeof(err));
-
     if (wrc != 0) {
         fprintf(stderr, "heddle: %s\n", err);
         migrate_free(&s);
@@ -869,7 +784,6 @@ int heddle_migrate(int argc, char **argv) {
     }
 
     printf("heddle: wrote %s\n", target_out);
-
     migrate_free(&s);
     return 0;
 }

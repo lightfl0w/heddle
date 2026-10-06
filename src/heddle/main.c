@@ -58,7 +58,6 @@ static int usage(const char *prog) {
 static int take(const char *arg, const char *name, int argc, char **argv, int *i,
                 const char **out) {
     size_t n = strlen(name);
-
     if (!strcmp(arg, name)) {
         if (*i + 1 >= argc) {
             fprintf(stderr, "heddle: %s needs a value\n", name);
@@ -83,21 +82,16 @@ static int take(const char *arg, const char *name, int argc, char **argv, int *i
 }
 
 static int parse(int argc, char **argv, ARGS *a) {
-    HEDDLE_OPTS *o = &a->o;
-    const char  *v = NULL;
-    int          t = 0;
-
-    int sub = 0;
-
-    o->root     = ".";
-    o->registry = getenv("HEDDLE_REGISTRY");
-
+    HEDDLE_OPTS *o   = &a->o;
+    const char  *v   = NULL;
+    int          t   = 0;
+    int          sub = 0;
+    o->root          = ".";
+    o->registry      = getenv("HEDDLE_REGISTRY");
     for (int i = 1; i < argc; i++) {
         const char *arg = argv[i];
-
         if (sub == 1) {
             sub = 0;
-
             if (!strcmp(arg, "install")) {
                 a->tool_install = 1;
                 continue;
@@ -117,7 +111,6 @@ static int parse(int argc, char **argv, ARGS *a) {
 
         if (sub == 2) {
             sub = 0;
-
             if (!strcmp(arg, "verify")) {
                 a->env_verify = 1;
                 continue;
@@ -208,7 +201,6 @@ static int parse(int argc, char **argv, ARGS *a) {
 
 int main(int argc, char **argv) {
     ARGS a;
-
     if (argc >= 3 && !strcmp(argv[1], "ldconv")) return heddle_ldconv(argc, argv);
 
     if (argc >= 2 && !strcmp(argv[1], "init")) return heddle_init(argc, argv);
@@ -218,11 +210,8 @@ int main(int argc, char **argv) {
     if (argc >= 2 && !strcmp(argv[1], "migrate")) return heddle_migrate(argc, argv);
 
     emit_set_self(argv[0]);
-
     memset(&a, 0, sizeof(a));
-
     int rc = parse(argc, argv, &a);
-
     if (rc) return rc;
     if (a.list_tools) return heddle_toolchains();
     if (a.check_only) return heddle_check(&a.o);

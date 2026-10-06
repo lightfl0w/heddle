@@ -33,7 +33,6 @@ struct CAS {
 
 static void make_dirs(const char *path) {
     char *tmp = sys_dup(path);
-
     for (char *p = tmp + 1; *p; p++) {
         if (*p != '/') continue;
 
@@ -69,14 +68,12 @@ static int copy_file(const char *from, const char *to) {
 
     char *dir   = sys_dup(to);
     char *slash = strrchr(dir, '/');
-
     if (slash) {
         *slash = 0;
         make_dirs(dir);
     }
 
     free(dir);
-
     int out = open(to, CAS_O_WRONLY, 0644);
     if (out < 0) {
         close(in);
@@ -91,10 +88,8 @@ static int copy_file(const char *from, const char *to) {
 
     char      buf[65536];
     long long got;
-
     while ((got = read(in, buf, sizeof(buf))) > 0) {
         long long off = 0;
-
         while (off < got) {
             long long n = (long long)write(out, buf + off, (size_t)(got - off));
             if (n <= 0) {
@@ -114,20 +109,17 @@ static int copy_file(const char *from, const char *to) {
 static int copy_bytes(const void *p, size_t n, const char *to) {
     char *dir   = sys_dup(to);
     char *slash = strrchr(dir, '/');
-
     if (slash) {
         *slash = 0;
         make_dirs(dir);
     }
 
     free(dir);
-
     int out = open(to, CAS_O_WRONLY, 0644);
     if (out < 0) return -1;
 
     const char *b   = (const char *)p;
     size_t      off = 0;
-
     while (off < n) {
         long long w = (long long)write(out, b + off, (size_t)(n - off));
         if (w <= 0) {
@@ -150,12 +142,9 @@ static int remote_fetch(CAS *c, const char *rel, const char *dest) {
         if (!url) return -1;
 
         snprintf(url, n, "%s/%s", c->remote, rel);
-
         char cmd[4096];
         snprintf(cmd, sizeof(cmd), "curl -fsS -o '%s' '%s' >/dev/null 2>&1", dest, url);
-
         int rc = system(cmd);
-
         free(url);
         return rc == 0 ? 0 : -1;
     }
@@ -165,9 +154,7 @@ static int remote_fetch(CAS *c, const char *rel, const char *dest) {
     if (!src) return -1;
 
     snprintf(src, n, "%s/%s", c->remote, rel);
-
     int rc = copy_file(src, dest);
-
     free(src);
     return rc;
 }
@@ -181,12 +168,9 @@ static int remote_push(CAS *c, const char *rel, const char *src) {
         if (!url) return -1;
 
         snprintf(url, n, "%s/%s", c->remote, rel);
-
         char cmd[4096];
         snprintf(cmd, sizeof(cmd), "curl -fsS -T '%s' '%s' >/dev/null 2>&1", src, url);
-
         int rc = system(cmd);
-
         free(url);
         return rc == 0 ? 0 : -1;
     }
@@ -196,7 +180,6 @@ static int remote_push(CAS *c, const char *rel, const char *src) {
     if (!dst) return -1;
 
     snprintf(dst, n, "%s/%s", c->remote, rel);
-
     SYS_STAT st;
     if (sys_stat(dst, &st) == 0) {
         free(dst);
@@ -204,7 +187,6 @@ static int remote_push(CAS *c, const char *rel, const char *src) {
     }
 
     int rc = copy_file(src, dst);
-
     free(dst);
     return rc;
 }
@@ -215,12 +197,9 @@ CAS *cas_open(const char *root, const char *remote, char *err, size_t errsz) {
 
     c->root   = sys_dup(root);
     c->remote = remote ? sys_dup(remote) : NULL;
-
     if (c->remote)
         c->remote_http = !strncmp(c->remote, "http://", 7) || !strncmp(c->remote, "https://", 8);
-
     make_dirs(root);
-
     (void)err;
     (void)errsz;
     return c;
@@ -243,13 +222,11 @@ static void obj_path(CAS *c, unsigned long long h, char *buf, size_t n) {
 int cas_has(CAS *c, unsigned long long h) {
     char path[2048];
     obj_path(c, h, path, sizeof(path));
-
     SYS_STAT st;
     if (sys_stat(path, &st) == 0) return 1;
 
     char rel[64];
     obj_rel(h, rel, sizeof(rel));
-
     if (remote_fetch(c, rel, path) == 0) return 1;
 
     return 0;
@@ -268,23 +245,19 @@ int cas_put_hashed(CAS *c, const char *path, unsigned long long h) {
 
     char dst[2048];
     obj_path(c, h, dst, sizeof(dst));
-
     SYS_STAT st;
     if (sys_stat(dst, &st) == 0) return 0;
 
     copy_file(path, dst);
-
     char rel[64];
     obj_rel(h, rel, sizeof(rel));
     remote_push(c, rel, dst);
-
     return 0;
 }
 
 int cas_get_file(CAS *c, unsigned long long h, const char *path) {
     char src[2048];
     obj_path(c, h, src, sizeof(src));
-
     SYS_STAT st;
     if (sys_stat(src, &st) != 0 && !cas_has(c, h)) return -1;
 
@@ -294,7 +267,6 @@ int cas_get_file(CAS *c, unsigned long long h, const char *path) {
 int cas_put_bytes(CAS *c, unsigned long long h, const void *p, size_t n) {
     char dst[2048];
     obj_path(c, h, dst, sizeof(dst));
-
     SYS_STAT st;
     if (sys_stat(dst, &st) == 0) return 0;
 
@@ -303,14 +275,12 @@ int cas_put_bytes(CAS *c, unsigned long long h, const void *p, size_t n) {
     char rel[64];
     obj_rel(h, rel, sizeof(rel));
     remote_push(c, rel, dst);
-
     return 0;
 }
 
 int cas_get_bytes(CAS *c, unsigned long long h, void **out, size_t *outlen) {
     char src[2048];
     obj_path(c, h, src, sizeof(src));
-
     SYS_STAT st;
     if (sys_stat(src, &st) != 0 && !cas_has(c, h)) return -1;
     if (sys_stat(src, &st) != 0) return -1;
@@ -326,9 +296,7 @@ int cas_get_bytes(CAS *c, unsigned long long h, void **out, size_t *outlen) {
 
     size_t got = fread(buf, 1, (size_t)st.size, f);
     buf[got]   = 0;
-
     fclose(f);
-
     *out    = buf;
     *outlen = got;
     return 0;
@@ -357,12 +325,10 @@ AC_ENTRY *ac_find(ACTION_CACHE *ac, unsigned long long key) {
 
 void ac_put(ACTION_CACHE *ac, unsigned long long key, const AC_OUT *outs, int nouts) {
     AC_ENTRY *e = ac_find(ac, key);
-
     if (!e) {
         if (ac->count == ac->cap) {
-            int newcap = ac->cap ? ac->cap * 2 : 64;
-
-            AC_ENTRY *items = (AC_ENTRY *)realloc(ac->items, sizeof(AC_ENTRY) * (size_t)newcap);
+            int       newcap = ac->cap ? ac->cap * 2 : 64;
+            AC_ENTRY *items  = (AC_ENTRY *)realloc(ac->items, sizeof(AC_ENTRY) * (size_t)newcap);
             if (!items) return;
 
             ac->items = items;
@@ -390,31 +356,25 @@ void ac_put(ACTION_CACHE *ac, unsigned long long key, const AC_OUT *outs, int no
 int ac_load(ACTION_CACHE *ac) {
     char path[2048];
     snprintf(path, sizeof(path), "%s/actions", ac->root);
-
     FILE *f = fopen(path, "r");
     if (!f) return 0;
 
     char line[8192];
-
     while (fgets(line, sizeof(line), f)) {
         char *save = NULL;
         char *tag  = sys_tok(line, " \t\r\n", &save);
-
         if (!tag || strcmp(tag, "A")) continue;
 
         char *key = sys_tok(NULL, " \t\r\n", &save);
         char *n   = sys_tok(NULL, " \t\r\n", &save);
-
         if (!key || !n) continue;
 
         unsigned long long k     = strtoull(key, NULL, 16);
         int                count = atoi(n);
-
-        AC_OUT *outs = (AC_OUT *)malloc(sizeof(AC_OUT) * (size_t)(count ? count : 1));
+        AC_OUT            *outs  = (AC_OUT *)malloc(sizeof(AC_OUT) * (size_t)(count ? count : 1));
         if (!outs) break;
 
         int got = 0;
-
         for (int i = 0; i < count; i++) {
             char *tok = sys_tok(NULL, " \t\r\n", &save);
             if (!tok) break;
@@ -439,16 +399,13 @@ int ac_load(ACTION_CACHE *ac) {
 int ac_save(const ACTION_CACHE *ac) {
     char path[2048];
     snprintf(path, sizeof(path), "%s/actions", ac->root);
-
     FILE *f = fopen(path, "w");
     if (!f) return -1;
 
     for (int i = 0; i < ac->count; i++) {
         fprintf(f, "A %016llx %d", ac->items[i].key, ac->items[i].nouts);
-
         for (int k = 0; k < ac->items[i].nouts; k++)
             fprintf(f, " %016llx:%o", ac->items[i].outs[k].hash, ac->items[i].outs[k].mode);
-
         fputc('\n', f);
     }
 

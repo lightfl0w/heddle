@@ -18,7 +18,6 @@
 
 static void append_arg(char *buf, size_t cap, size_t *len, const char *arg) {
     int need = 0;
-
     for (const char *p = arg; *p; p++)
         if (*p == ' ' || *p == '\t' || *p == '"') {
             need = 1;
@@ -27,7 +26,6 @@ static void append_arg(char *buf, size_t cap, size_t *len, const char *arg) {
 
     if (!need) {
         size_t n = strlen(arg);
-
         if (*len + n + 1 < cap) {
             memcpy(buf + *len, arg, n);
             *len += n;
@@ -52,7 +50,6 @@ static int env_name_eq(const char *a, const char *b) {
     while (*a && *b && *a != '=' && *b != '=') {
         char x = (char)toupper((unsigned char)*a++);
         char y = (char)toupper((unsigned char)*b++);
-
         if (x != y) return 0;
     }
 
@@ -69,7 +66,6 @@ static int env_over(char *const *env, int nenv, const char *entry) {
 static char *env_merge(char *const *env, int nenv) {
     char  *parent = GetEnvironmentStringsA();
     size_t n      = 1;
-
     for (char *p = parent; *p; p += strlen(p) + 1)
         if (!env_over(env, nenv, p)) n += strlen(p) + 1;
 
@@ -82,7 +78,6 @@ static char *env_merge(char *const *env, int nenv) {
     }
 
     char *w = block;
-
     for (char *p = parent; *p; p += strlen(p) + 1) {
         if (env_over(env, nenv, p)) continue;
 
@@ -91,7 +86,6 @@ static char *env_merge(char *const *env, int nenv) {
     }
 
     FreeEnvironmentStringsA(parent);
-
     for (int i = 0; i < nenv; i++) {
         memcpy(w, env[i], strlen(env[i]) + 1);
         w += strlen(env[i]) + 1;
@@ -105,17 +99,14 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path, char *con
     out->exit_code = -1;
     out->signaled  = 0;
     out->signal    = 0;
-
-    size_t cap = 4096;
+    size_t cap     = 4096;
     for (int i = 0; argv[i]; i++) cap += strlen(argv[i]) * 2 + 4;
 
     char *cmdline = (char *)malloc(cap);
     if (!cmdline) return -1;
 
     cmdline[0] = 0;
-
     size_t len = 0;
-
     for (int i = 0; argv[i]; i++) {
         if (i && len + 1 < cap) {
             cmdline[len++] = ' ';
@@ -129,7 +120,6 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path, char *con
     sa.nLength              = sizeof(sa);
     sa.lpSecurityDescriptor = NULL;
     sa.bInheritHandle       = TRUE;
-
     HANDLE hlog = CreateFileA(log_path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hlog == INVALID_HANDLE_VALUE) {
@@ -139,35 +129,25 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path, char *con
 
     STARTUPINFOA si;
     ZeroMemory(&si, sizeof(si));
-
     si.cb         = sizeof(si);
     si.dwFlags    = STARTF_USESTDHANDLES;
     si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
     si.hStdOutput = hlog;
     si.hStdError  = hlog;
-
     PROCESS_INFORMATION pi;
     ZeroMemory(&pi, sizeof(pi));
-
     char *block = env_merge(env, nenv);
-
-    BOOL ok = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, block, cwd, &si, &pi);
-
+    BOOL  ok    = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, block, cwd, &si, &pi);
     free(block);
-
     free(cmdline);
     CloseHandle(hlog);
-
     if (!ok) return -1;
 
     WaitForSingleObject(pi.hProcess, INFINITE);
-
     DWORD code = 0;
     GetExitCodeProcess(pi.hProcess, &code);
-
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-
     out->exit_code = (int)code;
     return 0;
 }
@@ -184,8 +164,7 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path, char *con
     out->exit_code = -1;
     out->signaled  = 0;
     out->signal    = 0;
-
-    pid_t pid = fork();
+    pid_t pid      = fork();
     if (pid < 0) return -1;
 
     if (pid == 0) {
@@ -205,7 +184,6 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path, char *con
     }
 
     int status = 0;
-
     for (;;) {
         if (waitpid(pid, &status, 0) >= 0) break;
         if (errno != EINTR) return -1;

@@ -41,26 +41,19 @@ static int match_segs(const char *pat, const char *name) {
 
     const char *ps = strchr(pat, '/');
     const char *ns = strchr(name, '/');
-
-    char pseg[512], nseg[512];
-
-    size_t pl = ps ? (size_t)(ps - pat) : strlen(pat);
-    size_t nl = ns ? (size_t)(ns - name) : strlen(name);
-
+    char        pseg[512], nseg[512];
+    size_t      pl = ps ? (size_t)(ps - pat) : strlen(pat);
+    size_t      nl = ns ? (size_t)(ns - name) : strlen(name);
     if (pl >= sizeof(pseg) || nl >= sizeof(nseg)) return 0;
 
     memcpy(pseg, pat, pl);
     pseg[pl] = 0;
-
     memcpy(nseg, name, nl);
     nseg[nl] = 0;
-
     int pend = ps == NULL;
     int nend = ns == NULL;
-
     if (!strcmp(pseg, "**")) {
         const char *prest = pend ? "" : ps + 1;
-
         if (match_segs(prest, name)) return 1;
 
         return !nend && match_segs(pat, ns + 1);
@@ -83,7 +76,6 @@ static char *join(const char *a, const char *b) {
 
     size_t n = strlen(a) + strlen(b) + 2;
     char  *p = (char *)malloc(n);
-
     if (p) snprintf(p, n, "%s/%s", a, b);
 
     return p;
@@ -91,9 +83,8 @@ static char *join(const char *a, const char *b) {
 
 static void push(GLOB_LIST *l, const char *s) {
     if (l->n == l->cap) {
-        int newcap = l->cap ? l->cap * 2 : 16;
-
-        char **items = (char **)realloc(l->items, sizeof(char *) * (size_t)newcap);
+        int    newcap = l->cap ? l->cap * 2 : 16;
+        char **items  = (char **)realloc(l->items, sizeof(char *) * (size_t)newcap);
         if (!items) return;
 
         l->items = items;
@@ -101,15 +92,12 @@ static void push(GLOB_LIST *l, const char *s) {
     }
 
     l->items[l->n] = sys_dup(s);
-
     if (l->items[l->n]) l->n++;
 }
 
 static void walk(const char *base, const char *rel, const char *pat, GLOB_LIST *out) {
     char *dir = rel[0] ? join(base, rel) : sys_dup(base);
-
-    DIR *d = dir ? opendir(dir) : NULL;
-
+    DIR  *d   = dir ? opendir(dir) : NULL;
     if (!d) {
         free(dir);
         return;
@@ -122,9 +110,7 @@ static void walk(const char *base, const char *rel, const char *pat, GLOB_LIST *
 
         char r[4096];
         snprintf(r, sizeof(r), "%s%s%s", rel, rel[0] ? "/" : "", e->d_name);
-
         char *full = join(dir, e->d_name);
-
         if (!full) continue;
 
         if (sys_isdir(full)) walk(base, r, pat, out);
@@ -139,8 +125,6 @@ static void walk(const char *base, const char *rel, const char *pat, GLOB_LIST *
 
 int glob_dir(const char *dir, const char *pat, GLOB_LIST *out) {
     int before = out->n;
-
     walk(dir, "", pat, out);
-
     return out->n - before;
 }

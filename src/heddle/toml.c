@@ -14,7 +14,6 @@ void toml_init(TOML *t) {
 
 static void table_free(TOML_TABLE *tab) {
     free(tab->name);
-
     for (int i = 0; i < tab->count; i++) {
         free(tab->items[i].key);
         free(tab->items[i].val);
@@ -51,8 +50,7 @@ static TOML_TABLE *table_add(TOML *t, const char *name, char *err, size_t errsz)
     if (found) return found;
 
     if (t->count == t->cap) {
-        int newcap = t->cap ? t->cap * 2 : 16;
-
+        int         newcap = t->cap ? t->cap * 2 : 16;
         TOML_TABLE *tables = (TOML_TABLE *)realloc(t->tables, sizeof(TOML_TABLE) * (size_t)newcap);
         if (!tables) {
             snprintf(err, errsz, "out of memory");
@@ -65,7 +63,6 @@ static TOML_TABLE *table_add(TOML *t, const char *name, char *err, size_t errsz)
 
     TOML_TABLE *tab = &t->tables[t->count++];
     memset(tab, 0, sizeof(*tab));
-
     tab->name = sys_dup(name);
     if (!tab->name) {
         snprintf(err, errsz, "out of memory");
@@ -81,14 +78,12 @@ static int table_put(TOML_TABLE *tab, const char *key, const char *val, char *er
 
         free(tab->items[i].val);
         tab->items[i].val = sys_dup(val);
-
         return tab->items[i].val ? 0 : -1;
     }
 
     if (tab->count == tab->cap) {
-        int newcap = tab->cap ? tab->cap * 2 : 16;
-
-        TOML_KV *items = (TOML_KV *)realloc(tab->items, sizeof(TOML_KV) * (size_t)newcap);
+        int      newcap = tab->cap ? tab->cap * 2 : 16;
+        TOML_KV *items  = (TOML_KV *)realloc(tab->items, sizeof(TOML_KV) * (size_t)newcap);
         if (!items) {
             snprintf(err, errsz, "out of memory");
             return -1;
@@ -100,7 +95,6 @@ static int table_put(TOML_TABLE *tab, const char *key, const char *val, char *er
 
     tab->items[tab->count].key = sys_dup(key);
     tab->items[tab->count].val = sys_dup(val);
-
     if (!tab->items[tab->count].key || !tab->items[tab->count].val) return -1;
 
     tab->count++;
@@ -123,11 +117,9 @@ static char *unquote(const char *s, size_t n) {
     if (!out) return NULL;
 
     size_t w = 0;
-
     for (size_t i = 0; i < n; i++) {
         if (s[i] == '\\' && i + 1 < n) {
             char e = s[++i];
-
             switch (e) {
             case 'n': out[w++] = '\n'; break;
             case 't': out[w++] = '\t'; break;
@@ -154,10 +146,9 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
         return -1;
     }
 
-    char line[8192];
-    int  lineno = 0;
-
-    TOML_TABLE *cur = table_add(t, "", err, errsz);
+    char        line[8192];
+    int         lineno = 0;
+    TOML_TABLE *cur    = table_add(t, "", err, errsz);
     if (!cur) {
         fclose(f);
         return -1;
@@ -165,7 +156,6 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
 
     while (fgets(line, sizeof(line), f)) {
         lineno++;
-
         char *s = trim(line);
         if (*s == 0 || *s == '#') continue;
 
@@ -179,7 +169,6 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
 
             *close = 0;
             cur    = table_add(t, trim(s + 1), err, errsz);
-
             if (!cur) {
                 fclose(f);
                 return -1;
@@ -205,7 +194,6 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
         }
 
         char *val = trim(eq + 1);
-
         if (*val == '[') {
             char *close = strrchr(val, ']');
             if (!close) {
@@ -218,7 +206,6 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
 
             int   idx = 0;
             char *p   = val + 1;
-
             while (*p) {
                 while (*p == ' ' || *p == '\t') p++;
 
@@ -230,10 +217,8 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
 
                 const char *start;
                 size_t      len;
-
                 if (*p == '"') {
                     start = p++;
-
                     while (*p) {
                         if (*p == '\\' && p[1]) {
                             p += 2;
@@ -248,7 +233,6 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
                     len = (size_t)(p - start);
                 } else {
                     start = p;
-
                     while (*p && *p != ',' && *p != ']') p++;
 
                     len = (size_t)(p - start);
@@ -263,7 +247,6 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
 
                 char norm[1024];
                 snprintf(norm, sizeof(norm), "%s[%d]", key, idx++);
-
                 if (table_put(cur, norm, item, err, errsz) != 0) {
                     free(item);
                     fclose(f);
@@ -271,7 +254,6 @@ int toml_parse(TOML *t, const char *path, char *err, size_t errsz) {
                 }
 
                 free(item);
-
                 while (*p && *p != ',') p++;
                 if (*p == ',') p++;
             }
@@ -312,19 +294,16 @@ const char *toml_str(const TOML *t, const char *section, const char *key) {
 const char *toml_arr(const TOML *t, const char *section, const char *key, int index) {
     char norm[1024];
     snprintf(norm, sizeof(norm), "%s[%d]", key, index);
-
     return toml_str(t, section, norm);
 }
 
 int toml_int(const TOML *t, const char *section, const char *key, int fallback) {
     const char *v = toml_str(t, section, key);
-
     return v ? atoi(v) : fallback;
 }
 
 int toml_bool(const TOML *t, const char *section, const char *key, int fallback) {
     const char *v = toml_str(t, section, key);
-
     if (!v) return fallback;
     if (!strcmp(v, "true")) return 1;
     if (!strcmp(v, "false")) return 0;
@@ -339,22 +318,18 @@ static int has_nested(const char *name) {
 int toml_sections(const TOML *t, const char *prefix, char ***out) {
     size_t n = strlen(prefix);
     int    k = 0;
-
     char **v = (char **)malloc(sizeof(char *));
-
     if (!v) return 0;
 
     for (int i = 0; i < t->count; i++) {
         const char *name = t->tables[i].name;
-
         if (strncmp(name, prefix, n) != 0) continue;
         if (has_nested(name + n)) continue;
 
         char **next = (char **)realloc(v, sizeof(char *) * (size_t)(k + 1));
         if (!next) break;
 
-        v = next;
-
+        v    = next;
         v[k] = sys_dup(name + n);
         if (!v[k]) break;
 

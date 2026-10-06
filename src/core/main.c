@@ -27,7 +27,6 @@ static void usage(const char *prog) {
 
 static int opt_inline(const char *arg, const char *prefix, const char **out) {
     size_t len = strlen(prefix);
-
     if (strncmp(arg, prefix, len) != 0 || arg[len] == 0) return 0;
 
     *out = arg + len;
@@ -44,10 +43,8 @@ static int parse_options(int argc, char **argv, OPTIONS *o) {
     o->retry      = 0;
     o->keep_going = 1;
     o->no_cache   = 0;
-
     for (int i = 1; i < argc; i++) {
         const char *value = NULL;
-
         if (!strcmp(argv[i], "--version") || !strcmp(argv[i], "-V")) {
             printf("loom %s\n", heddle_version_string());
             exit(0);
@@ -84,7 +81,6 @@ static int parse_options(int argc, char **argv, OPTIONS *o) {
 
 int main(int argc, char **argv) {
     OPTIONS o;
-
     if (parse_options(argc, argv, &o) != 0) {
         usage(argv[0]);
         return 2;
@@ -93,19 +89,17 @@ int main(int argc, char **argv) {
     if (o.jobs < 1) o.jobs = 1;
 
     BUILD_OPTS bo;
-    bo.graph_file = o.file;
-    bo.cwd        = o.cwd;
-    bo.logdir     = o.logdir;
-    bo.jobs       = o.jobs;
-    bo.retry      = o.retry;
-    bo.keep_going = o.keep_going;
-    bo.cache_dir  = o.cache_dir;
-    bo.remote     = o.remote;
-    bo.no_cache   = o.no_cache;
-
-    char err[512] = {0};
-
-    BUILD_ENGINE *e = build_open(&bo, err, sizeof(err));
+    bo.graph_file          = o.file;
+    bo.cwd                 = o.cwd;
+    bo.logdir              = o.logdir;
+    bo.jobs                = o.jobs;
+    bo.retry               = o.retry;
+    bo.keep_going          = o.keep_going;
+    bo.cache_dir           = o.cache_dir;
+    bo.remote              = o.remote;
+    bo.no_cache            = o.no_cache;
+    char          err[512] = {0};
+    BUILD_ENGINE *e        = build_open(&bo, err, sizeof(err));
     if (!e) {
         fprintf(stderr, "error: %s\n", err);
         return 1;
@@ -114,9 +108,7 @@ int main(int argc, char **argv) {
     int rc  = build_run(e);
     int ran = 0;
     int hit = 0;
-
     build_stats(e, &ran, &hit);
-
     if (hit) fprintf(stderr, "loom: %d cached, %d ran\n", hit, ran);
 
     build_close(e);

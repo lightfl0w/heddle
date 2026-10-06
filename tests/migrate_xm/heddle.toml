@@ -1,0 +1,20 @@
+[build]
+dir = "out"
+
+[target.util]
+type = "staticlib"
+src = ["src/util/util.c"]
+inc = ["include"]
+
+[target.math]
+type = "staticlib"
+src = ["src/math/add.c"]
+inc = ["include"]
+deps = ["util"]
+
+[target.app]
+type = "exe"
+src = ["src/main.c"]
+inc = ["include"]
+deps = ["math", "util"]
+cflags = ["-DLEVEL=3", "-Wall"]

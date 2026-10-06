@@ -91,14 +91,12 @@ static void put_utf8(char *out, size_t *n, unsigned cp) {
 static char *read_str(JPARSE *s) {
     if (s->p >= s->end || *s->p != '"') return NULL;
     s->p++;
-
     size_t cap = 32, n = 0;
     char  *out = malloc(cap);
     if (!out) return NULL;
 
     while (s->p < s->end && *s->p != '"') {
         unsigned char c = (unsigned char)*s->p++;
-
         if (c == '\\' && s->p < s->end) {
             char e = *s->p++;
             switch (e) {
@@ -145,7 +143,6 @@ static JV *parse_value(JPARSE *s);
 static JV *parse_object(JPARSE *s) {
     JV *o = jv_new(JOBJ);
     s->p++;
-
     for (;;) {
         skip_ws(s);
         if (s->p >= s->end || *s->p == '}') {
@@ -171,7 +168,6 @@ static JV *parse_object(JPARSE *s) {
         o->keys[o->nkv] = key;
         o->vals[o->nkv] = parse_value(s);
         o->nkv++;
-
         skip_ws(s);
         if (s->p < s->end && *s->p == ',') {
             s->p++;
@@ -186,7 +182,6 @@ static JV *parse_object(JPARSE *s) {
 static JV *parse_array(JPARSE *s) {
     JV *a = jv_new(JARR);
     s->p++;
-
     for (;;) {
         skip_ws(s);
         if (s->p >= s->end || *s->p == ']') {
@@ -198,7 +193,6 @@ static JV *parse_array(JPARSE *s) {
         if (!ni) break;
         a->items         = ni;
         a->items[a->n++] = parse_value(s);
-
         skip_ws(s);
         if (s->p < s->end && *s->p == ',') {
             s->p++;
@@ -218,7 +212,6 @@ static JV *parse_value(JPARSE *s) {
     }
 
     JV *v = NULL;
-
     switch (*s->p) {
     case '{': v = parse_object(s); break;
     case '[': v = parse_array(s); break;
@@ -270,7 +263,6 @@ static JV *json_load(const char *path) {
     size_t got = fread(buf, 1, (size_t)len, f);
     buf[got]   = 0;
     fclose(f);
-
     JPARSE s = {buf, buf + got, 0};
     JV    *v = parse_value(&s);
     free(buf);
@@ -438,7 +430,6 @@ static void add_compile(MIG_TARGET *t, const JV *j) {
         JV       *inc = jv_get(grp, "includes");
         JV       *def = jv_get(grp, "defines");
         JV       *frs = jv_get(grp, "compileCommandFragments");
-
         if (inc && inc->type == JARR)
             for (int i = 0; i < inc->n; i++) {
                 const char *p = jv_str(jv_get(inc->items[i], "path"));
@@ -479,7 +470,6 @@ static void add_link(MIG_TARGET *t, const JV *j) {
 
 static void add_deps(MIG_SET *m, MIG_TARGET *t, const JV *j) {
     const char *keys[] = {"linkLibraries", "dependencies", NULL};
-
     for (int k = 0; keys[k]; k++) {
         JV *a = jv_get(j, keys[k]);
         if (!a || a->type != JARR) continue;
@@ -487,7 +477,6 @@ static void add_deps(MIG_SET *m, MIG_TARGET *t, const JV *j) {
         for (int i = 0; i < a->n; i++) {
             const char *id  = jv_str(jv_get(a->items[i], "id"));
             const char *frg = jv_str(jv_get(a->items[i], "fragment"));
-
             if (id && *id) {
                 char name[512];
                 id_to_name(id, name, sizeof(name));
@@ -508,7 +497,6 @@ static void grab_ldscript(MIG_TARGET *t) {
     for (int i = 0; i < t->nldflags;) {
         const char *f   = t->ldflags[i];
         const char *val = NULL;
-
         if (!strcmp(f, "-T") && i + 1 < t->nldflags) val = t->ldflags[i + 1];
         else if (!strncmp(f, "-T", 2) && f[2]) val = f + 2;
 
@@ -519,8 +507,7 @@ static void grab_ldscript(MIG_TARGET *t) {
 
         free(t->ldscript);
         t->ldscript = sys_dup(val);
-
-        int drop = (val == f + 2) ? 1 : 2;
+        int drop    = (val == f + 2) ? 1 : 2;
         for (int k = 0; k < drop; k++) free(t->ldflags[i + k]);
         memmove(&t->ldflags[i], &t->ldflags[i + drop],
                 sizeof(char *) * (size_t)(t->nldflags - i - drop));
@@ -537,18 +524,15 @@ int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
     char qdir[8192];
     snprintf(qdir, sizeof(qdir), "%s/.cmake/api/v1/query", builddir);
     mkdirs(qdir);
-
     const char *qk[] = {"codemodel-v2", "cache-v2", "toolchains-v1", "cmakeFiles-v1"};
     for (int i = 0; i < 4; i++) write_empty(qdir, qk[i]);
 
     char log[8192];
     snprintf(log, sizeof(log), "%s/heddle-cmake-configure.log", builddir);
-
     char *argv[64] = {"cmake", "-S", (char *)srcdir, "-B", builddir};
     int   n        = 5;
     for (int i = 0; i < nargs && n < 63; i++) argv[n++] = args[i];
     argv[n] = NULL;
-
     PROC_RESULT r;
     if (proc_run(argv, NULL, log, NULL, 0, &r) != 0) {
         snprintf(err, errsz, "failed to run cmake (is it on PATH?)");
@@ -561,11 +545,9 @@ int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
 
     char rdir[8192];
     snprintf(rdir, sizeof(rdir), "%s/.cmake/api/v1/reply", builddir);
-
     char *ip  = find_reply(rdir, "index-");
     JV   *idx = ip ? json_load(ip) : NULL;
     free(ip);
-
     if (!idx) {
         snprintf(err, errsz, "no CMake File API reply in %s (need CMake >= 3.14)", rdir);
         return -1;
@@ -573,7 +555,6 @@ int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
 
     JV         *cm  = jv_get(jv_get(idx, "reply"), "codemodel-v2");
     const char *cmf = cm ? jv_str(jv_get(cm, "jsonFile")) : NULL;
-
     if (!cmf) {
         jv_free(idx);
         snprintf(err, errsz, "no codemodel-v2 reply");
@@ -584,7 +565,6 @@ int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
     JV   *model = cmp ? json_load(cmp) : NULL;
     free(cmp);
     jv_free(idx);
-
     if (!model) {
         snprintf(err, errsz, "cannot parse codemodel-v2");
         return -1;
@@ -614,7 +594,6 @@ int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
     JV   **tjs   = NULL;
     char **tns   = NULL;
     int    ntg   = 0;
-
     for (int i = 0; trefs && trefs->type == JARR && i < trefs->n; i++) {
         const char *nm = jv_str(jv_get(trefs->items[i], "name"));
         const char *jf = jv_str(jv_get(trefs->items[i], "jsonFile"));
@@ -634,11 +613,9 @@ int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
         MIG_TARGET *t = target_add(s, nm);
         free(t->type);
         t->type = sys_dup(map_type(ty));
-
         add_sources(t, tg, srcdir);
         add_compile(t, tg);
         add_link(t, tg);
-
         tjs      = realloc(tjs, sizeof(JV *) * (size_t)(ntg + 1));
         tns      = realloc(tns, sizeof(char *) * (size_t)(ntg + 1));
         tjs[ntg] = tg;
@@ -654,7 +631,6 @@ int cmake_api_load(MIG_SET *s, const char *srcdir, const char *builddir_hint,
     free(tjs);
     free(tns);
     jv_free(model);
-
     if (s->n == 0) {
         snprintf(err, errsz, "no importable targets");
         return -1;

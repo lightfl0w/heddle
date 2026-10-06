@@ -1,0 +1,20 @@
+[build]
+dir = "out"
+
+[target.app]
+type = "exe"
+src = ["./src/main.c"]
+inc = ["/root/loom/tests/migrate/include"]
+deps = ["math", "util"]
+cflags = ["-DLEVEL=3"]
+
+[target.math]
+type = "staticlib"
+src = ["./src/math/add.c"]
+inc = ["/root/loom/tests/migrate/include"]
+deps = ["util"]
+
+[target.util]
+type = "staticlib"
+src = ["./src/util/util.c"]
+inc = ["/root/loom/tests/migrate/include"]

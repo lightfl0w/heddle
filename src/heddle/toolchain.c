@@ -54,10 +54,8 @@ static int has_ext(const char *prog) {
     const char *slash = strrchr(prog, '/');
     const char *bs    = strrchr(prog, '\\');
     const char *base  = slash;
-
     if (bs && (!base || bs > base)) base = bs;
     base = base ? base + 1 : prog;
-
     return strchr(base, '.') != NULL;
 }
 #else
@@ -66,7 +64,6 @@ static int has_ext(const char *prog) {
 
 static size_t dir_len(const char *dir) {
     size_t n = strlen(dir);
-
     while (n > 1 && (dir[n - 1] == '/' || dir[n - 1] == '\\')) {
         if ((n == 3 && dir[1] == ':') || dir[n - 2] == ':') break;
 
@@ -77,19 +74,15 @@ static size_t dir_len(const char *dir) {
 }
 
 static int exec_try(const char *dir, const char *prog) {
-    char   full[1024];
-    size_t n = dir_len(dir);
-
+    char        full[1024];
+    size_t      n   = dir_len(dir);
     const char *sep = (n && dir[n - 1] != '/' && dir[n - 1] != '\\') ? DIR_SEP : "";
-
     snprintf(full, sizeof(full), "%.*s%s%s", (int)n, dir, sep, prog);
-
     if (EXEC_OK(full)) return 1;
 
 #if defined(_WIN32)
     if (!has_ext(prog)) {
         snprintf(full, sizeof(full), "%.*s%s%s.exe", (int)n, dir, sep, prog);
-
         if (EXEC_OK(full)) return 1;
     }
 #endif
@@ -108,7 +101,6 @@ static int on_path(const char *prog) {
 
     int   found = 0;
     char *dir   = copy;
-
     while (dir && !found) {
 #if defined(_WIN32)
         char *sep = strchr(dir, ';');
@@ -116,7 +108,6 @@ static int on_path(const char *prog) {
         char *sep = strchr(dir, ':');
 #endif
         char keep = 0;
-
         if (sep) {
             keep = *sep;
             *sep = 0;
@@ -140,18 +131,15 @@ void tc_add_env_raw(TOOLCHAIN *tc, const char *s) {
 
     tc->env           = next;
     tc->env[tc->nenv] = sys_dup(s);
-
     if (tc->env[tc->nenv]) tc->nenv++;
 }
 
 void tc_add_env(TOOLCHAIN *tc, const char *fmt, ...) {
     char    buf[4096];
     va_list ap;
-
     va_start(ap, fmt);
     vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-
     tc_add_env_raw(tc, buf);
 }
 
@@ -166,7 +154,6 @@ static const TC_PRESET *preset_of(const char *name) {
 
 static const char *env_lookup(char **items, int n, const char *key) {
     size_t klen = strlen(key);
-
     for (int i = 0; i < n; i++) {
         if (strncmp(items[i], key, klen) == 0 && items[i][klen] == '=') return items[i] + klen + 1;
     }
@@ -183,7 +170,6 @@ static int cl_in(const char *dir, size_t dl, char *out, size_t cap) {
     if (!dl || dl + 12 >= cap) return 0;
 
     snprintf(out, cap, "%.*s\\cl.exe", (int)dl, dir);
-
     if (!tc_file_exists(out)) {
         out[0] = 0;
         return 0;
@@ -193,25 +179,19 @@ static int cl_in(const char *dir, size_t dl, char *out, size_t cap) {
 }
 
 static void find_cl(char **items, int n, const char *arch, char *out, size_t cap) {
-    out[0] = 0;
-
+    out[0]            = 0;
     const char *vcdir = env_lookup(items, n, "VCToolsInstallDir");
-
     if (vcdir && vcdir[0]) {
         size_t l = strlen(vcdir);
-
         while (l > 0 && (vcdir[l - 1] == '\\' || vcdir[l - 1] == '/')) l--;
 
         snprintf(out, cap, "%.*s\\bin\\Host%s\\%s\\cl.exe", (int)l, vcdir, arch, arch);
-
         if (!tc_file_exists(out)) out[0] = 0;
     }
 
     for (const char *p = env_lookup(items, n, "PATH"); p && *p && !out[0];) {
         const char *e = strchr(p, ';');
-
         cl_in(p, e ? (size_t)(e - p) : strlen(p), out, cap);
-
         p = e ? e + 1 : NULL;
     }
 }
@@ -219,19 +199,16 @@ static void find_cl(char **items, int n, const char *arch, char *out, size_t cap
 static int msvc_env(TOOLCHAIN *tc, const char *arch, const char *want, char *cl_out,
                     size_t cl_cap) {
     char install[1024];
-
     if (vs_install(install, sizeof(install)) != 0) return -1;
 
     static char raw[131072];
     char       *items[1024];
     int         n;
-
     if (vs_env_capture(install, arch, want, raw, sizeof(raw)) != 0 ||
         (n = vs_env_split(raw, items, 1024)) == 0)
         return -1;
 
     const char *vc_inc = env_lookup(items, n, "INCLUDE");
-
     if (!vc_inc || !vc_inc[0]) return -1;
 
     for (int i = 0; i < n; i++) tc_add_env_raw(tc, items[i]);
@@ -243,7 +220,6 @@ static int msvc_env(TOOLCHAIN *tc, const char *arch, const char *want, char *cl_
 
 static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want, char *err, size_t errsz) {
     char cl[2048] = {0};
-
     if (msvc_env(tc, arch, want, cl, sizeof(cl)) != 0) {
         snprintf(err, errsz,
                  "MSVC environment could not be loaded; vcvarsall.bat was not "
@@ -262,23 +238,19 @@ static int msvc_fill(TOOLCHAIN *tc, const char *arch, const char *want, char *er
     free(tc->cxx);
     free(tc->ar);
     free(tc->ld);
-
     tc->cc  = sys_dup(cl);
     tc->cxx = sys_dup(cl);
     tc->ld  = sys_dup(cl);
     tc->ar  = sys_dup("lib");
-
     return 0;
 }
 
 int tc_probe(const char *preset) {
     const TC_PRESET *p = preset_of(preset);
-
     if (!p) return 0;
 
     if (!strcmp(preset, "msvc")) {
         char install[1024];
-
         return vs_install(install, sizeof(install)) == 0;
     }
 
@@ -287,7 +259,6 @@ int tc_probe(const char *preset) {
 
 const char *tc_preset_cc(const char *preset) {
     const TC_PRESET *p = preset_of(preset);
-
     return p ? p->cc : "";
 }
 
@@ -311,16 +282,13 @@ static const char *probe_tmpdir(void) {
 int tc_probe_triple(const char *cc, char *out, size_t cap) {
     char log[4096];
     snprintf(log, sizeof(log), "%s/heddle-triple.log", probe_tmpdir());
-
     char *argv[4];
     argv[0] = (char *)cc;
     argv[1] = (char *)"-dumpmachine";
     argv[2] = NULL;
-
     PROC_RESULT r;
     memset(&r, 0, sizeof(r));
     out[0] = 0;
-
     if (proc_run(argv, NULL, log, NULL, 0, &r) != 0 || r.exit_code != 0) return -1;
 
     FILE *f = fopen(log, "rb");
@@ -328,10 +296,8 @@ int tc_probe_triple(const char *cc, char *out, size_t cap) {
 
     char line[1024];
     int  got = 0;
-
     if (fgets(line, sizeof(line), f)) {
         size_t n = strlen(line);
-
         while (n && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[--n] = 0;
 
         if (n) {
@@ -344,7 +310,6 @@ int tc_probe_triple(const char *cc, char *out, size_t cap) {
 
     fclose(f);
     remove(log);
-
     return got ? 0 : -1;
 }
 
@@ -362,7 +327,6 @@ static int maybe_load_msvc_env(TOOLCHAIN *tc, const char *arch, char *err, size_
     if (tc->family && !strcmp(tc->family, "msvc")) return 0;
 
     char triple[256];
-
     if (tc_probe_triple(tc->cc, triple, sizeof(triple)) != 0) return 0;
     if (!tc_triple_needs_msvc(triple)) return 0;
 
@@ -391,7 +355,6 @@ const char *tc_auto_at(int i) {
 static const char *or_default(const TOML *t, const char *sect, const char *key,
                               const char *fallback) {
     const char *v = toml_str(t, sect, key);
-
     return v ? v : fallback;
 }
 
@@ -411,7 +374,6 @@ static void add_flag(char ***arr, int *n, const char *v) {
 static void add_flags(TOML *t, const char *sect, const char *key, char ***arr, int *n) {
     for (int i = 0;; i++) {
         const char *v = toml_arr(t, sect, key, i);
-
         if (!v) break;
 
         add_flag(arr, n, v);
@@ -425,25 +387,19 @@ static int is_auto(const char *name) {
 static void read_flags(const char *dir, TOOLCHAIN *tc, const char *user) {
     char path[2048];
     snprintf(path, sizeof(path), "%s/heddle.toml", dir);
-
     TOML t;
     char err[256];
-
     toml_init(&t);
-
     if (toml_parse(&t, path, err, sizeof(err)) == 0) {
         char sect[256];
         snprintf(sect, sizeof(sect), "toolchain.%s", user);
-
         const char *cc = toml_str(&t, sect, "cc");
-
         if (cc) {
             free(tc->cc);
             tc->cc = sys_dup(cc);
         }
 
         const char *as = toml_str(&t, sect, "as");
-
         if (as) {
             free(tc->as);
             tc->as = sys_dup(as);
@@ -476,7 +432,6 @@ static void host_fix(TOOLCHAIN *tc) {
 
 static void load_preset(TOOLCHAIN *tc, const TC_PRESET *p) {
     memset(tc, 0, sizeof(*tc));
-
     tc->name     = sys_dup(p->name);
     tc->family   = sys_dup(p->family);
     tc->cc       = sys_dup(p->cc);
@@ -491,7 +446,6 @@ static void load_preset(TOOLCHAIN *tc, const TC_PRESET *p) {
     tc->dllext   = sys_dup(p->dllext);
     tc->soflag   = sys_dup(p->soflag);
     tc->platform = sys_dup(p->name);
-
     host_fix(tc);
 }
 
@@ -499,11 +453,9 @@ static int apply_auto(TOOLCHAIN *tc, const char *dir, const char *user, const ch
                       size_t errsz) {
     for (int i = 0; i < tc_auto_count(); i++) {
         const TC_PRESET *p = preset_of(g_auto[i]);
-
         if (!p || !tc_probe(g_auto[i])) continue;
 
         load_preset(tc, p);
-
         if (!strcmp(p->name, "msvc")) {
             if (msvc_fill(tc, arch, NULL, err, errsz) != 0) return -1;
         } else {
@@ -540,7 +492,6 @@ static char *apply_prefix(const char *prefix, const char *tool) {
 
     size_t n = strlen(prefix) + strlen(tool) + 1;
     char  *p = (char *)malloc(n);
-
     if (p) snprintf(p, n, "%s%s", prefix, tool);
 
     return p;
@@ -550,29 +501,23 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
                const char *sysroot, const char *extra_cflags, const char *arch, char *err,
                size_t errsz) {
     const char *arch_msvc = msvc_arch(arch);
-
     memset(tc, 0, sizeof(*tc));
-
     if (is_auto(name)) {
         if (prefix && prefix[0]) {
             char cc[512];
             snprintf(cc, sizeof(cc), "%sgcc", prefix);
-
             if (on_path(cc)) {
                 load_preset(tc, preset_of("gcc"));
-
                 free(tc->name);
                 free(tc->cc);
                 free(tc->cxx);
                 free(tc->ar);
                 free(tc->ld);
-
                 tc->name = sys_dup(prefix);
                 tc->cc   = sys_dup(cc);
                 tc->cxx  = apply_prefix(prefix, "g++");
                 tc->ar   = apply_prefix(prefix, "ar");
                 tc->ld   = sys_dup(cc);
-
                 read_flags(dir, tc, "host");
                 goto overlay;
             }
@@ -588,19 +533,14 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
 
     char path[2048];
     snprintf(path, sizeof(path), "%s/heddle.toml", dir);
-
     TOML t;
     toml_init(&t);
-
     char perr[256];
     toml_parse(&t, path, perr, sizeof(perr));
-
     char sect[256];
     snprintf(sect, sizeof(sect), "toolchain.%s", name);
-
     const char      *base = or_default(&t, sect, "based_on", name);
     const TC_PRESET *p    = preset_of(base);
-
     if (!p) {
         snprintf(err, errsz, "unknown toolchain '%s'", base);
         toml_free(&t);
@@ -621,7 +561,6 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
     tc->dllext   = dup_or(&t, sect, "dllext", p->dllext);
     tc->soflag   = dup_or(&t, sect, "soflag", p->soflag);
     tc->platform = dup_or(&t, sect, "platform", p->name);
-
     if (!strcmp(p->name, "msvc") &&
         msvc_fill(tc, or_default(&t, sect, "arch", arch_msvc),
                   or_default(&t, sect, "toolset", NULL), err, errsz) != 0) {
@@ -631,7 +570,6 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
 
     add_flags(&t, sect, "cflags", &tc->cflags, &tc->ncflags);
     add_flags(&t, sect, "ldflags", &tc->ldflags, &tc->nldflags);
-
     toml_free(&t);
     if (strcmp(p->name, "msvc") != 0 && maybe_load_msvc_env(tc, arch_msvc, err, errsz) != 0) {
         toml_free(&t);
@@ -640,17 +578,13 @@ int tc_load_ex(TOOLCHAIN *tc, const char *dir, const char *name, const char *pre
 
 overlay:
     if (prefix && prefix[0]) {
-        char buf[512];
-
+        char  buf[512];
         char *n;
-
         free(tc->binext);
         tc->binext = sys_dup("");
-
         free(tc->dllpre);
         tc->dllpre = sys_dup("lib");
-
-        n = apply_prefix(prefix, tc->cc);
+        n          = apply_prefix(prefix, tc->cc);
         free(tc->cc);
         tc->cc = n;
         n      = apply_prefix(prefix, tc->cxx);
@@ -662,16 +596,12 @@ overlay:
         n      = apply_prefix(prefix, tc->ld);
         free(tc->ld);
         tc->ld = n;
-
         snprintf(buf, sizeof(buf), "cross-%s", prefix);
-
         size_t l = strlen(buf);
-
         if (l && (buf[l - 1] == '-' || buf[l - 1] == '_')) buf[l - 1] = 0;
 
         free(tc->platform);
         tc->platform = sys_dup(buf);
-
         if (sysroot && sysroot[0]) {
             add_flag(&tc->cflags, &tc->ncflags, "--sysroot");
             add_flag(&tc->cflags, &tc->ncflags, sysroot);
@@ -682,10 +612,8 @@ overlay:
         char *copy = sys_dup(extra_cflags);
         char *save = NULL;
         char *tok;
-
         for (tok = sys_tok(copy, " \t", &save); tok; tok = sys_tok(NULL, " \t", &save))
             add_flag(&tc->cflags, &tc->ncflags, tok);
-
         free(copy);
     }
 
@@ -696,46 +624,36 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based, const char 
                  const char *family, const char *prefix, const char *sysroot,
                  const char *extra_cflags, const char *arch, char *err, size_t errsz) {
     memset(tc, 0, sizeof(*tc));
-
     const TC_PRESET *p = preset_of(based && based[0] ? based : NULL);
-
     if (!p && family && family[0]) p = preset_of(family);
     if (!p) p = preset_of(name);
     if (!p) p = preset_of("gcc");
 
     const char *base = p->name;
-
     if (!p) {
         snprintf(err, errsz, "unknown toolchain '%s'", base);
         return -1;
     }
 
     load_preset(tc, p);
-
     free(tc->name);
     free(tc->family);
     free(tc->cc);
     free(tc->cxx);
     free(tc->ar);
     free(tc->ld);
-
     tc->name   = sys_dup(name);
     tc->family = sys_dup(family && family[0] ? family : p->family);
-
     char pfx2[512];
     snprintf(pfx2, sizeof(pfx2), "%s", p->cc);
-
     tc->cc  = cc && cc[0] ? sys_dup(cc) : sys_dup(p->cc);
     tc->cxx = cc && cc[0] ? apply_prefix("", cc) : sys_dup(p->cxx);
     tc->ar  = sys_dup(p->ar);
     tc->ld  = sys_dup(tc->cc);
-
     if (cc && cc[0] && p->cxx[0]) {
         free(tc->cxx);
-
         const char *dash = strrchr(cc, '-');
         char        base2[512];
-
         if (dash && strstr(cc, "gcc")) {
             size_t n = (size_t)(dash - cc);
             snprintf(base2, sizeof(base2), "%.*s-g++", (int)n, cc);
@@ -747,7 +665,6 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based, const char 
 
     if (prefix && prefix[0]) {
         char *n;
-
         n = apply_prefix(prefix, tc->cc);
         free(tc->cc);
         tc->cc = n;
@@ -760,10 +677,8 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based, const char 
         n      = apply_prefix(prefix, tc->ld);
         free(tc->ld);
         tc->ld = n;
-
         free(tc->platform);
         tc->platform = sys_dup(p->name);
-
         if (sysroot && sysroot[0]) {
             add_flag(&tc->cflags, &tc->ncflags, "--sysroot");
             add_flag(&tc->cflags, &tc->ncflags, sysroot);
@@ -774,15 +689,12 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based, const char 
         char *copy = sys_dup(extra_cflags);
         char *save = NULL;
         char *tok;
-
         for (tok = sys_tok(copy, " \t", &save); tok; tok = sys_tok(NULL, " \t", &save))
             add_flag(&tc->cflags, &tc->ncflags, tok);
-
         free(copy);
     }
 
     (void)pfx2;
-
     if (tc->family && !strcmp(tc->family, "msvc"))
         return msvc_fill(tc, msvc_arch(arch), NULL, err, errsz);
 
@@ -801,11 +713,9 @@ const char *tc_tool(const TOOLCHAIN *tc, const char *name) {
 
 int tc_tool_ok(const TOOLCHAIN *tc, const char *tool) {
     (void)tc;
-
     if (!tool || !tool[0]) return 0;
 
     SYS_STAT st;
-
     if (sys_stat(tool, &st) == 0) return 1;
 
     if (strchr(tool, '/') || strchr(tool, '\\')) return 0;
@@ -814,10 +724,8 @@ int tc_tool_ok(const TOOLCHAIN *tc, const char *tool) {
     char       *copy = path ? sys_dup(path) : NULL;
     char       *save = NULL;
     int         ok   = 0;
-
     for (char *d = sys_tok(copy, ":;", &save); d && !ok; d = sys_tok(NULL, ":;", &save))
         ok = exec_try(d, tool);
-
     free(copy);
     return ok;
 }
@@ -826,7 +734,6 @@ void tc_free(TOOLCHAIN *tc) {
     char *strs[] = {tc->name,   tc->family, tc->cc,     tc->cxx,     tc->as,
                     tc->ar,     tc->ld,     tc->objext, tc->binext,  tc->libext,
                     tc->dllpre, tc->dllext, tc->soflag, tc->platform};
-
     for (size_t i = 0; i < sizeof(strs) / sizeof(strs[0]); i++) free(strs[i]);
 
     for (int i = 0; i < tc->ncflags; i++) free(tc->cflags[i]);
@@ -836,6 +743,5 @@ void tc_free(TOOLCHAIN *tc) {
     free(tc->cflags);
     free(tc->ldflags);
     free(tc->env);
-
     memset(tc, 0, sizeof(*tc));
 }

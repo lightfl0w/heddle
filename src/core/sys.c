@@ -69,7 +69,6 @@ int sys_isdir(const char *path) {
 char *sys_dup(const char *s) {
     size_t n = strlen(s) + 1;
     char  *p = (char *)malloc(n);
-
     if (p) memcpy(p, s, n);
 
     return p;
@@ -110,7 +109,6 @@ char *sys_tok(char *buf, const char *delims, char **save) {
     }
 
     char *tok = buf;
-
     buf += strcspn(buf, delims);
     if (*buf) {
         *buf = 0;

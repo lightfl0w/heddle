@@ -34,7 +34,6 @@ static const BUILTIN g_builtin[] = {
 static int ext_match(const char *path, const char *ext) {
     size_t n = strlen(path);
     size_t m = strlen(ext);
-
     if (m == 0 || n < m + 1) return 0;
     if (path[n - m - 1] != '.') return 0;
 
@@ -55,7 +54,6 @@ static int push_str(char ***v, int *n, const char *s) {
 
     *v       = next;
     (*v)[*n] = sys_dup(s);
-
     if (!(*v)[*n]) return -1;
 
     (*n)++;
@@ -72,12 +70,10 @@ int lang_add(const char *ext, const char *cmd, const char *const *args, int narg
 
     LANG *l = &g_langs[g_n];
     memset(l, 0, sizeof(*l));
-
     l->cmd    = sys_dup(cmd);
     l->outext = outext ? sys_dup(outext) : NULL;
     l->cflags = cflags;
     l->fmt    = fmt;
-
     if (lang_add_ext(l, ext) != 0) return -1;
 
     for (int i = 0; i < nargs; i++)
@@ -89,15 +85,12 @@ int lang_add(const char *ext, const char *cmd, const char *const *args, int narg
 
 int lang_init_builtin(void) {
     static int done = 0;
-
     if (done) return 0;
 
     int n = (int)(sizeof(g_builtin) / sizeof(g_builtin[0]));
-
     for (int i = 0; i < n; i++)
         lang_add(g_builtin[i].ext, g_builtin[i].cmd, g_builtin[i].args, g_builtin[i].nargs,
                  g_builtin[i].outext, g_builtin[i].cflags, g_builtin[i].fmt);
-
     done = 1;
     return 0;
 }
@@ -105,24 +98,18 @@ int lang_init_builtin(void) {
 int lang_load_toml(const TOML *t) {
     char **names = NULL;
     int    n     = toml_sections(t, "lang.", &names);
-
     for (int i = 0; i < n; i++) {
         char sect[256];
         snprintf(sect, sizeof(sect), "lang.%s", names[i]);
-
         const char *cmd = toml_str(t, sect, "cmd");
-
         if (!cmd) continue;
 
         const char *ext = toml_str(t, sect, "ext");
         const char *out = toml_str(t, sect, "out");
-
-        char *args[ARGS_MAX];
-        int   nargs = 0;
-
+        char       *args[ARGS_MAX];
+        int         nargs = 0;
         for (int k = 0; k < ARGS_MAX; k++) {
             const char *a = toml_arr(t, sect, "args", k);
-
             if (!a) break;
 
             args[nargs++] = (char *)a;
