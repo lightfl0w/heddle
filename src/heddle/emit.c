@@ -272,7 +272,28 @@ static void put_dep_ldflags(const PROJECT *p, char *buf, size_t cap, int *len) {
 
             if (sys_stat(lib, &st) == 0 && st.is_dir) {
                 addf(buf, cap, len, " -L%s", lib);
-                addf(buf, cap, len, " -l%s", s->name);
+
+                char *meta = project_path(s->store_path, ".heddle-pkg");
+                FILE *f = meta ? fopen(meta, "r") : NULL;
+
+                if (f) {
+                    char line[256];
+
+                    while (fgets(line, sizeof(line), f)) {
+                        size_t n = strlen(line);
+
+                        while (n && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+                            line[--n] = 0;
+
+                        if (line[0]) addf(buf, cap, len, " -l%s", line);
+                    }
+
+                    fclose(f);
+                } else {
+                    addf(buf, cap, len, " -l%s", s->name);
+                }
+
+                free(meta);
             }
 
             free(lib);

@@ -31,6 +31,7 @@ heddle tool plan      # 只打印包解析计划
 heddle env verify     # 校验环境与锁文件完全一致
 heddle install        # 安装构建产物
 heddle uninstall      # 卸载
+heddle vcpkg ...      # 兼容 vcpkg 包
 ```
 
 工程根目录默认是当前目录，用 `-C` 切换：
@@ -373,6 +374,42 @@ heddle uninstall --destdir=./pkg    # 按安装日志删
 安装会写一份日志到 `.heddle/install/<hash>.log`，记录装了哪些文件。
 `heddle uninstall` 只删日志里的文件，日志按 `destdir + prefix` 区分，
 所以卸 A 目录不会碰 B 目录。
+
+## vcpkg 兼容
+
+`heddle vcpkg` 把 vcpkg 的 port 和已构建的 `installed/` 目录接进 heddle 的
+store 和锁文件。
+
+```sh
+heddle vcpkg show ports/zlib                 # 读 vcpkg.json
+heddle vcpkg triplet x64-linux 
+heddle vcpkg check .                         # 判断是不是 vcpkg registry
+heddle vcpkg import ports/zlib --from installed --triplet x64-linux
+```
+
+`import` 把 `installed/<triplet>/{include,lib,bin,share}` 收进
+`<store>/library/<name>/<version>/`，算出内容哈希，并更新 `heddle.lock`。
+之后工程里就能像普通依赖一样声明：
+
+```toml
+[dependencies]
+zlib = "1.3.1"
+```
+
+构建时自动加 `-I<store>/.../include` 和 `-L<store>/.../lib -l<真实库名>`。
+库名从 `lib/` 里的文件名推出来（`libz.a` → `-lz`），不用手动写，
+所以 port 名和库名不一致也没关系（`zlib` port 的库是 `libz`）。
+
+| 命令 | 含义 |
+| --- | --- |
+| `vcpkg show DIR` | 读 `vcpkg.json`，打印名字、版本、依赖 |
+| `vcpkg triplet NAME` | 打印 triplet 对应的 `[target]` 片段 |
+| `vcpkg check DIR` | 检测 vcpkg registry（`ports/` + `versions/`） |
+| `vcpkg import DIR --from TREE --triplet T` | 收进 store 并写锁 |
+
+支持的 triplet 映射：`x64-linux` `x86-linux` `arm64-linux` `arm-linux`
+`x64-windows` `x64-windows-static` `x64-osx` `arm64-osx`
+`thumbv7m-none-eabi` `thumbv7em-none-eabihf` `arm-none-eabi`。
 
 ## 测试
 

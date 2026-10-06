@@ -2,6 +2,7 @@
 
 #include "emit.h"
 #include "init.h"
+#include "vcpkg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +32,7 @@ static int usage(const char *prog) {
             "       %s env verify          verify the environment matches the lock\n"
             "       %s install [TARGET]    install build products\n"
             "       %s uninstall           remove what install wrote\n"
+            "       %s vcpkg <cmd>         vcpkg package compatibility\n"
             "\n"
             "options:\n"
             "  -C DIR            project root (default .)\n"
@@ -45,7 +47,7 @@ static int usage(const char *prog) {
             "  --prefix DIR      install prefix (required for install)\n"
             "  --destdir DIR     stage under DIR, do not touch the system\n"
             "  --dry-run         print the install plan only\n",
-            prog, prog, prog, prog, prog, prog, prog, prog, prog, prog);
+            prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog);
     return 2;
 }
 
@@ -186,6 +188,9 @@ int main(int argc, char **argv) {
 
     if (argc >= 2 && !strcmp(argv[1], "init"))
         return heddle_init(argc, argv);
+
+    if (argc >= 2 && !strcmp(argv[1], "vcpkg"))
+        return heddle_vcpkg(argc, argv);
 
     emit_set_self(argv[0]);
 

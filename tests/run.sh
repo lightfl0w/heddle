@@ -541,4 +541,63 @@ expect_err "force overwrites" "$out" "create"
 rm -rf "$WORK"
 echo
 
+echo "vcpkg:"
+cd "$HERE/vcpkg"
+rm -rf proj/.heddle proj/out proj/heddle.lock installed
+
+mkdir -p installed/x64-linux/include installed/x64-linux/lib installed/x64-linux/share
+cp payload/zlib.h installed/x64-linux/include/
+cc -c payload/zlib.c -Ipayload -o installed/x64-linux/lib/zlib.o 2>/dev/null
+ar rcs installed/x64-linux/lib/libz.a installed/x64-linux/lib/zlib.o
+rm -f installed/x64-linux/lib/zlib.o
+
+out=$($HEDDLE vcpkg show ports/zlib 2>&1)
+check_rc "vcpkg show" $? 0
+expect_err "show reads name" "$out" "zlib"
+expect_err "show reads version" "$out" "1.3.1"
+expect_err "show reads deps" "$out" "minizip"
+
+out=$($HEDDLE vcpkg triplet thumbv7em-none-eabihf 2>&1)
+check_rc "triplet maps" $? 0
+expect_err "triplet arch" "$out" 'arch = "armv7em"'
+expect_err "triplet float" "$out" 'float = "hard"'
+
+$HEDDLE vcpkg check . >/dev/null 2>&1
+check_rc "vcpkg registry detected" $? 0
+$HEDDLE vcpkg check proj >/dev/null 2>&1
+check_rc "non-registry rejected" $? 1
+
+out=$($HEDDLE vcpkg triplet nope 2>&1)
+check_rc "unknown triplet rejected" $? 1
+expect_err "unknown triplet message" "$out" "unknown triplet"
+
+cd proj
+$HEDDLE vcpkg import ../ports/zlib --from ../installed --triplet x64-linux >/dev/null 2>&1
+check_rc "vcpkg import" $? 0
+[ -f .heddle/store/library/zlib/1.3.1/include/zlib.h ] \
+    && ok "imported include" || bad "imported include missing"
+[ -f .heddle/store/library/zlib/1.3.1/lib/libz.a ] \
+    && ok "imported lib" || bad "imported lib missing"
+[ -f heddle.lock ] && ok "import wrote lock" || bad "import lock missing"
+grep -q "^library zlib 1.3.1 sha256:" heddle.lock \
+    && ok "lock records vcpkg package" || bad "lock line wrong"
+
+$HEDDLE env verify >/dev/null 2>&1
+check_rc "verify imported package" $? 0
+
+$HEDDLE app >/dev/null 2>&1
+check_rc "build against imported package" $? 0
+check_eq "linked against real lib name" "$(./out/app)" "131"
+grep -q '\-lz ' .heddle/app.graph || grep -q '\-lz$' .heddle/app.graph \
+    && ok "uses libz.a name not port name" || bad "link name wrong"
+
+rm -rf .heddle heddle.lock out
+out=$(HEDDLE_REGISTRY="$HERE/vcpkg" $HEDDLE tool install 2>&1)
+check_rc "registry install without build is refused" $? 1
+expect_err "registry hint" "$out" "vcpkg import"
+
+cd "$HERE/vcpkg"
+rm -rf installed proj/.heddle proj/out proj/heddle.lock
+echo
+
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"

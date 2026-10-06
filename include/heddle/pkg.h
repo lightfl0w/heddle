@@ -67,4 +67,9 @@ int  pkg_prepend_path(PKG_MANIFEST *m);
 char *pkg_variant_key(const TARGET_PROFILE *t, const TOOLCHAIN *tc,
                       char *out, size_t cap);
 
+void pkg_hash_tree(const char *dir, char *out, size_t cap);
+int  pkg_copy_tree(const char *src, const char *dst);
+int  pkg_lock_add(const char *lock, const char *kind, const char *name,
+                  const char *version, const char *hash, char *err, size_t errsz);
+
 #endif
