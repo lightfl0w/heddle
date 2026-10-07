@@ -1020,6 +1020,30 @@ rm -f compile_commands.json
 rm -rf out .heddle
 echo
 
+echo "test:"
+
+cd "$HERE/test"
+rm -rf out .heddle
+
+out=$($HEDDLE test tmath 2>&1)
+check_rc "single test passes" $? 0
+expect_err "single test reports ok" "$out" "1 passed, 0 failed"
+
+out=$($HEDDLE test 2>&1)
+check_rc "suite reports failure" $? 1
+expect_err "suite counts" "$out" "2 passed, 1 failed"
+expect_err "failing case named" "$out" "FAIL (exit 3, want 0)"
+
+out=$($HEDDLE -v test targs 2>&1)
+check_rc "args test passes" $? 0
+expect_err "args quoted" "$out" "hello world"
+
+$HEDDLE test nosuch >/dev/null 2>&1
+[ $? -ne 0 ] && ok "unknown target rejected" || bad "unknown target accepted"
+
+rm -rf out .heddle
+echo
+
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"
 
 [ "$fail" -eq 0 ]

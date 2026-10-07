@@ -29,6 +29,8 @@ heddle toolchains     # 列出探测到的工具链
 heddle tool install   # 恢复工具链 + 依赖，写/修 heddle.lock
 heddle tool plan      # 只打印包解析计划
 heddle env verify     # 校验环境与锁文件一致
+heddle run TARGET     # 构建后运行
+heddle test [TARGET]  # 构建并运行声明的测试
 heddle install        # 安装构建产物
 heddle uninstall      # 卸载
 heddle vcpkg ...      # 读 vcpkg port / 导入已构建的树
@@ -396,6 +398,34 @@ host 工具链下：
 
 生成的图在 `.heddle/TARGET.graph`，缓存和指纹也在 `.heddle/`。
 
+## 测试
+
+用 `[target.NAME.test]` 声明，`heddle test` 构建后运行并校验：
+
+```toml
+[target.tmath]
+type = "exe"
+src = ["src/tmath.c"]
+deps = ["math"]
+
+[target.tmath.test]
+expect = 0            # 期望退出码，默认 0
+stdout = "sum=5"      # 可选，stdout 必须包含这段文字
+args   = ["--fast"]   # 可选，传给被测程序的参数
+```
+
+```sh
+heddle test           
+```
+
+输出：
+
+```
+[tmath] build tmath ... ok (exit 0)
+[tfail] build tfail ... FAIL (exit 3, want 0)
+heddle: 1 passed, 1 failed
+```
+
 ## 安装
 
 在 target 上声明安装意图，不写脚本：
@@ -529,7 +559,7 @@ heddle migrate . --no-cmake-api        # 强制文本解析
 
 生成的清单可以直接 `heddle <target>` 构建，也可以 `heddle check`。
 
-## 测试
+## 自测
 
 ```sh
 bash tests/run.sh

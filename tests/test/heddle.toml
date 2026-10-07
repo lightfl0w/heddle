@@ -1,0 +1,31 @@
+[build]
+dir = "out"
+
+[target.math]
+type = "staticlib"
+src = ["src/math.c"]
+
+[target.tmath]
+type = "exe"
+src = ["src/tmath.c"]
+deps = ["math"]
+
+[target.tmath.test]
+expect = 0
+stdout = "sum=5"
+
+[target.targs]
+type = "exe"
+src = ["src/targs.c"]
+
+[target.targs.test]
+expect = 0
+stdout = "argc=3"
+args = ["hello world", "plain"]
+
+[target.tfail]
+type = "exe"
+src = ["src/tfail.c"]
+
+[target.tfail.test]
+expect = 0
