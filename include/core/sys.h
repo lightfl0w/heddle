@@ -28,6 +28,7 @@ int  sys_isdir(const char *path);
 void sys_chmod(const char *path, unsigned mode);
 void sys_mkpath(const char *path);
 int  sys_chdir(const char *path);
+void sys_sleep_ms(int ms);
 
 char *sys_dup(const char *s);
 char *sys_tok(char *buf, const char *delims, char **save);

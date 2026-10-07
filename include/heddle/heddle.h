@@ -16,9 +16,12 @@ typedef struct {
     const char *destdir;
     int         dry_run;
     const char *compile_db;
+    int         interval_ms;
 } HEDDLE_OPTS;
 
 int heddle_run(const HEDDLE_OPTS *o);
+
+int heddle_watch(const HEDDLE_OPTS *o);
 
 int heddle_exec(const HEDDLE_OPTS *o);
 

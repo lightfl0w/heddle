@@ -1,4 +1,5 @@
 #include "sys.h"
+#include <time.h>
 
 #if !defined(_WIN32)
 static long long st_ns(const struct stat *st) {
@@ -16,6 +17,7 @@ static long long st_ns(const struct stat *st) {
 
 #include <direct.h>
 #include <io.h>
+#include <windows.h>
 
 void sys_chmod(const char *path, unsigned mode) {
     _chmod(path, (int)(mode & 0777));
@@ -79,6 +81,17 @@ int sys_chdir(const char *path) {
     return _chdir(path);
 #else
     return chdir(path);
+#endif
+}
+
+void sys_sleep_ms(int ms) {
+#if defined(_WIN32)
+    Sleep((DWORD)ms);
+#else
+    struct timespec ts;
+    ts.tv_sec  = ms / 1000;
+    ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+    nanosleep(&ts, NULL);
 #endif
 }
 

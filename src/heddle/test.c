@@ -1,6 +1,7 @@
 #include "test.h"
 
 #include "emit.h"
+#include "proc.h"
 #include "sys.h"
 #include "toml.h"
 
@@ -9,9 +10,9 @@
 #include <string.h>
 
 #if defined(_WIN32)
-#define PATHSEP ';'
+#define TEST_OUT ".heddle\\test.out"
 #else
-#define PATHSEP ':'
+#define TEST_OUT ".heddle/test.out"
 #endif
 
 static int load(const HEDDLE_OPTS *o, PROJECT *p, char *err, size_t errsz) {
@@ -122,62 +123,48 @@ int test_load(TEST_SET *s, const PROJECT *p, char *err, size_t errsz) {
     return 0;
 }
 
-static void append_arg(char *buf, size_t cap, const char *s) {
-    size_t l = strlen(buf);
-
-    if (l + 1 >= cap) return;
-
-    buf[l++] = ' ';
-    buf[l]   = 0;
-
+static void resolve_bin(char *bin, size_t cap) {
 #if defined(_WIN32)
-    snprintf(buf + l, cap - l, "\"%s\"", s);
+    SYS_STAT st;
+
+    if (sys_stat(bin, &st) == 0) return;
+
+    size_t l = strlen(bin);
+
+    if (l < 4 || strcmp(bin + l - 4, ".exe")) {
+        if (l + 4 < cap) memcpy(bin + l, ".exe", 5);
+    }
 #else
-    if (l + 1 < cap) {
-        buf[l++] = '\'';
-        buf[l]   = 0;
-    }
-
-    for (const char *q = s; *q && l + 5 < cap; q++) {
-        if (*q == '\'') {
-            const char *rep = "'\\''";
-
-            for (int k = 0; rep[k]; k++) buf[l++] = rep[k];
-
-            buf[l] = 0;
-            continue;
-        }
-
-        buf[l++] = *q;
-        buf[l]   = 0;
-    }
-
-    if (l + 1 < cap) {
-        buf[l++] = '\'';
-        buf[l]   = 0;
-    }
+    (void)bin;
+    (void)cap;
 #endif
 }
 
 static int run_case(const TEST_CASE *c, const char *bin, int verbose, char *out, size_t outcap) {
-    char cmd[8192];
+    char **argv = (char **)calloc((size_t)c->nargs + 2, sizeof(char *));
 
-    snprintf(cmd, sizeof(cmd), "%s", bin);
+    if (!argv) return -1;
 
-    for (int i = 0; i < c->nargs; i++) append_arg(cmd, sizeof(cmd), c->args[i]);
+    argv[0] = (char *)bin;
 
-#if defined(_WIN32)
-    snprintf(cmd + strlen(cmd), sizeof(cmd) - strlen(cmd), " > %s", ".heddle/test.out");
-#else
-    snprintf(cmd + strlen(cmd), sizeof(cmd) - strlen(cmd), " > %s", ".heddle/test.out");
-#endif
+    for (int i = 0; i < c->nargs; i++) argv[i + 1] = c->args[i];
 
-    if (verbose) printf("heddle: %s\n", cmd);
+    if (verbose) {
+        printf("heddle:");
+        for (int i = 0; argv[i]; i++) printf(" %s", argv[i]);
+        printf("\n");
+    }
 
-    int rc = system(cmd);
+    PROC_RESULT r;
+    int         rc = proc_run(argv, NULL, TEST_OUT, NULL, 0, &r);
 
-    FILE *f = fopen(".heddle/test.out", "rb");
-    out[0]  = 0;
+    free(argv);
+
+    if (rc != 0) return -1;
+
+    out[0] = 0;
+
+    FILE *f = fopen(TEST_OUT, "rb");
 
     if (f) {
         size_t got = fread(out, 1, outcap - 1, f);
@@ -185,13 +172,7 @@ static int run_case(const TEST_CASE *c, const char *bin, int verbose, char *out,
         fclose(f);
     }
 
-    if (rc == -1) return -1;
-
-#if defined(_WIN32)
-    return rc;
-#else
-    return WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
-#endif
+    return r.signaled ? -1 : r.exit_code;
 }
 
 int heddle_test(const HEDDLE_OPTS *o) {
@@ -261,8 +242,12 @@ int heddle_test(const HEDDLE_OPTS *o) {
             continue;
         }
 
+        char norm[4096];
+        snprintf(norm, sizeof(norm), "%s", bin);
+        resolve_bin(norm, sizeof(norm));
+
         char stdout_buf[8192];
-        int  rc = run_case(c, bin, o->verbose, stdout_buf, sizeof(stdout_buf));
+        int  rc = run_case(c, norm, o->verbose, stdout_buf, sizeof(stdout_buf));
 
         free(bin);
 

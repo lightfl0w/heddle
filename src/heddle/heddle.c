@@ -166,6 +166,10 @@ int heddle_exec(const HEDDLE_OPTS *o) {
 #endif
 
         if (found) {
+#if defined(_WIN32)
+            for (char *q = bin; *q; q++)
+                if (*q == '/') *q = '\\';
+#endif
             printf("heddle: run %s\n", bin);
             fflush(stdout);
             rc = system(bin) == 0 ? 0 : 1;
