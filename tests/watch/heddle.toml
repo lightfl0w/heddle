@@ -1,0 +1,6 @@
+[build]
+dir = "out"
+
+[target.app]
+type = "exe"
+src = ["src/main.c", "src/lib.c"]

@@ -1044,6 +1044,48 @@ $HEDDLE test nosuch >/dev/null 2>&1
 rm -rf out .heddle
 echo
 
+echo "watch:"
+
+cd "$HERE/watch"
+rm -rf out .heddle watch.log
+
+"$HEDDLE" watch --interval 0.2 app >watch.log 2>&1 &
+WPID=$!
+
+for _ in $(seq 1 50); do
+    grep -q "heddle: ok" watch.log 2>/dev/null && break
+    sleep 0.2
+done
+
+grep -q "heddle: ok" watch.log && ok "initial build" || bad "no initial build"
+
+sleep 0.5
+printf '#include "val.h"\nint val(void){return 8;}\n' > src/lib.c
+
+for _ in $(seq 1 50); do
+    [ "$(grep -c 'change detected' watch.log 2>/dev/null)" -ge 1 ] && break
+    sleep 0.2
+done
+
+grep -q "change detected" watch.log && ok "change detected" || bad "change not detected"
+
+sleep 0.5
+printf '#define WVAL 9\n' > src/val.h
+
+for _ in $(seq 1 50); do
+    [ "$(grep -c 'change detected' watch.log 2>/dev/null)" -ge 2 ] && break
+    sleep 0.2
+done
+
+[ "$(grep -c 'change detected' watch.log 2>/dev/null)" -ge 2 ] \
+    && ok "header change detected" || bad "header change missed"
+
+kill "$WPID" 2>/dev/null
+wait "$WPID" 2>/dev/null
+
+rm -rf out .heddle watch.log
+echo
+
 printf '总计: %d passed, %d failed\n' "$pass" "$fail"
 
 [ "$fail" -eq 0 ]

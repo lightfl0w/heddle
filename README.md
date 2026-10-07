@@ -31,6 +31,7 @@ heddle tool plan      # 只打印包解析计划
 heddle env verify     # 校验环境与锁文件一致
 heddle run TARGET     # 构建后运行
 heddle test [TARGET]  # 构建并运行声明的测试
+heddle watch [TARGET] # 盯着源文件，变了就重建
 heddle install        # 安装构建产物
 heddle uninstall      # 卸载
 heddle vcpkg ...      # 读 vcpkg port / 导入已构建的树
@@ -424,6 +425,26 @@ heddle test
 [tmath] build tmath ... ok (exit 0)
 [tfail] build tfail ... FAIL (exit 3, want 0)
 heddle: 1 passed, 1 failed
+```
+
+## 监视
+
+改完就编，不用手动重跑：
+
+```sh
+heddle watch            # 用默认 target
+heddle watch app        # 指定 target
+heddle watch --interval 0.2 app   # 轮询间隔（秒，默认 0.5）
+```
+
+它先构建一次，然后每 `interval` 轮询一次源文件、头文件和 `heddle.toml`/`heddle.star`
+的修改时间与大小，一旦变化就重新加载工程并增量重建：
+
+```
+heddle: watching . every 500ms, Ctrl-C to stop
+heddle: ok (exit 0)
+heddle: change detected, rebuilding
+heddle: ok (exit 0)
 ```
 
 ## 安装

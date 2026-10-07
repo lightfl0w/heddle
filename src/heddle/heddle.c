@@ -2,13 +2,16 @@
 
 #include "build.h"
 #include "emit.h"
+#include "hash.h"
 #include "install.h"
+#include "lang.h"
 #include "ldconv.h"
 #include "pkg.h"
 #include "project.h"
 #include "toml.h"
 #include "sys.h"
 
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,6 +137,115 @@ int heddle_run(const HEDDLE_OPTS *o) {
     int rc = build_target(o, &p, err);
     project_free(&p);
     return rc;
+}
+
+static const char *WATCH_SKIP[] = {".heddle", ".git", ".xmake", ".vscode", NULL};
+
+static int watch_skip_dir(const char *name) {
+    if (name[0] == '.') return 1;
+
+    for (int i = 0; WATCH_SKIP[i]; i++)
+        if (!strcmp(name, WATCH_SKIP[i])) return 1;
+
+    return 0;
+}
+
+static int watch_file(const char *name) {
+    const char *dot = strrchr(name, '.');
+
+    if (!dot) return 0;
+
+    if (!strcmp(dot, ".h") || !strcmp(dot, ".hpp") || !strcmp(dot, ".hh")) return 1;
+    if (!strcmp(dot, ".toml") || !strcmp(dot, ".star")) return 1;
+
+    return lang_for(name) != NULL;
+}
+
+typedef struct {
+    unsigned long long acc;
+    int                n;
+} WATCH_HASH;
+
+static void watch_walk(const char *dir, const char *skip, WATCH_HASH *h) {
+    DIR *d = opendir(dir);
+
+    if (!d) return;
+
+    struct dirent *e;
+
+    while ((e = readdir(d))) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        char full[4096];
+        int  len = snprintf(full, sizeof(full), "%s/%s", dir, e->d_name);
+
+        if (len <= 0 || (size_t)len >= sizeof(full)) continue;
+        if (skip && !strcmp(full, skip)) continue;
+        SYS_STAT st;
+
+        if (sys_stat(full, &st) != 0) continue;
+        if (st.is_dir) {
+            if (!watch_skip_dir(e->d_name)) watch_walk(full, skip, h);
+            continue;
+        }
+        if (!watch_file(e->d_name)) continue;
+
+        h->acc = hash_u64(h->acc, hash_text(HASH_FNV_OFFSET, full));
+        h->acc = hash_u64(h->acc, (unsigned long long)st.mtime_ns);
+        h->acc = hash_u64(h->acc, (unsigned long long)st.size);
+        h->n++;
+    }
+
+    closedir(d);
+}
+
+static unsigned long long watch_scan(const PROJECT *p) {
+    WATCH_HASH h;
+    h.acc = HASH_FNV_OFFSET;
+    h.n   = 0;
+
+    watch_walk(p->root, p->build_dir, &h);
+
+    return h.acc;
+}
+
+int heddle_watch(const HEDDLE_OPTS *o) {
+    char    err[512] = {0};
+    PROJECT p;
+    int     interval = o->interval_ms > 0 ? o->interval_ms : 500;
+
+    if (load(o, &p, err, sizeof(err)) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        return 1;
+    }
+
+    printf("heddle: watching %s every %dms, Ctrl-C to stop\n", p.root, interval);
+    fflush(stdout);
+
+    for (;;) {
+        int rc = build_target(o, &p, err);
+
+        printf("heddle: %s (exit %d)\n", rc == 0 ? "ok" : "failed", rc);
+        fflush(stdout);
+
+        unsigned long long before = watch_scan(&p);
+
+        for (;;) {
+            sys_sleep_ms(interval);
+
+            if (watch_scan(&p) != before) break;
+        }
+
+        printf("heddle: change detected, rebuilding\n");
+        fflush(stdout);
+
+        project_free(&p);
+
+        if (load(o, &p, err, sizeof(err)) != 0) {
+            fprintf(stderr, "heddle: %s\n", err);
+            project_free(&p);
+            return 1;
+        }
+    }
 }
 
 int heddle_exec(const HEDDLE_OPTS *o) {

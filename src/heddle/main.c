@@ -20,6 +20,7 @@ typedef struct {
     int         tool_plan;
     int         env_verify;
     int         do_test;
+    int         do_watch;
     int         do_install;
     int         do_uninstall;
 } ARGS;
@@ -29,6 +30,7 @@ static int usage(const char *prog) {
             "usage: %s [build] TARGET\n"
             "       %s run TARGET\n"
             "       %s test [TARGET]        build and run declared tests\n"
+            "       %s watch [TARGET]       rebuild whenever sources change\n"
             "       %s init [TYPE] [DIR]   create a new project\n"
             "       %s check\n"
             "       %s toolchains\n"
@@ -53,8 +55,10 @@ static int usage(const char *prog) {
             "  --prefix DIR      install prefix (required for install)\n"
             "  --destdir DIR     stage under DIR, do not touch the system\n"
             "  --dry-run         print the install plan only\n"
-            "  --compile-db[=FILE]  write compile_commands.json and exit\n",
-            prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog);
+            "  --compile-db[=FILE]  write compile_commands.json and exit\n"
+            "  --interval SEC    watch poll interval (default 0.5)\n",
+            prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog,
+            prog);
     return 2;
 }
 
@@ -153,6 +157,7 @@ static int parse(int argc, char **argv, ARGS *a) {
         else if (!strcmp(arg, "build")) continue;
         else if (!strcmp(arg, "run")) a->exec_after = 1;
         else if (!strcmp(arg, "test")) a->do_test = 1;
+        else if (!strcmp(arg, "watch")) a->do_watch = 1;
 
         else if ((t = take(arg, "-C", argc, argv, &i, &v)) < 0) return 2;
         else if (t) o->root = v;
@@ -177,6 +182,9 @@ static int parse(int argc, char **argv, ARGS *a) {
 
         else if ((t = take(arg, "--destdir", argc, argv, &i, &v)) < 0) return 2;
         else if (t) o->destdir = v;
+
+        else if ((t = take(arg, "--interval", argc, argv, &i, &v)) < 0) return 2;
+        else if (t) o->interval_ms = atof(v) > 0 ? (int)(atof(v) * 1000) : 500;
 
         else if (arg[0] == '-') {
             fprintf(stderr, "heddle: unknown option '%s'\n", arg);
@@ -226,6 +234,7 @@ int main(int argc, char **argv) {
     if (a.tool_plan) return heddle_tool_plan(&a.o);
     if (a.env_verify) return heddle_env_verify(&a.o);
     if (a.do_test) return heddle_test(&a.o);
+    if (a.do_watch) return heddle_watch(&a.o);
     if (a.exec_after) return heddle_exec(&a.o);
 
     return heddle_run(&a.o);
