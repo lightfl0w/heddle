@@ -1,4 +1,5 @@
 #include "emit.h"
+#include "hash.h"
 #include "lang.h"
 #include "link.h"
 #include "sys.h"
@@ -443,6 +444,87 @@ static void step_dep(STEP *st, int id) {
     st->dep[st->ndep++] = id;
 }
 
+typedef struct {
+    const char *path;
+    int         step;
+} OUT_ENT;
+
+typedef struct {
+    OUT_ENT *slot;
+    int      n;
+    int      cap;
+} OUT_MAP;
+
+static unsigned long long out_hash(const char *s) {
+    return hash_text(HASH_FNV_OFFSET, s);
+}
+
+static void out_map_free(OUT_MAP *m) {
+    free(m->slot);
+    memset(m, 0, sizeof(*m));
+}
+
+static int out_map_put(OUT_MAP *m, const char *path, int step) {
+    int want = m->cap ? m->cap * 2 : 256;
+    OUT_ENT *slot;
+
+    if (!m->slot || m->n * 2 >= m->cap) {
+        slot = (OUT_ENT *)calloc((size_t)want, sizeof(OUT_ENT));
+        if (!slot) return -1;
+
+        for (int i = 0; i < m->cap; i++) {
+            if (!m->slot[i].path) continue;
+
+            unsigned long long h = out_hash(m->slot[i].path);
+
+            for (int k = 0; k < want; k++) {
+                int idx = (int)((h + (unsigned long long)k) % (unsigned long long)want);
+
+                if (!slot[idx].path) {
+                    slot[idx] = m->slot[i];
+                    break;
+                }
+            }
+        }
+
+        free(m->slot);
+        m->slot = slot;
+        m->cap  = want;
+    }
+
+    unsigned long long h = out_hash(path);
+
+    for (int k = 0; k < m->cap; k++) {
+        int idx = (int)((h + (unsigned long long)k) % (unsigned long long)m->cap);
+
+        if (!m->slot[idx].path) {
+            m->slot[idx].path = path;
+            m->slot[idx].step = step;
+            m->n++;
+            return 0;
+        }
+
+        if (!strcmp(m->slot[idx].path, path)) return 0;
+    }
+
+    return -1;
+}
+
+static int out_map_get(const OUT_MAP *m, const char *path) {
+    if (!m->cap) return -1;
+
+    unsigned long long h = out_hash(path);
+
+    for (int k = 0; k < m->cap; k++) {
+        int idx = (int)((h + (unsigned long long)k) % (unsigned long long)m->cap);
+
+        if (!m->slot[idx].path) return -1;
+        if (!strcmp(m->slot[idx].path, path)) return m->slot[idx].step;
+    }
+
+    return -1;
+}
+
 static void target_incs(const PROJECT *p, const TARGET *t, char *buf, size_t cap, int *len) {
     int msvc = tc_is_msvc(p);
     *len     = 0;
@@ -818,18 +900,25 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
         }
     }
 
+    OUT_MAP outs;
+    memset(&outs, 0, sizeof(outs));
+
     for (int i = 0; i < pl.n; i++) {
         STEP *st = &pl.steps[i];
-        for (int k = 0; k < st->nout; k++) {
-            for (int j = 0; j < i; j++) {
-                for (int m = 0; m < pl.steps[j].nout; m++) {
-                    if (strcmp(pl.steps[j].out[m], st->out[k])) continue;
 
-                    step_dep(st, j);
-                }
-            }
+        for (int k = 0; k < st->nout; k++) {
+            int src = out_map_get(&outs, st->out[k]);
+            if (src >= 0 && src < i) step_dep(st, src);
         }
+
+        for (int k = 0; k < st->nout; k++)
+            if (out_map_put(&outs, st->out[k], i) != 0) {
+                out_map_free(&outs);
+                snprintf(err, errsz, "out of memory");
+                goto fail;
+            }
     }
+    out_map_free(&outs);
 
     FILE *f = fopen(graph, "w");
     if (!f) {
