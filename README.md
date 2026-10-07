@@ -179,7 +179,7 @@ heddle fw_bluepill   # -mcpu=cortex-m3 -mfloat-abi=soft
 `while`、`import`、`class`、`lambda`、`global` 不支持，写了会报错并指出行号。
 
 `target(...)` 的键：`name` `type` `src` `inc` `deps` `cflags` `ldflags`
-`linker_script` `entry` `out` `platform`。
+`linker_script` `entry` `out` `platform` `start_group` `whole_archive`。
 
 ### heddle.toml
 
@@ -218,6 +218,8 @@ deps = ["util"]          # 依赖另一个目标，自动拓扑排序
 | `deps` | 依赖的目标名 |
 | `cflags` | 本目标额外的编译选项 |
 | `ldflags` | 本目标额外的链接选项 |
+| `start_group` | 布尔，静态库循环依赖时用 `--start-group` 包住 `deps`（GNU 链接器） |
+| `whole_archive` | 布尔，强制链入 `deps` 静态库的全部成员 |
 
 `cflags` 和工具链的 `cflags` 叠加，工具链的在前。
 

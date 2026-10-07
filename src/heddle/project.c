@@ -220,6 +220,8 @@ static int target_fill(TARGET *t, const TOML *cfg, const char *section, char *er
     const char *entry = toml_str(cfg, section, "entry");
     const char *fmt   = toml_str(cfg, section, "format");
     const char *out   = toml_str(cfg, section, "out");
+    t->start_group    = toml_bool(cfg, section, "start_group", 0);
+    t->whole_archive  = toml_bool(cfg, section, "whole_archive", 0);
     t->ldscript       = lds ? project_path(t->dir, lds) : NULL;
     t->entry          = entry ? sys_dup(entry) : NULL;
     t->format         = fmt ? sys_dup(fmt) : NULL;
@@ -440,6 +442,9 @@ static int add_target_from_cfg(PROJECT *p, STAR_TARGET *st, char *err, size_t er
     if (st->ldscript) t->ldscript = sys_dup(st->ldscript);
     if (st->entry) t->entry = sys_dup(st->entry);
     if (st->out) t->out = sys_dup(st->out);
+
+    t->start_group   = st->start_group;
+    t->whole_archive = st->whole_archive;
 
     if (t->type != TARGET_CUSTOM && t->nsrc == 0) {
         snprintf(err, errsz, "target '%s': no sources", st->name);

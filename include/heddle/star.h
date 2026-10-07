@@ -52,6 +52,8 @@ typedef struct STAR_TARGET {
     char  *ldscript;
     char  *entry;
     char  *out;
+    int    start_group;
+    int    whole_archive;
 
     char **i_bin;
     int    n_i_bin;

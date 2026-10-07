@@ -1416,6 +1416,16 @@ static const char *kw_str(STAR *kw, const char *k) {
     return v ? star_as_str(v) : NULL;
 }
 
+static int kw_flag(STAR *kw, const char *k) {
+    STAR *v = star_get(kw, k);
+
+    if (!v) return 0;
+    if (v->kind == STAR_BOOL) return v->b != 0;
+    if (v->kind == STAR_NUM) return v->num != 0;
+
+    return 0;
+}
+
 static void set(char **slot, STAR *kw, const char *key) {
     const char *v = kw_str(kw, key);
     if (!v) return;
@@ -1623,10 +1633,12 @@ static STAR *h_target(INTERP *I, STAR *, STAR *kw) {
     tg_deps(kw, t);
     tg_list(kw, "cflags", &t->cflags, &t->ncflags);
     tg_list(kw, "ldflags", &t->ldflags, &t->nldflags);
-    t->ldscript = kw_dup(kw, "linker_script");
-    t->entry    = kw_dup(kw, "entry");
-    t->out      = kw_dup(kw, "out");
-    t->platform = ref_name(kw, "platform");
+    t->ldscript      = kw_dup(kw, "linker_script");
+    t->entry         = kw_dup(kw, "entry");
+    t->out           = kw_dup(kw, "out");
+    t->platform      = ref_name(kw, "platform");
+    t->start_group   = kw_flag(kw, "start_group");
+    t->whole_archive = kw_flag(kw, "whole_archive");
     return star_none();
 }
 

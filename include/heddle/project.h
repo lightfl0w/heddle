@@ -39,9 +39,11 @@ typedef struct {
     char  *cmd;
     char  *out;
 
-    char  *ldscript;
-    char  *entry;
-    char  *format;
+    char *ldscript;
+    char *entry;
+    char *format;
+    int   start_group;
+    int   whole_archive;
 } TARGET;
 
 typedef struct {

@@ -624,6 +624,28 @@ static int out_map_get(const OUT_MAP *m, const char *path) {
     return -1;
 }
 
+static int ld_is_gnu(const PROJECT *p) {
+    return !p->tc.family || !strcmp(p->tc.family, "gnu");
+}
+
+static int libs_open_group(const PROJECT *p, const TARGET *t, STRLIST *libs) {
+    if (!ld_is_gnu(p) || t->ndeps == 0) return 0;
+
+    if (t->whole_archive && sl_add(libs, sys_dup("-Wl,--whole-archive")) != 0) return -1;
+    if (t->start_group && sl_add(libs, sys_dup("-Wl,--start-group")) != 0) return -1;
+
+    return 0;
+}
+
+static int libs_close_group(const PROJECT *p, const TARGET *t, STRLIST *libs) {
+    if (!ld_is_gnu(p) || t->ndeps == 0) return 0;
+
+    if (t->whole_archive && sl_add(libs, sys_dup("-Wl,--no-whole-archive")) != 0) return -1;
+    if (t->start_group && sl_add(libs, sys_dup("-Wl,--end-group")) != 0) return -1;
+
+    return 0;
+}
+
 static int is_compile_unit(const TARGET *t) {
     return t->type != TARGET_CUSTOM && t->type != TARGET_RAW;
 }
@@ -912,6 +934,8 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
                 }
             }
 
+            if (libs_open_group(p, t, &libs) != 0) goto link_oom;
+
             for (int k = 0; k < t->ndeps; k++) {
                 int d = target_index(p, t->deps[k]);
                 if (d < 0) continue;
@@ -924,6 +948,8 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
                     goto link_oom;
                 }
             }
+
+            if (libs_close_group(p, t, &libs) != 0) goto link_oom;
 
             for (int k = 0; k < p->tc.nldflags; k++)
                 if (sl_add(&ldf, sys_dup(p->tc.ldflags[k])) != 0) goto link_oom;
