@@ -231,26 +231,12 @@ static char *pc_query(const char *pc, const char *mode, int *ran) {
     snprintf(log, sizeof(log), "%s/heddle-pkgconfig.log", pc_log_path());
 
     PROC_RESULT r;
-    char      *argv[5];
-    int        n = 0;
 
-#if defined(_WIN32)
-    char cmd[1024];
+    char cmd[1200];
 
     snprintf(cmd, sizeof(cmd), "pkg-config %s %s", mode, pc);
 
-    argv[n++] = (char *)"sh";
-    argv[n++] = (char *)"-c";
-    argv[n++] = cmd;
-#else
-    argv[n++] = (char *)"pkg-config";
-    argv[n++] = (char *)mode;
-    argv[n++] = (char *)pc;
-#endif
-
-    argv[n] = NULL;
-
-    if (proc_run(argv, NULL, log, NULL, 0, &r) != 0) {
+    if (proc_shell(cmd, NULL, log, &r) != 0) {
         *ran = 0;
         return NULL;
     }

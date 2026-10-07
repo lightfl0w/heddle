@@ -1095,7 +1095,9 @@ rm -rf out .heddle
 
 if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists zlib 2>/dev/null; then
     out=$($HEDDLE app 2>&1)
-    check_rc "pkgconfig build" $? 0
+    rc=$?
+    check_rc "pkgconfig build" $rc 0
+    [ $rc -eq 0 ] || printf '%s\n' "$out" | sed 's/^/    /' 
     grep -q -- "-lz" .heddle/app.graph \
         && ok "pkgconfig libs" || bad "pkgconfig libs missing"
     ./out/app$EXE 2>/dev/null

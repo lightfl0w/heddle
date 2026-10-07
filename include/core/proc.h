@@ -14,4 +14,9 @@ int proc_run(char *const *argv,
              int nenv,
              PROC_RESULT *out);
 
+int proc_shell(const char *cmd,
+               const char *cwd,
+               const char *log_path,
+               PROC_RESULT *out);
+
 #endif

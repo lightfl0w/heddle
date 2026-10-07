@@ -1,6 +1,7 @@
 #include "proc.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -152,6 +153,58 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path, char *con
     return 0;
 }
 
+int proc_shell(const char *cmd, const char *cwd, const char *log_path, PROC_RESULT *out) {
+    out->exit_code = -1;
+    out->signaled  = 0;
+    out->signal    = 0;
+
+    size_t cap     = strlen(cmd) + 64;
+    char  *cmdline = (char *)malloc(cap);
+    if (!cmdline) return -1;
+
+    snprintf(cmdline, cap, "cmd.exe /d /s /c \"%s\"", cmd);
+
+    SECURITY_ATTRIBUTES sa;
+    sa.nLength              = sizeof(sa);
+    sa.lpSecurityDescriptor = NULL;
+    sa.bInheritHandle       = TRUE;
+    HANDLE hlog = CreateFileA(log_path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hlog == INVALID_HANDLE_VALUE) {
+        free(cmdline);
+        return -1;
+    }
+
+    STARTUPINFOA si;
+    ZeroMemory(&si, sizeof(si));
+    si.cb         = sizeof(si);
+    si.dwFlags    = STARTF_USESTDHANDLES;
+    si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
+    si.hStdOutput = hlog;
+    si.hStdError  = hlog;
+
+    PROCESS_INFORMATION pi;
+    ZeroMemory(&pi, sizeof(pi));
+
+    char *block = env_merge(NULL, 0);
+    BOOL  ok    = CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, block, cwd, &si, &pi);
+
+    free(block);
+    free(cmdline);
+    CloseHandle(hlog);
+    if (!ok) return -1;
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+
+    out->exit_code = (int)code;
+    return 0;
+}
+
 #else
 
 #include <errno.h>
@@ -198,6 +251,12 @@ int proc_run(char *const *argv, const char *cwd, const char *log_path, char *con
     }
 
     return 0;
+}
+
+int proc_shell(const char *cmd, const char *cwd, const char *log_path, PROC_RESULT *out) {
+    char *argv[] = {(char *)"sh", (char *)"-c", (char *)cmd, NULL};
+
+    return proc_run(argv, cwd, log_path, NULL, 0, out);
 }
 
 #endif
