@@ -637,6 +637,19 @@ out=$($HEDDLE init embedded fw2 --arch=nope 2>&1)
 check_rc "bad arch rejected" $? 2
 expect_err "bad arch message" "$out" "unknown arch"
 
+if command -v riscv64-unknown-elf-gcc >/dev/null 2>&1; then
+    $HEDDLE init embedded fw3 --arch=riscv32imac </dev/null >/dev/null 2>&1
+    ( cd fw3 && $HEDDLE firmware >/dev/null 2>&1 )
+    check_rc "riscv32 link carries -march/-mabi" $? 0
+    if [ -f fw3/out/firmware ]; then
+        rclass=$(riscv64-unknown-elf-readelf -h fw3/out/firmware |
+            awk '/Class:/ {print $2}')
+        check_eq "riscv32 firmware is ELF32" "$rclass" "ELF32"
+    fi
+else
+    echo "  skip (riscv32 firmware link needs riscv64-unknown-elf-gcc)"
+fi
+
 if [ "$M32" = 0 ]; then
     echo "  skip (baremetal template needs 32-bit multilib)"
 elif command -v nasm >/dev/null 2>&1; then

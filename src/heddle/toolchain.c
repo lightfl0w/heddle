@@ -380,6 +380,28 @@ static void add_flags(TOML *t, const char *sect, const char *key, char ***arr, i
     }
 }
 
+static int arch_sel_flag(const char *f) {
+    static const char *const prefixes[] = {"-march=", "-mabi=", "-mcpu=", "-mtune="};
+    if (!f || f[0] != '-') return 0;
+
+    for (size_t i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++)
+        if (!strncmp(f, prefixes[i], strlen(prefixes[i]))) return 1;
+
+    return !strcmp(f, "-m32") || !strcmp(f, "-m64") || !strcmp(f, "-m16") || !strcmp(f, "-mx32");
+}
+
+static void add_arch_ldflags(TOOLCHAIN *tc, const char *tok) {
+    if (!arch_sel_flag(tok)) return;
+    if (tc->family && strcmp(tc->family, "gnu") && strcmp(tc->family, "gcc") &&
+        strcmp(tc->family, "clang"))
+        return;
+
+    for (int i = 0; i < tc->nldflags; i++)
+        if (!strcmp(tc->ldflags[i], tok)) return;
+
+    add_flag(&tc->ldflags, &tc->nldflags, tok);
+}
+
 static int is_auto(const char *name) {
     return !name || !*name || !strcmp(name, "auto") || !strcmp(name, "native");
 }
@@ -612,8 +634,10 @@ overlay:
         char *copy = sys_dup(extra_cflags);
         char *save = NULL;
         char *tok;
-        for (tok = sys_tok(copy, " \t", &save); tok; tok = sys_tok(NULL, " \t", &save))
+        for (tok = sys_tok(copy, " \t", &save); tok; tok = sys_tok(NULL, " \t", &save)) {
             add_flag(&tc->cflags, &tc->ncflags, tok);
+            add_arch_ldflags(tc, tok);
+        }
         free(copy);
     }
 
@@ -689,8 +713,10 @@ int tc_load_star(TOOLCHAIN *tc, const char *name, const char *based, const char 
         char *copy = sys_dup(extra_cflags);
         char *save = NULL;
         char *tok;
-        for (tok = sys_tok(copy, " \t", &save); tok; tok = sys_tok(NULL, " \t", &save))
+        for (tok = sys_tok(copy, " \t", &save); tok; tok = sys_tok(NULL, " \t", &save)) {
             add_flag(&tc->cflags, &tc->ncflags, tok);
+            add_arch_ldflags(tc, tok);
+        }
         free(copy);
     }
 
