@@ -46,6 +46,8 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-binutils
             mingw-w64-x86_64-nasm
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-zlib
       - uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '>=3.28'
@@ -76,7 +78,6 @@ jobs:
           ls -la out 2>&1 || true
           echo "--- logs ---"
           for f in .heddle/*.log; do echo "== $f"; cat "$f"; done 2>&1 || true
-
           echo
           echo "=== migrate ==="
           cd "$GITHUB_WORKSPACE/tests/migrate"
