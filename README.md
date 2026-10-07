@@ -32,6 +32,7 @@ heddle env verify     # 校验环境与锁文件一致
 heddle run TARGET     # 构建后运行
 heddle test [TARGET]  # 构建并运行声明的测试
 heddle watch [TARGET] # 盯着源文件，变了就重建
+heddle fmt [TARGET]   # 用 clang-format 格式化源码
 heddle install        # 安装构建产物
 heddle uninstall      # 卸载
 heddle vcpkg ...      # 读 vcpkg port / 导入已构建的树
@@ -446,6 +447,23 @@ heddle: watching . every 500ms, Ctrl-C to stop
 heddle: ok (exit 0)
 heddle: change detected, rebuilding
 heddle: ok (exit 0)
+```
+
+## 格式化
+
+当根目录存在 `.clang-format` 时，就能用 `heddle fmt` 统一代码风格：
+
+```sh
+heddle fmt            # 格式化所有 target 的 C/C++ 源文件
+heddle fmt app        # 只格式化某个 target
+heddle fmt -v         # 打印每个处理的文件
+```
+
+源文件要求 `clang-format` 在 `PATH` 上：
+
+```
+  formatted src/main.c
+heddle: 2 files checked, 1 reformatted
 ```
 
 ## 安装

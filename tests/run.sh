@@ -670,6 +670,62 @@ expect_err "force overwrites" "$out" "create"
 rm -rf "$WORK"
 echo
 
+echo "fmt:"
+WORK=$(mktemp -d)
+cd "$WORK"
+mkdir -p src
+cat > .clang-format <<'CF'
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 60
+CF
+cat > heddle.toml <<'HM'
+[build]
+dir = "out"
+
+[target.app]
+type = "exe"
+src = ["src/*.c"]
+inc = ["src"]
+HM
+printf 'int add(int a,int b);\n' > src/api.h
+printf 'int add(int a,int b){return a+b;}\n' > src/main.c
+
+if command -v clang-format >/dev/null 2>&1; then
+    out=$($HEDDLE fmt 2>&1)
+    check_rc "fmt runs" $? 0
+    expect_err "fmt reports count" "$out" "2 files checked"
+    expect_err "fmt reports rewrite" "$out" "reformatted"
+
+    if grep -q 'int add(int a, int b)' src/main.c; then
+        ok "fmt rewrote source"
+    else
+        bad "fmt left source alone: $(cat src/main.c)"
+    fi
+
+    out=$($HEDDLE fmt 2>&1)
+    check_rc "fmt idempotent" $? 0
+    expect_err "second pass is clean" "$out" "0 reformatted"
+
+    out=$($HEDDLE fmt nosuch 2>&1)
+    check_rc "fmt unknown target rejected" $? 1
+    expect_err "fmt unknown target message" "$out" "unknown target"
+
+    out=$($HEDDLE fmt -v 2>&1)
+    check_rc "fmt verbose runs" $? 0
+    expect_err "fmt verbose lists files" "$out" "src/main.c"
+
+    rm -f .clang-format
+    out=$($HEDDLE fmt 2>&1)
+    check_rc "fmt without config rejected" $? 1
+    expect_err "fmt without config message" "$out" "no .clang-format"
+else
+    echo "  skip (clang-format not found)"
+fi
+
+rm -rf "$WORK"
+echo
+
 echo "vcpkg:"
 cd "$HERE/vcpkg"
 rm -rf proj/.heddle proj/out proj/heddle.lock installed

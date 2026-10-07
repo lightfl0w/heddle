@@ -1,6 +1,7 @@
 #include "heddle.h"
 
 #include "emit.h"
+#include "fmt.h"
 #include "init.h"
 #include "version.h"
 #include "migrate.h"
@@ -23,6 +24,7 @@ typedef struct {
     int         do_watch;
     int         do_install;
     int         do_uninstall;
+    int         do_fmt;
 } ARGS;
 
 static int usage(const char *prog) {
@@ -31,6 +33,7 @@ static int usage(const char *prog) {
             "       %s run TARGET\n"
             "       %s test [TARGET]        build and run declared tests\n"
             "       %s watch [TARGET]       rebuild whenever sources change\n"
+            "       %s fmt [TARGET]        format sources with clang-format\n"
             "       %s init [TYPE] [DIR]   create a new project\n"
             "       %s check\n"
             "       %s toolchains\n"
@@ -58,7 +61,7 @@ static int usage(const char *prog) {
             "  --compile-db[=FILE]  write compile_commands.json and exit\n"
             "  --interval SEC    watch poll interval (default 0.5)\n",
             prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog, prog,
-            prog);
+            prog, prog);
     return 2;
 }
 
@@ -158,6 +161,7 @@ static int parse(int argc, char **argv, ARGS *a) {
         else if (!strcmp(arg, "run")) a->exec_after = 1;
         else if (!strcmp(arg, "test")) a->do_test = 1;
         else if (!strcmp(arg, "watch")) a->do_watch = 1;
+        else if (!strcmp(arg, "fmt")) a->do_fmt = 1;
 
         else if ((t = take(arg, "-C", argc, argv, &i, &v)) < 0) return 2;
         else if (t) o->root = v;
@@ -203,7 +207,7 @@ static int parse(int argc, char **argv, ARGS *a) {
     }
 
     if (a->list_tools || a->check_only || a->tool_install || a->tool_plan || a->env_verify ||
-        a->do_install || a->do_uninstall || a->do_test || o->compile_db)
+        a->do_install || a->do_uninstall || a->do_test || a->do_fmt || o->compile_db)
         return 0;
 
     if (!o->target) return usage(argv[0]);
@@ -235,6 +239,7 @@ int main(int argc, char **argv) {
     if (a.env_verify) return heddle_env_verify(&a.o);
     if (a.do_test) return heddle_test(&a.o);
     if (a.do_watch) return heddle_watch(&a.o);
+    if (a.do_fmt) return heddle_fmt(&a.o);
     if (a.exec_after) return heddle_exec(&a.o);
 
     return heddle_run(&a.o);
