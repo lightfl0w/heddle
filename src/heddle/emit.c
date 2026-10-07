@@ -16,26 +16,59 @@
 
 #define HEDDLE_CMD_MAX 8000
 
+typedef struct {
+    char **v;
+    int    n;
+    int    cap;
+} STRLIST;
+
+static int sl_add(STRLIST *l, char *owned) {
+    if (l->n == l->cap) {
+        int    newcap = l->cap ? l->cap * 2 : 64;
+        char **next   = (char **)realloc(l->v, sizeof(char *) * (size_t)newcap);
+
+        if (!next) return -1;
+
+        l->v   = next;
+        l->cap = newcap;
+    }
+
+    l->v[l->n++] = owned;
+    return 0;
+}
+
+static void sl_free(STRLIST *l) {
+    for (int i = 0; i < l->n; i++) free(l->v[i]);
+
+    free(l->v);
+    memset(l, 0, sizeof(*l));
+}
+
+
 static void rsp_arg(FILE *f, const char *s) {
     if (strpbrk(s, " \t")) fprintf(f, "\"%s\"\n", s);
     else fprintf(f, "%s\n", s);
 }
 
-static int write_rsp(const char *path, char **objs, int nobj, char **libs, int nlib) {
+static int write_rsp(const char *path, const LINK_REQ *r) {
     FILE *f = fopen(path, "w");
     if (!f) return -1;
 
-    for (int i = 0; i < nobj; i++) rsp_arg(f, objs[i]);
-    for (int i = 0; i < nlib; i++) rsp_arg(f, libs[i]);
+    for (int i = 0; i < r->nobj; i++) rsp_arg(f, r->objs[i]);
+    for (int i = 0; i < r->nlib; i++) rsp_arg(f, r->libs[i]);
+
+    for (int i = 0; i < r->nldf; i++)
+        if (r->ldflags[i] && r->ldflags[i][0]) rsp_arg(f, r->ldflags[i]);
+
     return fclose(f) == 0 ? 0 : -1;
 }
 
-static int write_flag_rsp(const char *path, const PROJECT *p, const TARGET *t) {
+static int write_flag_rsp(const char *path, const STRLIST *flags) {
     FILE *f = fopen(path, "w");
     if (!f) return -1;
 
-    for (int i = 0; i < p->tc.ncflags; i++) rsp_arg(f, p->tc.cflags[i]);
-    for (int i = 0; i < t->ncflags; i++) rsp_arg(f, t->cflags[i]);
+    for (int i = 0; i < flags->n; i++) rsp_arg(f, flags->v[i]);
+
     return fclose(f) == 0 ? 0 : -1;
 }
 
@@ -239,57 +272,123 @@ static const char *asm_format(const PROJECT *p) {
 #endif
 }
 
-static void put_incs(const TARGET *t, char *buf, size_t cap, int *len, int msvc) {
-    for (int i = 0; i < t->ninc; i++) addf(buf, cap, len, msvc ? " /I%s" : " -I%s", t->inc[i]);
+static int tc_is_msvc(const PROJECT *p) {
+    return p->tc.family && !strcmp(p->tc.family, "msvc");
 }
 
-static void put_dep_incs(const PROJECT *p, char *buf, size_t cap, int *len, int msvc) {
+static int target_incs(const PROJECT *p, const TARGET *t, STRLIST *out) {
+    int msvc = tc_is_msvc(p);
+
+    for (int i = 0; i < t->ninc; i++) {
+        char buf[4096];
+
+        snprintf(buf, sizeof(buf), msvc ? "/I%s" : "-I%s", t->inc[i]);
+        if (sl_add(out, sys_dup(buf)) != 0) return -1;
+    }
+
     for (int i = 0; i < p->pkg.deps.n; i++) {
         const PKG_SPEC *s = &p->pkg.deps.items[i];
         if (!s->store_path) continue;
 
         char *inc = project_path(s->store_path, "include");
-        if (inc) {
-            SYS_STAT st;
-            if (sys_stat(inc, &st) == 0 && st.is_dir)
-                addf(buf, cap, len, msvc ? " /I%s" : " -I%s", inc);
-            free(inc);
+        if (!inc) continue;
+
+        SYS_STAT st;
+        if (sys_stat(inc, &st) == 0 && st.is_dir) {
+            char buf[4096];
+
+            snprintf(buf, sizeof(buf), msvc ? "/I%s" : "-I%s", inc);
+            if (sl_add(out, sys_dup(buf)) != 0) {
+                free(inc);
+                return -1;
+            }
         }
+
+        free(inc);
     }
+
+    return 0;
 }
 
-static void put_dep_ldflags(const PROJECT *p, char *buf, size_t cap, int *len) {
+static int target_flags(const PROJECT *p, const TARGET *t, STRLIST *out) {
+    for (int k = 0; k < p->tc.ncflags; k++)
+        if (sl_add(out, sys_dup(p->tc.cflags[k])) != 0) return -1;
+
+    for (int k = 0; k < t->ncflags; k++)
+        if (sl_add(out, sys_dup(t->cflags[k])) != 0) return -1;
+
+    return 0;
+}
+
+static char *join_flags(const STRLIST *l) {
+    size_t n = 1;
+
+    for (int i = 0; i < l->n; i++) n += strlen(l->v[i]) + 1;
+
+    char *buf = (char *)malloc(n);
+    if (!buf) return NULL;
+
+    size_t at = 0;
+
+    for (int i = 0; i < l->n; i++)
+        at += (size_t)snprintf(buf + at, n - at, "%s%s", i ? " " : "", l->v[i]);
+
+    return buf;
+}
+
+static int put_dep_ldflags(const PROJECT *p, STRLIST *out) {
     for (int i = 0; i < p->pkg.deps.n; i++) {
         const PKG_SPEC *s = &p->pkg.deps.items[i];
         if (!s->store_path || s->recipe) continue;
 
         char *lib = project_path(s->store_path, "lib");
-        if (lib) {
-            SYS_STAT st;
-            if (sys_stat(lib, &st) == 0 && st.is_dir) {
-                addf(buf, cap, len, " -L%s", lib);
-                char *meta = project_path(s->store_path, ".heddle-pkg");
-                FILE *f    = meta ? fopen(meta, "r") : NULL;
-                if (f) {
-                    char line[256];
-                    while (fgets(line, sizeof(line), f)) {
-                        size_t n = strlen(line);
-                        while (n && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[--n] = 0;
+        if (!lib) continue;
 
-                        if (line[0]) addf(buf, cap, len, " -l%s", line);
-                    }
+        SYS_STAT st;
+        if (sys_stat(lib, &st) != 0 || !st.is_dir) {
+            free(lib);
+            continue;
+        }
 
+        char lbuf[4096];
+        snprintf(lbuf, sizeof(lbuf), "-L%s", lib);
+        free(lib);
+
+        if (sl_add(out, sys_dup(lbuf)) != 0) return -1;
+
+        char *meta = project_path(s->store_path, ".heddle-pkg");
+        FILE *f    = meta ? fopen(meta, "r") : NULL;
+
+        if (f) {
+            char line[256];
+            while (fgets(line, sizeof(line), f)) {
+                size_t n = strlen(line);
+                while (n && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[--n] = 0;
+                if (!line[0]) continue;
+
+                char ebuf[512];
+                snprintf(ebuf, sizeof(ebuf), "-l%s", line);
+                if (sl_add(out, sys_dup(ebuf)) != 0) {
                     fclose(f);
-                } else {
-                    addf(buf, cap, len, " -l%s", s->name);
+                    free(meta);
+                    return -1;
                 }
-
-                free(meta);
             }
 
-            free(lib);
+            fclose(f);
+        } else {
+            char ebuf[512];
+            snprintf(ebuf, sizeof(ebuf), "-l%s", s->name);
+            if (sl_add(out, sys_dup(ebuf)) != 0) {
+                free(meta);
+                return -1;
+            }
         }
+
+        free(meta);
     }
+
+    return 0;
 }
 
 static void subst_arg(const char *arg, const char *src, const char *out, const char *format,
@@ -334,13 +433,9 @@ static void put_args(const LANG *lg, const char *src, const char *out, const cha
     }
 }
 
-static int tc_is_msvc(const PROJECT *p) {
-    return p->tc.family && !strcmp(p->tc.family, "msvc");
-}
-
 static int build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg, const char *src,
-                     const char *out, const char *incs, const char *flags, const char *deffmt,
-                     const char *flags_rsp, char *cmd, size_t cap) {
+                     const char *out, const STRLIST *incs, const STRLIST *flags,
+                     const char *deffmt, const char *flags_rsp, char *cmd, size_t cap) {
     const char *fmt  = t->format ? t->format : deffmt;
     int         msvc = tc_is_msvc(p);
     int         len  = 0;
@@ -350,23 +445,27 @@ static int build_cmd(const PROJECT *p, const TARGET *t, const LANG *lg, const ch
         return (size_t)len < cap;
     }
 
-    const char *fl = flags_rsp ? NULL : flags;
-
     if (msvc) {
         addf(cmd, cap, &len, " /c /nologo");
-        if (lg->cflags && fl) addf(cmd, cap, &len, "%s", fl);
-        if (lg->cflags && flags_rsp) addf(cmd, cap, &len, " \"@%s\"", flags_rsp);
-
-        addf(cmd, cap, &len, "%s /I%s /Fo%s %s", incs, p->root, out, src);
-        return (size_t)len < cap;
+    } else {
+        put_args(lg, src, out, fmt, p->root, cmd, cap, &len);
+        if (lg->fmt) addf(cmd, cap, &len, " -f %s", fmt);
     }
 
-    put_args(lg, src, out, fmt, p->root, cmd, cap, &len);
-    if (lg->fmt) addf(cmd, cap, &len, " -f %s", fmt);
-    if (lg->cflags && fl) addf(cmd, cap, &len, "%s", fl);
+    if (lg->cflags && !flags_rsp)
+        for (int i = 0; i < flags->n; i++) addf(cmd, cap, &len, " %s", flags->v[i]);
     if (lg->cflags && flags_rsp) addf(cmd, cap, &len, " \"@%s\"", flags_rsp);
 
-    addf(cmd, cap, &len, "%s -I%s -o %s %s", incs, p->root, out, src);
+    if (msvc) {
+        for (int i = 0; i < incs->n; i++) addf(cmd, cap, &len, " %s", incs->v[i]);
+
+        addf(cmd, cap, &len, " /I%s /Fo%s %s", p->root, out, src);
+    } else {
+        for (int i = 0; i < incs->n; i++) addf(cmd, cap, &len, " %s", incs->v[i]);
+
+        addf(cmd, cap, &len, " -I%s -o %s %s", p->root, out, src);
+    }
+
     return (size_t)len < cap;
 }
 
@@ -525,22 +624,6 @@ static int out_map_get(const OUT_MAP *m, const char *path) {
     return -1;
 }
 
-static void target_incs(const PROJECT *p, const TARGET *t, char *buf, size_t cap, int *len) {
-    int msvc = tc_is_msvc(p);
-    *len     = 0;
-    buf[0]   = 0;
-    put_incs(t, buf, cap, len, msvc);
-    put_dep_incs(p, buf, cap, len, msvc);
-}
-
-static void target_flags(const PROJECT *p, const TARGET *t, char *buf, size_t cap, int *len) {
-    *len   = 0;
-    buf[0] = 0;
-    for (int k = 0; k < p->tc.ncflags; k++) addf(buf, cap, len, " %s", p->tc.cflags[k]);
-
-    for (int k = 0; k < t->ncflags; k++) addf(buf, cap, len, " %s", t->cflags[k]);
-}
-
 static int is_compile_unit(const TARGET *t) {
     return t->type != TARGET_CUSTOM && t->type != TARGET_RAW;
 }
@@ -551,24 +634,37 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *wa
         if (!want[i]) continue;
 
         const TARGET *t = &p->targets[i];
-
-        char incs[8192];
-        char flags[8192];
-        int  ilen = 0;
-        int  flen = 0;
-        target_incs(p, t, incs, sizeof(incs), &ilen);
-        target_flags(p, t, flags, sizeof(flags), &flen);
         if (t->type == TARGET_CUSTOM) continue;
+
+        STRLIST incs  = {0};
+        STRLIST flags = {0};
+
+        if (target_incs(p, t, &incs) != 0 || target_flags(p, t, &flags) != 0) {
+            sl_free(&incs);
+            sl_free(&flags);
+            snprintf(err, errsz, "out of memory");
+            goto fail_t;
+        }
 
         char frsp[4096];
         frsp[0] = 0;
-        if (flen > HEDDLE_CMD_MAX / 2) {
-            snprintf(frsp, sizeof(frsp), "%s/%s.flags.rsp", p->build_dir, t->name);
 
-            if (write_flag_rsp(frsp, p, t) != 0) {
-                snprintf(err, errsz, "cannot write %s", frsp);
-                return -1;
+        if (flags.n > 0) {
+            char *joined = join_flags(&flags);
+
+            if (joined && strlen(joined) > HEDDLE_CMD_MAX / 2) {
+                snprintf(frsp, sizeof(frsp), "%s/%s.flags.rsp", p->build_dir, t->name);
+
+                if (write_flag_rsp(frsp, &flags) != 0) {
+                    free(joined);
+                    sl_free(&incs);
+                    sl_free(&flags);
+                    snprintf(err, errsz, "cannot write %s", frsp);
+                    goto fail_t;
+                }
             }
+
+            free(joined);
         }
 
         if (t->type == TARGET_RAW) {
@@ -580,31 +676,31 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *wa
             const LANG *lg = lang_for(t->src[0]);
             if (!lg) {
                 snprintf(err, errsz, "target '%s': no language for '%s'", t->name, t->src[0]);
-                return -1;
+                goto fail_t;
             }
 
             char *bin = emit_artifact(p, t);
             if (!bin) continue;
 
             char cmd[16384];
-            if (!build_cmd(p, t, lg, t->src[0], bin, incs, flags, "bin", frsp[0] ? frsp : NULL,
+            if (!build_cmd(p, t, lg, t->src[0], bin, &incs, &flags, "bin", frsp[0] ? frsp : NULL,
                            cmd, sizeof(cmd))) {
                 free(bin);
                 snprintf(err, errsz, "target '%s': command too long", t->name);
-                return -1;
+                goto fail_t;
             }
             STEP *st = plan_add(pl, cmd);
             if (!st) {
                 free(bin);
                 snprintf(err, errsz, "out of memory");
-                return -1;
+                goto fail_t;
             }
 
             if (frsp[0]) step_in(st, frsp);
             step_out(st, bin);
             obj_of[i][0] = pl->n - 1;
             free(bin);
-            continue;
+            goto next_target;
         }
 
         for (int k = 0; k < t->nsrc; k++) {
@@ -615,21 +711,21 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *wa
             if (!lg) {
                 free(obj);
                 snprintf(err, errsz, "target '%s': no language for '%s'", t->name, t->src[k]);
-                return -1;
+                goto fail_t;
             }
 
             char cmd[16384];
-            if (!build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p),
+            if (!build_cmd(p, t, lg, t->src[k], obj, &incs, &flags, asm_format(p),
                            frsp[0] ? frsp : NULL, cmd, sizeof(cmd))) {
                 free(obj);
                 snprintf(err, errsz, "target '%s': command too long", t->name);
-                return -1;
+                goto fail_t;
             }
             STEP *st = plan_add(pl, cmd);
             if (!st) {
                 free(obj);
                 snprintf(err, errsz, "out of memory");
-                return -1;
+                goto fail_t;
             }
 
             if (frsp[0]) step_in(st, frsp);
@@ -637,6 +733,16 @@ static int emit_objects(const PROJECT *p, PLAN *pl, int **obj_of, const char *wa
             obj_of[i][k] = pl->n - 1;
             free(obj);
         }
+
+    next_target:
+        sl_free(&incs);
+        sl_free(&flags);
+        continue;
+
+    fail_t:
+        sl_free(&incs);
+        sl_free(&flags);
+        return -1;
     }
 
     return 0;
@@ -792,58 +898,53 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
                 free(obj);
             }
         } else {
-            char *objs[4096];
-            char *libs[4096];
-            int   nobj = 0, nlib = 0;
-            for (int k = 0; k < t->nsrc && nobj < 4096; k++) {
+            STRLIST objs = {0};
+            STRLIST libs = {0};
+            STRLIST ldf  = {0};
+
+            for (int k = 0; k < t->nsrc; k++) {
                 char *obj = object_of(p, t, t->src[k]);
-                if (obj) objs[nobj++] = obj;
+
+                if (!obj) continue;
+                if (sl_add(&objs, obj) != 0) {
+                    free(obj);
+                    goto link_oom;
+                }
             }
 
-            for (int k = 0; k < t->ndeps && nlib < 4096; k++) {
+            for (int k = 0; k < t->ndeps; k++) {
                 int d = target_index(p, t->deps[k]);
                 if (d < 0) continue;
 
                 char *lib = emit_artifact(p, &p->targets[d]);
-                if (lib) libs[nlib++] = lib;
+
+                if (!lib) continue;
+                if (sl_add(&libs, lib) != 0) {
+                    free(lib);
+                    goto link_oom;
+                }
             }
 
-            char depflags[4096];
-            int  dlen   = 0;
-            depflags[0] = 0;
-            put_dep_ldflags(p, depflags, sizeof(depflags), &dlen);
-            if (dlen && depflags[0] == ' ') {
-                memmove(depflags, depflags + 1, (size_t)dlen);
-                dlen--;
-            }
+            for (int k = 0; k < p->tc.nldflags; k++)
+                if (sl_add(&ldf, sys_dup(p->tc.ldflags[k])) != 0) goto link_oom;
+            for (int k = 0; k < t->nldflags; k++)
+                if (sl_add(&ldf, sys_dup(t->ldflags[k])) != 0) goto link_oom;
 
-            char *ldflags[1024];
-            int   nldf = 0;
-            for (int k = 0; k < p->tc.nldflags && nldf < 1024; k++)
-                ldflags[nldf++] = p->tc.ldflags[k];
-            for (int k = 0; k < t->nldflags && nldf < 1024; k++) ldflags[nldf++] = t->ldflags[k];
-
-            if (dlen) ldflags[nldf++] = depflags;
+            if (put_dep_ldflags(p, &ldf) != 0) goto link_oom;
 
             int   sok    = 1;
             char *script = script_for_family(p, t, &pl, &sok, &sstep);
-            if (!sok) {
-                for (int k = 0; k < nobj; k++) free(objs[k]);
-                for (int k = 0; k < nlib; k++) free(libs[k]);
-                free(out);
-                snprintf(err, errsz, "out of memory");
-                goto fail;
-            }
+            if (!sok) goto link_oom;
 
             LINK_REQ req;
             memset(&req, 0, sizeof(req));
             req.out      = out;
-            req.objs     = objs;
-            req.nobj     = nobj;
-            req.libs     = libs;
-            req.nlib     = nlib;
-            req.ldflags  = ldflags;
-            req.nldf     = nldf;
+            req.objs     = objs.v;
+            req.nobj     = objs.n;
+            req.libs     = libs.v;
+            req.nlib     = libs.n;
+            req.ldflags  = ldf.v;
+            req.nldf     = ldf.n;
             req.ldscript = script;
             req.entry    = t->entry;
             req.shared   = t->type == TARGET_SHAREDLIB;
@@ -853,10 +954,11 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
             if (need > HEDDLE_CMD_MAX) {
                 snprintf(rsp, sizeof(rsp), "%s/%s.rsp", p->build_dir, t->name);
 
-                if (write_rsp(rsp, req.objs, req.nobj, req.libs, req.nlib) != 0) {
+                if (write_rsp(rsp, &req) != 0) {
                     free(script);
-                    for (int k = 0; k < nobj; k++) free(objs[k]);
-                    for (int k = 0; k < nlib; k++) free(libs[k]);
+                    sl_free(&objs);
+                    sl_free(&libs);
+                    sl_free(&ldf);
                     free(out);
                     snprintf(err, errsz, "cannot write %s", rsp);
                     goto fail;
@@ -867,9 +969,21 @@ int emit_graph(const PROJECT *p, const char *target, const char *graph, char *er
 
             link_cmd(&p->tc, &req, cmd, sizeof(cmd));
             free(script);
-            for (int k = 0; k < nobj; k++) free(objs[k]);
-            for (int k = 0; k < nlib; k++) free(libs[k]);
+            sl_free(&objs);
+            sl_free(&libs);
+            sl_free(&ldf);
+            goto built;
+
+        link_oom:
+            sl_free(&objs);
+            sl_free(&libs);
+            sl_free(&ldf);
+            free(out);
+            snprintf(err, errsz, "out of memory");
+            goto fail;
         }
+
+    built:
 
         STEP *st = plan_add(&pl, cmd);
         if (!st) {
@@ -1021,12 +1135,18 @@ int emit_compile_db(const PROJECT *p, const char *target, const char *out, char 
         const TARGET *t = &p->targets[i];
         if (!want[i] || !is_compile_unit(t)) continue;
 
-        char incs[8192];
-        char flags[8192];
-        int  ilen = 0;
-        int  flen = 0;
-        target_incs(p, t, incs, sizeof(incs), &ilen);
-        target_flags(p, t, flags, sizeof(flags), &flen);
+        STRLIST incs  = {0};
+        STRLIST flags = {0};
+
+        if (target_incs(p, t, &incs) != 0 || target_flags(p, t, &flags) != 0) {
+            sl_free(&incs);
+            sl_free(&flags);
+            fclose(f);
+            free(want);
+            snprintf(err, errsz, "out of memory");
+            return -1;
+        }
+
         for (int k = 0; k < t->nsrc; k++) {
             const LANG *lg = lang_for(t->src[k]);
             if (!lg) continue;
@@ -1035,7 +1155,7 @@ int emit_compile_db(const PROJECT *p, const char *target, const char *out, char 
             if (!obj) continue;
 
             char cmd[16384];
-            if (!build_cmd(p, t, lg, t->src[k], obj, incs, flags, asm_format(p), NULL, cmd,
+            if (!build_cmd(p, t, lg, t->src[k], obj, &incs, &flags, asm_format(p), NULL, cmd,
                            sizeof(cmd))) {
                 fprintf(stderr, "heddle: skipping %s: command too long\n", t->src[k]);
                 free(obj);
@@ -1057,6 +1177,9 @@ int emit_compile_db(const PROJECT *p, const char *target, const char *out, char 
             fputs("\n  }", f);
             free(obj);
         }
+
+        sl_free(&incs);
+        sl_free(&flags);
     }
 
     fputs("\n]\n", f);

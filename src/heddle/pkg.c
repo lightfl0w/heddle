@@ -879,42 +879,113 @@ void pkg_plan(const PKG_MANIFEST *m) {
     }
 }
 
-static void join_flag(char *dst, size_t cap, int *len, const char *fmt, const char *a,
-                      const char *b) {
-    *len += snprintf(dst + *len, cap - (size_t)*len, fmt, a, b);
+typedef struct {
+    char  *p;
+    size_t n;
+    size_t cap;
+} SBUF;
+
+static void sbuf_add(SBUF *s, const char *fmt, ...) {
+    if (!s->p) {
+        s->cap = 256;
+        s->p   = (char *)malloc(s->cap);
+        if (!s->p) return;
+        s->p[0] = 0;
+    }
+
+    for (;;) {
+        va_list ap, ap2;
+        va_start(ap, fmt);
+        va_copy(ap2, ap);
+
+        size_t avail = s->cap - s->n;
+        int    need  = vsnprintf(s->p + s->n, avail, fmt, ap);
+        va_end(ap);
+
+        if (need < 0) {
+            va_end(ap2);
+            return;
+        }
+
+        if ((size_t)need < avail) {
+            s->n += (size_t)need;
+            va_end(ap2);
+            return;
+        }
+
+        size_t newcap = s->n + (size_t)need + 1;
+        char  *np     = (char *)realloc(s->p, newcap);
+
+        if (!np) {
+            va_end(ap2);
+            return;
+        }
+
+        s->p   = np;
+        s->cap = newcap;
+
+        va_end(ap2);
+    }
+}
+
+static char *env_kv(const char *key, const char *val) {
+    size_t n   = strlen(key) + strlen(val) + 2;
+    char  *out = (char *)malloc(n);
+
+    if (out) snprintf(out, n, "%s=%s", key, val);
+
+    return out;
+}
+
+static char *sbuf_take(SBUF *s) {
+    if (!s->p) return sys_dup("");
+
+    char *out = s->p;
+
+    s->p = NULL;
+    s->n = s->cap = 0;
+    return out;
+}
+
+static char *tool_path(const PKG_MANIFEST *m) {
+    SBUF s = {0};
+
+    for (int i = 0; i < m->tools.n; i++) {
+        char *bin = path_join(m->tools.items[i].store_path, "bin");
+
+        if (bin && dir_exists(bin)) sbuf_add(&s, "%s%s", s.n ? ":" : "", bin);
+
+        free(bin);
+    }
+
+    const char *sys = getenv("PATH");
+
+    sbuf_add(&s, "%s%s", s.n ? ":" : "", sys ? sys : "");
+
+    return sbuf_take(&s);
 }
 
 char **pkg_env(const PKG_MANIFEST *m, int *out_n) {
     *out_n = 0;
 
-    char path[8192];
-    char cflags[4096];
-    char ldflags[4096];
-    char cpath[4096];
-    int  plen = 0, clen = 0, llen = 0, cplen = 0;
-    path[0] = cflags[0] = ldflags[0] = cpath[0] = 0;
-    for (int i = 0; i < m->tools.n; i++) {
-        char *bin = path_join(m->tools.items[i].store_path, "bin");
-        if (bin && dir_exists(bin))
-            join_flag(path, sizeof(path), &plen, "%s%s", plen ? ":" : "", bin);
-        free(bin);
-    }
+    SBUF cflags = {0}, ldflags = {0}, cpath = {0};
 
-    const char *sys = getenv("PATH");
-    join_flag(path, sizeof(path), &plen, "%s%s", plen ? ":" : "", sys ? sys : "");
-    join_flag(cflags, sizeof(cflags), &clen, "%s %s", m->target.cpu, m->target.fpu);
+    sbuf_add(&cflags, "%s %s", m->target.cpu ? m->target.cpu : "",
+             m->target.fpu ? m->target.fpu : "");
+
     for (int i = 0; i < m->deps.n; i++) {
         const PKG_SPEC *s   = &m->deps.items[i];
         char           *inc = path_join(s->store_path, "include");
         char           *lib = path_join(s->store_path, "lib");
+
         if (inc && dir_exists(inc)) {
-            join_flag(cflags, sizeof(cflags), &clen, " -I%s", inc, "");
-            join_flag(cpath, sizeof(cpath), &cplen, "%s%s", cplen ? ":" : "", inc);
+            sbuf_add(&cflags, " -I%s", inc);
+            sbuf_add(&cpath, "%s%s", cpath.n ? ":" : "", inc);
         }
 
         if (lib && dir_exists(lib)) {
-            join_flag(ldflags, sizeof(ldflags), &llen, " -L%s", lib, "");
-            join_flag(ldflags, sizeof(ldflags), &llen, " -l%s", s->name, "");
+            sbuf_add(&ldflags, " -L%s", lib);
+            sbuf_add(&ldflags, " -l%s", s->name);
         }
 
         free(inc);
@@ -924,44 +995,34 @@ char **pkg_env(const PKG_MANIFEST *m, int *out_n) {
     char **v = (char **)calloc(5, sizeof(char *));
     if (!v) return NULL;
 
-    char buf[8300];
-    int  n = 0;
-    snprintf(buf, sizeof(buf), "PATH=%s", path);
-    v[n++] = sys_dup(buf);
-    snprintf(buf, sizeof(buf), "CFLAGS=%s", cflags);
-    v[n++] = sys_dup(buf);
-    snprintf(buf, sizeof(buf), "CXXFLAGS=%s", cflags);
-    v[n++] = sys_dup(buf);
-    snprintf(buf, sizeof(buf), "LDFLAGS=%s", ldflags);
-    v[n++] = sys_dup(buf);
-    if (cpath[0]) {
-        snprintf(buf, sizeof(buf), "CPATH=%s", cpath);
-        v[n++] = sys_dup(buf);
-    }
+    char *pv = tool_path(m);
+    char *cf = sbuf_take(&cflags);
+    char *ld = sbuf_take(&ldflags);
+    char *cp = sbuf_take(&cpath);
+
+    int n = 0;
+    v[n++] = env_kv("PATH", pv);
+    v[n++] = env_kv("CFLAGS", cf);
+    v[n++] = env_kv("CXXFLAGS", cf);
+    v[n++] = env_kv("LDFLAGS", ld);
+
+    if (cp[0]) v[n++] = env_kv("CPATH", cp);
+
+    free(pv);
+    free(cf);
+    free(ld);
+    free(cp);
 
     *out_n = n;
     return v;
 }
 
 int pkg_prepend_path(PKG_MANIFEST *m) {
-    char prefix[8192];
-    int  plen = 0;
-    prefix[0] = 0;
-    for (int i = 0; i < m->tools.n; i++) {
-        char *bin = path_join(m->tools.items[i].store_path, "bin");
-        if (bin && dir_exists(bin))
-            join_flag(prefix, sizeof(prefix), &plen, "%s%s", plen ? ":" : "", bin);
-        free(bin);
-    }
+    if (m->tools.n == 0) return 0;
 
-    if (!plen) return 0;
-
-    const char *sys  = getenv("PATH");
-    size_t      n    = strlen(prefix) + (sys ? strlen(sys) : 0) + 2;
-    char       *full = (char *)malloc(n);
+    char *full = tool_path(m);
     if (!full) return -1;
 
-    snprintf(full, n, "%s:%s", prefix, sys ? sys : "");
 #if defined(_WIN32)
     _putenv_s("PATH", full);
 #else

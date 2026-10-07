@@ -22,6 +22,7 @@ static void put_libs(char *buf, size_t cap, int *len, const LINK_REQ *r, const c
 }
 
 static void put_flags(char *buf, size_t cap, int *len, const LINK_REQ *r) {
+    if (r->rsp) return;
     for (int i = 0; i < r->nldf; i++) app(buf, cap, len, " %s", r->ldflags[i]);
 }
 
@@ -75,6 +76,8 @@ static int msvc_lib_ok(const char *f) {
 }
 
 static void put_msvc_ldflags(char *buf, size_t cap, int *len, const LINK_REQ *r) {
+    if (r->rsp) return;
+
     for (int i = 0; i < r->nldf; i++) {
         const char *f = r->ldflags[i];
         if (!f || !*f) continue;
