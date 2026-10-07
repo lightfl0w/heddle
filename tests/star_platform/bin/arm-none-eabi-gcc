@@ -10,7 +10,7 @@ for a in "$@"; do
   case "$a" in
     -m*|-mfpu=*|-mfloat-abi=*) continue ;;
     -T) skip=1; continue ;;
-    -e) skip=1; entry_pending=1; continue ;;
+    -e) entry_pending=1; continue ;;
   esac
   if [ "$entry_pending" = 1 ]; then args="$args -Wl,-e,$a"; entry_pending=0; continue; fi
   args="$args '$a'"

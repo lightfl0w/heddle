@@ -66,7 +66,12 @@ int heddle_check(const HEDDLE_OPTS *o) {
     return 0;
 }
 
-static int build_target(const HEDDLE_OPTS *o, PROJECT *p, char *err) {
+static int build_target(const HEDDLE_OPTS *o, PROJECT *p, char *err, size_t errsz) {
+    if (deps_ready(p, err, errsz) != 0) {
+        fprintf(stderr, "heddle: %s\n", err);
+        return 1;
+    }
+
     char cache[4096];
     snprintf(cache, sizeof(cache), ".heddle");
     sys_mkpath(cache);
@@ -134,7 +139,7 @@ int heddle_run(const HEDDLE_OPTS *o) {
         return 1;
     }
 
-    int rc = build_target(o, &p, err);
+    int rc = build_target(o, &p, err, sizeof(err));
     project_free(&p);
     return rc;
 }
@@ -222,7 +227,7 @@ int heddle_watch(const HEDDLE_OPTS *o) {
     fflush(stdout);
 
     for (;;) {
-        int rc = build_target(o, &p, err);
+        int rc = build_target(o, &p, err, sizeof(err));
 
         printf("heddle: %s (exit %d)\n", rc == 0 ? "ok" : "failed", rc);
         fflush(stdout);
@@ -257,7 +262,7 @@ int heddle_exec(const HEDDLE_OPTS *o) {
         return 1;
     }
 
-    int rc = build_target(o, &p, err);
+    int rc = build_target(o, &p, err, sizeof(err));
     if (rc == 0) {
         char *bin_path = emit_artifact(&p, project_target(&p, o->target));
         if (bin_path) {

@@ -1,0 +1,9 @@
+[build]
+dir = "out"
+
+[dependencies]
+zlib = "pkgconfig"
+
+[target.app]
+type = "exe"
+src = ["src/main.c"]

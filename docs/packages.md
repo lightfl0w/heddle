@@ -23,8 +23,23 @@ float = "hard"
 | 段 | 内容 |
 | --- | --- |
 | `[toolchain]` | 键是别名，值是 `名字@版本` |
-| `[dependencies]` | 键是库名，值是 `版本` 或 `名字@版本` |
+| `[dependencies]` | 键是库名，值见下 |
 | `[target]` | 交叉目标，推出前缀、sysroot 和编译参数 |
+
+### 依赖的三种来源
+
+`[dependencies]` 的值决定从哪拿：
+
+```toml
+[dependencies]
+zlib   = "pkgconfig"              # host 的 pkg-config（pc 名同键名）
+glib   = "pkgconfig:glib-2.0"     # 显式指定
+sdl2   = "pkgconfig"           
+# [dependencies.sdl2]
+# pkgconfig = "sdl2"
+
+libssl = "1.1.1"                  # 走 vcpkg
+```
 
 `[toolchain]`（无点）是包列表；`[toolchain.host]`、`[toolchain.debug]` 仍然是编译器预设，两者不冲突。
 

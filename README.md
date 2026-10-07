@@ -97,7 +97,8 @@ cross-gcc = "arm-none-eabi@12.2.0"
 qemu      = "8.0.0"
 
 [dependencies]
-freertos = "10.5.1"
+zlib   = "pkgconfig"      # 交给 host 的 pkg-config
+libssl = "1.1.1"          # 交给 vcpkg（或 heddle registry）
 
 [target]
 arch  = "armv7em"

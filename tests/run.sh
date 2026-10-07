@@ -904,6 +904,11 @@ expect_err "second board" "$out" "fw_bluepill"
 if [ "$FAKE_TOOLS" = 0 ]; then
     echo "  skip (fake arm-none-eabi-gcc needs a unix shell)"
 else
+    mkdir -p .heddle/store/library/freertos/10.5.1/lib
+    mkdir -p store_tmp
+    ( cd store_tmp && ar rcs ../.heddle/store/library/freertos/10.5.1/lib/libfreertos.a )
+    rmdir store_tmp 2>/dev/null || true
+
     export PATH="$HERE/star_platform/bin:$PATH"
     $HEDDLE fw_nucleo >/dev/null 2>&1
     check_rc "build fw_nucleo" $? 0
@@ -1040,6 +1045,61 @@ expect_err "args quoted" "$out" "hello world"
 
 $HEDDLE test nosuch >/dev/null 2>&1
 [ $? -ne 0 ] && ok "unknown target rejected" || bad "unknown target accepted"
+
+rm -rf out .heddle
+echo
+
+echo "vcpkg auto:"
+
+cd "$HERE/vcpkg"
+rm -rf proj/.heddle proj/out proj/heddle.lock installed
+
+mkdir -p installed/x64-linux/include installed/x64-linux/lib installed/x64-linux/bin
+cp payload/zlib.h installed/x64-linux/include/
+cc -c payload/zlib.c -Ipayload -o installed/x64-linux/lib/zlib.o 2>/dev/null
+ar rcs installed/x64-linux/lib/libz.a installed/x64-linux/lib/zlib.o
+rm -f installed/x64-linux/lib/zlib.o
+
+mkdir -p fakebin
+printf '#!/bin/sh\necho vcpkg\n' > fakebin/vcpkg
+chmod +x fakebin/vcpkg
+
+cd proj
+PATH="$HERE/vcpkg/fakebin:$PATH" $HEDDLE tool install -v >auto.log 2>&1
+check_rc "vcpkg auto install" $? 0
+grep -q "vcpkg root" auto.log && ok "vcpkg root discovered" || bad "vcpkg root not found"
+[ -f .heddle/store/library/zlib/1.3.1/include/zlib.h ] \
+    && ok "vcpkg auto imported" || bad "vcpkg auto import failed"
+
+rm -rf out .heddle/loom* .heddle/*.graph
+PATH="$HERE/vcpkg/fakebin:$PATH" $HEDDLE app >/dev/null 2>&1
+check_rc "vcpkg auto build" $? 0
+grep -q -- "-lz" .heddle/app.graph && ok "vcpkg libs linked" || bad "vcpkg libs missing"
+
+rm -rf out .heddle auto.log
+cd "$HERE/vcpkg"
+rm -rf installed fakebin proj/.heddle proj/out proj/heddle.lock
+echo
+
+echo "pkgconfig:"
+
+cd "$HERE/pkgconfig"
+rm -rf out .heddle
+
+if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists zlib 2>/dev/null; then
+    out=$($HEDDLE app 2>&1)
+    check_rc "pkgconfig build" $? 0
+    grep -q -- "-lz" .heddle/app.graph \
+        && ok "pkgconfig libs" || bad "pkgconfig libs missing"
+    ./out/app$EXE 2>/dev/null
+    check_rc "pkgconfig run" $? 0
+
+    rm -rf out .heddle
+    out=$($HEDDLE check 2>&1)
+    check_rc "pkgconfig check" $? 0
+else
+    echo "  skip (needs pkg-config + zlib)"
+fi
 
 rm -rf out .heddle
 echo

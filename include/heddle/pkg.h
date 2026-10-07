@@ -13,7 +13,8 @@ typedef enum {
 typedef enum {
     PKG_SOURCE_AUTO,
     PKG_SOURCE_SOURCE,
-    PKG_SOURCE_BINARY
+    PKG_SOURCE_BINARY,
+    PKG_SOURCE_PKGCONFIG
 } PKG_SOURCE;
 
 typedef struct {
@@ -24,6 +25,11 @@ typedef struct {
     PKG_SOURCE  source;
     char       *hash;
     char       *store_path;
+    char       *pc_name;
+    char      **cflags;
+    int         ncflags;
+    char      **ldflags;
+    int         nldflags;
     int         recipe;
 } PKG_SPEC;
 
@@ -69,6 +75,8 @@ int  pkg_prepend_path(PKG_MANIFEST *m);
 
 char *pkg_variant_key(const TARGET_PROFILE *t, const TOOLCHAIN *tc,
                       char *out, size_t cap);
+
+int  pkgconfig_resolve(PKG_SPEC *s, char *err, size_t errsz);
 
 void pkg_hash_tree(const char *dir, char *out, size_t cap);
 int  pkg_copy_tree(const char *src, const char *dst);

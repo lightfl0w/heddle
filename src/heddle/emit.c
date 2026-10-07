@@ -115,6 +115,25 @@ static int cycle_at(const PROJECT *p, int i, int *state, char *err, size_t errsz
     return 0;
 }
 
+int deps_ready(const PROJECT *p, char *err, size_t errsz) {
+    for (int i = 0; i < p->pkg.deps.n; i++) {
+        const PKG_SPEC *s = &p->pkg.deps.items[i];
+
+        if (s->source == PKG_SOURCE_PKGCONFIG) continue;
+
+        SYS_STAT st;
+
+        if (!s->store_path || sys_stat(s->store_path, &st) != 0) {
+            snprintf(err, errsz,
+                     "dependency '%s@%s' is not installed; run 'heddle tool install'",
+                     s->name, s->version);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
 int project_check(const PROJECT *p, char *err, size_t errsz) {
     for (int i = 0; i < p->ntargets; i++) {
         const TARGET *t = &p->targets[i];
@@ -288,6 +307,14 @@ static int target_incs(const PROJECT *p, const TARGET *t, STRLIST *out) {
 
     for (int i = 0; i < p->pkg.deps.n; i++) {
         const PKG_SPEC *s = &p->pkg.deps.items[i];
+
+        if (s->source == PKG_SOURCE_PKGCONFIG) {
+            for (int k = 0; k < s->ncflags; k++)
+                if (sl_add(out, sys_dup(s->cflags[k])) != 0) return -1;
+
+            continue;
+        }
+
         if (!s->store_path) continue;
 
         char *inc = project_path(s->store_path, "include");
@@ -339,6 +366,14 @@ static char *join_flags(const STRLIST *l) {
 static int put_dep_ldflags(const PROJECT *p, STRLIST *out) {
     for (int i = 0; i < p->pkg.deps.n; i++) {
         const PKG_SPEC *s = &p->pkg.deps.items[i];
+
+        if (s->source == PKG_SOURCE_PKGCONFIG) {
+            for (int k = 0; k < s->nldflags; k++)
+                if (sl_add(out, sys_dup(s->ldflags[k])) != 0) return -1;
+
+            continue;
+        }
+
         if (!s->store_path || s->recipe) continue;
 
         char *lib = project_path(s->store_path, "lib");

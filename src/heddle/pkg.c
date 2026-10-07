@@ -1,6 +1,7 @@
 #include "pkg.h"
 
 #include "hash.h"
+#include "proc.h"
 #include "star.h"
 #include "sys.h"
 #include "toml.h"
@@ -64,6 +65,13 @@ static void spec_clear(PKG_SPEC *s) {
     free(s->target);
     free(s->hash);
     free(s->store_path);
+    free(s->pc_name);
+
+    for (int i = 0; i < s->ncflags; i++) free(s->cflags[i]);
+    for (int i = 0; i < s->nldflags; i++) free(s->ldflags[i]);
+
+    free(s->cflags);
+    free(s->ldflags);
     memset(s, 0, sizeof(*s));
 }
 
@@ -161,6 +169,125 @@ int pkg_target_resolve(TARGET_PROFILE *t, char *err, size_t errsz) {
     return 0;
 }
 
+static void split_flags(const char *text, char ***out, int *n) {
+    const char *p = text;
+
+    while (*p) {
+        while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') p++;
+        if (!*p) break;
+
+        char  buf[4096];
+        size_t bl = 0;
+        int    q  = 0;
+
+        while (*p) {
+            char c = *p;
+
+            if (!q && (c == ' ' || c == '\t' || c == '\n' || c == '\r')) break;
+
+            if (c == '"' || c == '\'') {
+                if (q == (int)c) q = 0;
+                else if (!q) q = c;
+
+                p++;
+                continue;
+            }
+
+            if (bl + 1 < sizeof(buf)) buf[bl++] = c;
+
+            p++;
+        }
+
+        buf[bl] = 0;
+
+        if (bl) {
+            char **next = (char **)realloc(*out, sizeof(char *) * (size_t)(*n + 1));
+
+            if (!next) return;
+
+            *out           = next;
+            (*out)[*n]     = sys_dup(buf);
+            (*n)++;
+        }
+    }
+}
+
+static const char *pc_log_path(void) {
+#if defined(_WIN32)
+    const char *t = getenv("TEMP");
+    if (!t || !*t) t = getenv("TMP");
+
+    return t && *t ? t : ".";
+#else
+    const char *t = getenv("TMPDIR");
+
+    return t && *t ? t : "/tmp";
+#endif
+}
+
+static char *pc_query(const char *pc, const char *mode, int *ran) {
+    char log[4096];
+
+    snprintf(log, sizeof(log), "%s/heddle-pkgconfig.log", pc_log_path());
+
+    PROC_RESULT r;
+    char       *argv[] = {(char *)"pkg-config", (char *)mode, (char *)pc, NULL};
+
+    if (proc_run(argv, NULL, log, NULL, 0, &r) != 0) {
+        *ran = 0;
+        return NULL;
+    }
+
+    *ran = 1;
+
+    if (r.exit_code != 0) return NULL;
+
+    FILE *f = fopen(log, "rb");
+    if (!f) return NULL;
+
+    char  *buf = (char *)malloc(65536);
+    size_t got = buf ? fread(buf, 1, 65535, f) : 0;
+
+    if (buf) buf[got] = 0;
+
+    fclose(f);
+    remove(log);
+
+    return buf;
+}
+
+int pkgconfig_resolve(PKG_SPEC *s, char *err, size_t errsz) {
+    const char *pc = s->pc_name ? s->pc_name : s->name;
+
+    int   ran_c = 0, ran_l = 0;
+    char *cf    = pc_query(pc, "--cflags", &ran_c);
+    char *lf    = pc_query(pc, "--libs", &ran_l);
+
+    if (!ran_c && !ran_l) {
+        snprintf(err, errsz, "cannot run pkg-config (is it installed and on PATH?)");
+        free(cf);
+        free(lf);
+        return -1;
+    }
+
+    if (!cf && !lf) {
+        snprintf(err, errsz,
+                 "pkg-config does not know '%s'; install its development package "
+                 "or set PKG_CONFIG_PATH",
+                 pc);
+        free(cf);
+        free(lf);
+        return -1;
+    }
+
+    split_flags(cf ? cf : "", &s->cflags, &s->ncflags);
+    split_flags(lf ? lf : "", &s->ldflags, &s->nldflags);
+
+    free(cf);
+    free(lf);
+    return 0;
+}
+
 static PKG_SOURCE parse_source(const char *s) {
     if (!s) return PKG_SOURCE_AUTO;
     if (!strcmp(s, "source") || !strcmp(s, "src")) return PKG_SOURCE_SOURCE;
@@ -169,42 +296,88 @@ static PKG_SOURCE parse_source(const char *s) {
     return PKG_SOURCE_AUTO;
 }
 
+static int spec_seen(const PKG_LIST *l, const char *name, const char *version) {
+    for (int i = 0; i < l->n; i++)
+        if (!strcmp(l->items[i].name, name) && !strcmp(l->items[i].version, version)) return 1;
+
+    return 0;
+}
+
+static void spec_finish(const TOML *t, const char *section, PKG_KIND kind, const char *name,
+                        const char *version, const char *val, PKG_LIST *out) {
+    PKG_SPEC s;
+    memset(&s, 0, sizeof(s));
+
+    s.kind    = kind;
+    s.name    = sys_dup(name);
+    s.version = sys_dup(version && *version ? version : "latest");
+
+    char sub[512];
+    snprintf(sub, sizeof(sub), "%s.%s", section, name);
+    const char *pcfield = toml_str(t, sub, "pkgconfig");
+
+    if (pcfield) {
+        s.source  = PKG_SOURCE_PKGCONFIG;
+        s.pc_name = sys_dup(pcfield[0] ? pcfield : s.name);
+    } else if (val && !strncmp(val, "pkgconfig", 9) && (val[9] == 0 || val[9] == ':')) {
+        s.source  = PKG_SOURCE_PKGCONFIG;
+        s.pc_name = sys_dup(val[9] == ':' && val[10] ? val + 10 : s.name);
+    } else {
+        s.source = parse_source(toml_str(t, sub, "source"));
+    }
+
+    const char *tgt = toml_str(t, sub, "target");
+    if (tgt) s.target = sys_dup(tgt);
+
+    if (list_push(out, &s) != 0) spec_clear(&s);
+}
+
 static void load_section(const TOML *t, const char *section, PKG_KIND kind, PKG_LIST *out) {
     const TOML_TABLE *tab = NULL;
     for (int i = 0; i < t->count; i++)
         if (!strcmp(t->tables[i].name, section)) tab = &t->tables[i];
 
-    if (!tab) return;
+    if (tab)
+        for (int i = 0; i < tab->count; i++) {
+            const char *key = tab->items[i].key;
+            const char *val = tab->items[i].val;
 
-    for (int i = 0; i < tab->count; i++) {
-        const char *key = tab->items[i].key;
-        const char *val = tab->items[i].val;
-        if (strchr(key, '[')) continue;
+            if (strchr(key, '[')) continue;
 
-        PKG_SPEC s;
-        memset(&s, 0, sizeof(s));
-        s.kind         = kind;
-        const char *at = strchr(val, '@');
-        if (at && at != val) {
-            split_at(val, &s.name, &s.version);
-        } else if (strchr(key, '@')) {
-            split_at(key, &s.name, &s.version);
-            if (val[0] && strcmp(val, "auto")) {
-                free(s.version);
-                s.version = sys_dup(val);
+            char *name = NULL, *version = NULL;
+            const char *at = strchr(val, '@');
+
+            if (at && at != val) {
+                split_at(val, &name, &version);
+            } else if (strchr(key, '@')) {
+                split_at(key, &name, &version);
+
+                if (val[0] && strcmp(val, "auto")) {
+                    free(version);
+                    version = sys_dup(val);
+                }
+            } else {
+                name    = sys_dup(key);
+                version = sys_dup(val[0] ? val : "latest");
             }
-        } else {
-            s.name    = sys_dup(key);
-            s.version = sys_dup(val[0] ? val : "latest");
+
+            spec_finish(t, section, kind, name, version, val, out);
+
+            free(name);
+            free(version);
         }
 
-        char sub[512];
-        snprintf(sub, sizeof(sub), "%s.%s", section, s.name);
-        s.source        = parse_source(toml_str(t, sub, "source"));
-        const char *tgt = toml_str(t, sub, "target");
-        if (tgt) s.target = sys_dup(tgt);
+    size_t plen = strlen(section);
+    for (int i = 0; i < t->count; i++) {
+        const char *tn = t->tables[i].name;
 
-        if (list_push(out, &s) != 0) spec_clear(&s);
+        if (strncmp(tn, section, plen) || tn[plen] != '.') continue;
+
+        const char *name = tn + plen + 1;
+
+        if (strchr(name, '.') || spec_seen(out, name, "latest")) continue;
+
+        spec_finish(t, section, kind, name, "latest", "", out);
     }
 }
 
@@ -229,6 +402,18 @@ static void resolve_store(PKG_MANIFEST *m) {
     }
 }
 
+static int resolve_pkgconfig(PKG_MANIFEST *m, char *err, size_t errsz) {
+    for (int i = 0; i < m->deps.n; i++) {
+        PKG_SPEC *s = &m->deps.items[i];
+
+        if (s->source != PKG_SOURCE_PKGCONFIG) continue;
+
+        if (pkgconfig_resolve(s, err, errsz) != 0) return -1;
+    }
+
+    return 0;
+}
+
 int pkg_manifest_finalize(PKG_MANIFEST *m, char *err, size_t errsz) {
     if (pkg_target_resolve(&m->target, err, errsz) != 0) return -1;
 
@@ -237,7 +422,8 @@ int pkg_manifest_finalize(PKG_MANIFEST *m, char *err, size_t errsz) {
     m->toolchain_prefix = sys_dup(m->target.prefix);
     m->sysroot          = sys_dup(m->target.sysroot ? m->target.sysroot : "");
     resolve_store(m);
-    return 0;
+
+    return resolve_pkgconfig(m, err, errsz);
 }
 
 void pkg_manifest_add(PKG_MANIFEST *m, PKG_KIND kind, const char *name, const char *version,
@@ -323,6 +509,12 @@ int pkg_manifest_load(PKG_MANIFEST *m, const char *root, char *err, size_t errsz
     m->toolchain_prefix = sys_dup(m->target.prefix);
     m->sysroot          = sys_dup(m->target.sysroot ? m->target.sysroot : "");
     resolve_store(m);
+
+    if (resolve_pkgconfig(m, err, errsz) != 0) {
+        pkg_manifest_free(m);
+        return -1;
+    }
+
     return 0;
 }
 
@@ -609,6 +801,49 @@ static int unpack(const char *archive, const char *dst) {
     return 0;
 }
 
+static const char *vcpkg_triplet_for(const TARGET_PROFILE *tp) {
+    if (!tp || !tp->arch || !tp->arch[0]) return NULL;
+
+    static const struct {
+        const char *arch;
+        const char *flt;
+        const char *triplet;
+    } map[] = {
+        {"x86_64", "", "x64-linux"},
+        {"i686", "", "x86-linux"},
+        {"aarch64", "", "arm64-linux"},
+        {"armv7a", "hard", "arm-linux"},
+        {"armv7m", "", "thumbv7m-none-eabi"},
+        {"armv7em", "hard", "thumbv7em-none-eabihf"},
+        {"armv7em", "", "thumbv7em-none-eabihf"},
+        {NULL, NULL, NULL},
+    };
+
+    for (int i = 0; map[i].arch; i++) {
+        if (strcmp(map[i].arch, tp->arch)) continue;
+        if (map[i].flt[0] && (!tp->float_k || strcmp(map[i].flt, tp->float_k))) continue;
+
+        return map[i].triplet;
+    }
+
+    return NULL;
+}
+
+static int vcpkg_fetch(const char *root, const char *triplet, const PKG_SPEC *s, const char *store,
+                       char *err, size_t errsz) {
+    VCPKG_PORT v;
+    memset(&v, 0, sizeof(v));
+
+    v.name    = sys_dup(s->name);
+    v.version = sys_dup(s->version);
+
+    char hash[64] = {0};
+    int  rc = vcpkg_import(&v, root, triplet, store, hash, sizeof(hash), err, errsz);
+
+    vcpkg_port_free(&v);
+    return rc;
+}
+
 static const char *registry(void) {
     const char *r = getenv("HEDDLE_REGISTRY");
     return r && r[0] ? r : NULL;
@@ -618,11 +853,40 @@ static int is_http(const char *u) {
     return !strncmp(u, "http://", 7) || !strncmp(u, "https://", 8);
 }
 
-static int fetch_pkg(const PKG_SPEC *s, const char *dst, int offline, char *err, size_t errsz) {
+static int fetch_pkg(const PKG_SPEC *s, const char *dst, const char *store, const char *vcpkg_root,
+                     const char *triplet, int offline, char *err, size_t errsz) {
+    if (offline) {
+        snprintf(err, errsz, "%s %s@%s not in store and offline", kind_dir(s->kind), s->name,
+                 s->version);
+        return -1;
+    }
+
+    if (vcpkg_root && vcpkg_root[0] && triplet && s->kind == PKG_KIND_LIBRARY) {
+        char *inst = path_join(vcpkg_root, "installed");
+        char  verr[512] = {0};
+
+        if (inst && vcpkg_fetch(inst, triplet, s, store, verr, sizeof(verr)) == 0) {
+            free(inst);
+            return 0;
+        }
+
+        free(inst);
+
+        snprintf(err, errsz, "%s", verr);
+    }
+
     const char *reg = registry();
-    if (offline || !reg) {
-        snprintf(err, errsz, "%s %s@%s not in store and offline%s", kind_dir(s->kind), s->name,
-                 s->version, reg ? "" : " (no HEDDLE_REGISTRY)");
+    if (!reg) {
+        char keep[512];
+        snprintf(keep, sizeof(keep), "%s", err);
+
+        snprintf(err, errsz,
+                 "%s %s@%s not available: %s%s"
+                 "set VCPKG_ROOT to an installed vcpkg tree (or HEDDLE_REGISTRY)",
+                 kind_dir(s->kind), s->name, s->version,
+                 keep[0] ? keep : "not found; ",
+                 keep[0] ? "; " : "");
+
         return -1;
     }
 
@@ -736,11 +1000,159 @@ static void chmod_bin(const char *dir) {
     free(bin);
 }
 
+static char *which_prog(const char *prog) {
+    const char *path = getenv("PATH");
+    if (!path) return NULL;
+
+#if defined(_WIN32)
+    const char sep = ';';
+    const char *exts[] = {".exe", ".bat", ".cmd", NULL};
+#else
+    const char sep = ':';
+    const char *exts[] = {"", NULL};
+#endif
+
+    const char *p = path;
+
+    while (p && *p) {
+        const char *e = strchr(p, sep);
+        size_t      l = e ? (size_t)(e - p) : strlen(p);
+
+        if (l) {
+            for (int i = 0; exts[i]; i++) {
+                size_t n = l + strlen(prog) + strlen(exts[i]) + 2;
+                char  *c = (char *)malloc(n);
+
+                if (!c) return NULL;
+
+                snprintf(c, n, "%.*s%c%s%s", (int)l, p, '/', prog, exts[i]);
+
+                SYS_STAT st;
+                int      ok = sys_stat(c, &st) == 0 && !st.is_dir;
+
+                if (ok) return c;
+
+                free(c);
+            }
+        }
+
+        p = e ? e + 1 : NULL;
+    }
+
+    return NULL;
+}
+
+static char *vcpkg_root(void) {
+    const char *envs[] = {"VCPKG_ROOT", "HEDDLE_VCPKG_ROOT", NULL};
+
+    for (int i = 0; envs[i]; i++) {
+        const char *r = getenv(envs[i]);
+
+        if (r && r[0]) return sys_dup(r);
+    }
+
+    const char *home = getenv("HOME");
+#if defined(_WIN32)
+    if (!home) home = getenv("USERPROFILE");
+
+    const char *fixed[] = {"C:/vcpkg", "C:/src/vcpkg", "C:/tools/vcpkg",
+                           "C:/Program Files/vcpkg", NULL};
+#else
+    const char *fixed[] = {"/opt/vcpkg", "/usr/local/vcpkg", "/usr/share/vcpkg", NULL};
+#endif
+
+    for (int i = 0; fixed[i]; i++) {
+        char *inst = path_join(fixed[i], "installed");
+
+        if (inst && dir_exists(inst)) {
+            free(inst);
+            return sys_dup(fixed[i]);
+        }
+
+        free(inst);
+    }
+
+    if (home) {
+        const char *rel[] = {"vcpkg", "src/vcpkg", ".vcpkg", NULL};
+
+        for (int i = 0; rel[i]; i++) {
+            char  *cand = path_join(home, rel[i]);
+            char  *inst = cand ? path_join(cand, "installed") : NULL;
+
+            if (inst && dir_exists(inst)) {
+                free(inst);
+                return cand;
+            }
+
+            free(inst);
+            free(cand);
+        }
+    }
+
+    char *exe = which_prog("vcpkg");
+    if (exe) {
+        char *slash = strrchr(exe, '/');
+        char *bindir = NULL;
+
+        if (slash) {
+            size_t n = (size_t)(slash - exe);
+            bindir    = (char *)malloc(n + 1);
+
+            if (bindir) {
+                memcpy(bindir, exe, n);
+                bindir[n] = 0;
+            }
+        }
+
+        free(exe);
+
+        if (bindir) {
+            char *up    = strrchr(bindir, '/');
+            char *root  = NULL;
+
+            if (up) {
+                size_t n = (size_t)(up - bindir);
+                root     = (char *)malloc(n + 1);
+
+                if (root) {
+                    memcpy(root, bindir, n);
+                    root[n] = 0;
+                }
+            }
+
+            free(bindir);
+
+            if (root) {
+                char *inst = path_join(root, "installed");
+
+                if (inst && dir_exists(inst)) {
+                    free(inst);
+                    return root;
+                }
+
+                free(inst);
+                free(root);
+            }
+        }
+    }
+
+    return NULL;
+}
+
 static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose, char *err,
                         size_t errsz) {
+    char       *vroot = vcpkg_root();
+    const char *vtrip = vcpkg_triplet_for(&m->target);
+
+    if (verbose && vroot && l == &m->deps)
+        fprintf(stderr, "heddle: vcpkg root %s (%s)\n", vroot,
+                vtrip ? vtrip : "no triplet for this target");
+
     for (int i = 0; i < l->n; i++) {
-        PKG_SPEC *s   = &l->items[i];
-        char     *dst = sys_dup(s->store_path);
+        PKG_SPEC *s = &l->items[i];
+        if (s->source == PKG_SOURCE_PKGCONFIG) continue;
+
+        char *dst = sys_dup(s->store_path);
         if (!dst) {
             snprintf(err, errsz, "out of memory");
             return -1;
@@ -759,6 +1171,7 @@ static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose, 
                 snprintf(err, errsz, "%s %s@%s drifted and --offline forbids repair",
                          kind_dir(s->kind), s->name, s->version);
                 free(dst);
+                free(vroot);
                 return -1;
             }
 
@@ -767,8 +1180,9 @@ static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose, 
             if (verbose)
                 fprintf(stderr, "heddle: %s %s %s@%s\n", drift ? "repairing" : "fetching",
                         kind_dir(s->kind), s->name, s->version);
-            if (fetch_pkg(s, dst, offline, err, errsz) != 0) {
+            if (fetch_pkg(s, dst, m->store, vroot, vtrip, offline, err, errsz) != 0) {
                 free(dst);
+                free(vroot);
                 return -1;
             }
         }
@@ -790,6 +1204,7 @@ static int install_list(PKG_MANIFEST *m, PKG_LIST *l, int offline, int verbose, 
         free(dst);
     }
 
+    free(vroot);
     return 0;
 }
 
