@@ -1054,11 +1054,17 @@ echo "vcpkg auto:"
 cd "$HERE/vcpkg"
 rm -rf proj/.heddle proj/out proj/heddle.lock installed
 
-mkdir -p installed/x64-linux/include installed/x64-linux/lib installed/x64-linux/bin
-cp payload/zlib.h installed/x64-linux/include/
-cc -c payload/zlib.c -Ipayload -o installed/x64-linux/lib/zlib.o 2>/dev/null
-ar rcs installed/x64-linux/lib/libz.a installed/x64-linux/lib/zlib.o
-rm -f installed/x64-linux/lib/zlib.o
+if [ -n "$EXE" ]; then
+    echo "  skip (vcpkg auto-discovery stub needs a POSIX shell)"
+    echo
+else
+VTRIP=x64-linux
+
+mkdir -p "installed/$VTRIP/include" "installed/$VTRIP/lib" "installed/$VTRIP/bin"
+cp payload/zlib.h "installed/$VTRIP/include/"
+cc -c payload/zlib.c -Ipayload -o "installed/$VTRIP/lib/zlib.o" 2>/dev/null
+ar rcs "installed/$VTRIP/lib/libz.a" "installed/$VTRIP/lib/zlib.o"
+rm -f "installed/$VTRIP/lib/zlib.o"
 
 mkdir -p fakebin
 printf '#!/bin/sh\necho vcpkg\n' > fakebin/vcpkg
@@ -1079,6 +1085,7 @@ grep -q -- "-lz" .heddle/app.graph && ok "vcpkg libs linked" || bad "vcpkg libs 
 rm -rf out .heddle auto.log
 cd "$HERE/vcpkg"
 rm -rf installed fakebin proj/.heddle proj/out proj/heddle.lock
+fi
 echo
 
 echo "pkgconfig:"
