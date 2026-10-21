@@ -2,15 +2,15 @@
 
 构建工具。读 `heddle.star` 或 `heddle.toml`，生成依赖图，增量执行。
 
-引擎是 loom（`src/core`），负责 DAG 调度、内容哈希增量、头文件扫描和 CAS 缓存。
+引擎是 loom（`core/`），负责 DAG 调度、内容哈希增量、头文件扫描和 CAS 缓存。
 
 ## 构建
 
 ```sh
-xmake
+cargo build --release
 ```
 
-产出 `build/linux/x86_64/release/heddle` 和同目录的 `loom`。
+产出 `target/release/heddle` 和同目录的 `loom`。零第三方依赖，只要 rustc。
 
 ## 用法
 
@@ -29,7 +29,7 @@ heddle toolchains     # 列出探测到的工具链
 heddle tool install   # 恢复工具链 + 依赖，写/修 heddle.lock
 heddle tool plan      # 只打印包解析计划
 heddle env verify     # 校验环境与锁文件一致
-heddle run TARGET     # 构建后运行
+heddle run TARGET     # 构建后运行（程序参数写在 -- 之后）
 heddle test [TARGET]  # 构建并运行声明的测试
 heddle watch [TARGET] # 盯着源文件，变了就重建
 heddle fmt [TARGET]   # 用 clang-format 格式化源码
@@ -429,6 +429,27 @@ heddle test
 heddle: 1 passed, 1 failed
 ```
 
+## 运行
+
+```sh
+heddle run app                    # 构建后运行
+heddle run app -- -v input.txt    # -- 之后的参数原样交给程序
+```
+
+`--` 之后的参数不再被 heddle 解析，直接传给程序。退出码原样返回，
+被信号杀死时返回 `128 + 信号号`：
+
+```
+$ heddle run app -- --model x.gguf
+loading model...
+rc=0
+```
+
+stdin/stdout/stderr 直接连到当前终端（不走日志文件），所以交互式程序
+和管道都能用。包管理注入的环境（`PATH`、`CFLAGS`、`LDFLAGS` 等）会一并传给程序。
+
+只有 `type = "exe"` 的 target 能运行，跑静态库会直接报错。
+
 ## 监视
 
 改完就编，不用手动重跑：
@@ -608,17 +629,15 @@ bash tests/run.sh
 ## 源码
 
 ```
-xmake.lua                heddle 和 loom 两个 target
-include/heddle/          heddle 头文件
-include/core/            loom 头文件
-src/heddle/              heddle 主体（cmake_api.c = CMake File API 导入）
-src/core/                loom 引擎
+Cargo.toml               workspace
+core/                    loom 引擎（DAG 调度、增量、CAS）
+heddle/                  heddle 主体（emit / link / toolchain / star / pkg / install / migrate）
+loom/                    loom 二进制
 tests/                   测试工程和脚本
 docs/                    文档
-build.txt                loom 自身的构建图，用于自举
 ```
 
 ## 文档
 
-- [语言插件](docs/language-plugins.md)：内置语言、声明新语言、占位符、C 接口
+- [语言插件](docs/language-plugins.md)：内置语言、声明新语言、占位符、接口
 - [工具链与依赖](docs/packages.md)：工具链与依赖管理、交叉 target 推导、锁文件、离线缓存、环境校验

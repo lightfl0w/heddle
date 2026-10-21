@@ -10,22 +10,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: xmake-io/github-action-setup-xmake@v1
+      - uses: dtolnay/rust-toolchain@stable
       - uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '>=3.28'
       - run: cmake --version
       - run: sudo apt-get update && sudo apt-get install -y nasm
-      - run: xmake
+      - run: cargo build --release
       - run: bash tests/run.sh
 
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - run: brew install xmake
-      - run: xmake --version
-      - run: xmake
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release
+      - run: bash tests/run.sh
 
   windows:
     runs-on: windows-latest
@@ -34,7 +34,6 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
-      - uses: xmake-io/github-action-setup-xmake@v1
       - uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
@@ -51,24 +50,21 @@ jobs:
       - uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '>=3.28'
-      - run: |
-          set -Eeuo pipefail
-          cmake --version
-      - run: |
-          xmake --version || {
-            echo "xmake not on PATH; PATH is:"
-            echo "$PATH"
-            exit 1
-          }
-      - run: xmake
+      - name: rust toolchain (gnu)
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu
+          rustup default stable-x86_64-pc-windows-gnu
+          cargo --version
+      - run: cmake --version
+      - run: cargo build --release
       - run: bash tests/run.sh
       - name: diagnose
         if: failure()
         run: |
           echo "--- tools ---"
-          which gcc cc ar nasm xmake || true
+          which gcc cc ar nasm cargo || true
           gcc --version | head -1 || true
-          HEDDLE=$(ls "$GITHUB_WORKSPACE"/build/*/*/release/heddle* | head -1)
+          HEDDLE="$GITHUB_WORKSPACE/target/release/heddle.exe"
           echo "HEDDLE=$HEDDLE"
           echo "--- cold build verbose ---"
           cd tests/basic

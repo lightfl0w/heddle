@@ -7,10 +7,11 @@ ROOT=$(cd "$HERE/.." && pwd)
 
 find_heddle() {
   local c
-  for c in "$ROOT"/build/*/*/release/heddle "$ROOT"/build/*/*/release/heddle.exe; do
+  for c in "$ROOT"/target/release/heddle "$ROOT"/target/release/heddle.exe \
+           "$ROOT"/target/debug/heddle "$ROOT"/target/debug/heddle.exe; do
     [ -x "$c" ] && { printf '%s' "$c"; return; }
   done
-  printf '%s' "$ROOT/build/linux/x86_64/release/heddle"
+  printf '%s' "$ROOT/target/release/heddle"
 }
 
 HEDDLE=${HEDDLE:-$(find_heddle)}
@@ -53,7 +54,7 @@ run_show() {
 }
 
 if [ ! -x "$HEDDLE" ]; then
-    echo "heddle not found at $HEDDLE; run 'xmake' first or set HEDDLE=" >&2
+    echo "heddle not found at $HEDDLE; run 'cargo build --release' first or set HEDDLE=" >&2
     exit 2
 fi
 
@@ -1092,6 +1093,72 @@ rm -f compile_commands.json
 cd "$HERE/basic"
 rm -f compile_commands.json
 rm -rf out .heddle
+echo
+
+echo "run:"
+WORK=$(mktemp -d)
+cd "$WORK"
+mkdir -p src
+cat > heddle.toml <<'RM'
+[build]
+dir = "out"
+
+[toolchain.host]
+cc = "cc"
+
+[target.app]
+type = "exe"
+src = ["src/main.c"]
+inc = ["src"]
+
+[target.mylib]
+type = "staticlib"
+src = ["src/lib.c"]
+inc = ["src"]
+RM
+cat > src/main.c <<'RC'
+#include <stdio.h>
+int main(int argc, char **argv) {
+    for (int i = 0; i < argc; i++) printf("arg[%d]=<%s>\n", i, argv[i]);
+    return argc > 1 ? 7 : 0;
+}
+RC
+cat > src/lib.c <<'RC'
+int libfn(void) { return 1; }
+RC
+
+out=$($HEDDLE run app 2>&1)
+check_rc "run builds and runs" $? 0
+expect_err "run passes argv0" "$out" "arg[0]=<out/app>"
+
+out=$($HEDDLE run app -- alpha beta 2>&1)
+check_rc "run forwards args" $? 7
+expect_err "run arg 1" "$out" "arg[1]=<alpha>"
+expect_err "run arg 2" "$out" "arg[2]=<beta>"
+
+$HEDDLE run app -- a b >/dev/null 2>&1
+check_eq "run propagates exit code" "$?" "7"
+
+out=$($HEDDLE run app -x 2>&1)
+check_rc "run rejects bare option" $? 2
+expect_err "run suggests --" "$out" "after '--'"
+
+out=$($HEDDLE run mylib 2>&1)
+check_rc "run rejects staticlib" $? 1
+expect_err "run staticlib message" "$out" "only executables"
+
+out=$($HEDDLE run nosuch 2>&1)
+check_rc "run rejects unknown target" $? 1
+expect_err "run unknown target message" "$out" "unknown target"
+
+mkdir -p "sp ace/src"
+cp heddle.toml "sp ace/"
+cp src/main.c src/lib.c "sp ace/src/"
+out=$(cd "sp ace" && $HEDDLE run app -- "b c" 2>&1)
+check_rc "run handles spaces in path" $? 7
+expect_err "run keeps arg with space" "$out" "arg[1]=<b c>"
+
+rm -rf "$WORK"
 echo
 
 echo "test:"

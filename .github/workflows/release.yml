@@ -44,9 +44,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - if: runner.os == 'Linux'
-        uses: xmake-io/github-action-setup-xmake@v1
-
       - if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
@@ -61,7 +58,13 @@ jobs:
             mingw-w64-x86_64-nasm
 
       - if: runner.os == 'Windows'
-        uses: xmake-io/github-action-setup-xmake@v1
+        shell: msys2 {0}
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu
+          rustup default stable-x86_64-pc-windows-gnu
+
+      - if: runner.os == 'Linux'
+        uses: dtolnay/rust-toolchain@stable
 
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y nasm
@@ -70,19 +73,12 @@ jobs:
         with:
           cmake-version: '>=3.28'
 
-      - if: runner.os == 'Linux'
-        run: cmake --version
-
-      - if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: cmake --version
-
       - name: build & test (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -Eeuo pipefail
-          xmake
+          cargo build --release
           bash tests/run.sh
 
       - name: build & test (Windows)
@@ -90,7 +86,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -Eeuo pipefail
-          xmake
+          cargo build --release
           bash tests/run.sh
 
   build:
@@ -108,11 +104,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - if: runner.os == 'Linux'
-        uses: xmake-io/github-action-setup-xmake@v1
-
-      - if: runner.os == 'macOS'
-        run: brew install xmake
+      - if: runner.os != 'Windows'
+        uses: dtolnay/rust-toolchain@stable
 
       - if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
@@ -130,7 +123,10 @@ jobs:
             mingw-w64-x86_64-nasm
 
       - if: runner.os == 'Windows'
-        uses: xmake-io/github-action-setup-xmake@v1
+        shell: msys2 {0}
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu
+          rustup default stable-x86_64-pc-windows-gnu
 
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zip unzip
@@ -146,7 +142,7 @@ jobs:
           DIST: dist
         run: |
           set -Eeuo pipefail
-          xmake
+          cargo build --release
           BUILD_DATE="${{ needs.metadata.outputs.date }}" ./scripts/release/package.sh
 
       - name: build (Windows)
@@ -160,7 +156,7 @@ jobs:
           DIST: dist
         run: |
           set -Eeuo pipefail
-          xmake
+          cargo build --release
           BUILD_DATE="${{ needs.metadata.outputs.date }}" ./scripts/release/package.sh
 
       - name: verify (unix)

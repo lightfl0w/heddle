@@ -92,29 +92,12 @@ out = "out/fw.bin"
 
 `format` 通过 `{format}` 传给编译器；语言声明 `fmt = true` 时还会自动加 `-f <format>`。
 
-## C 接口
+## 接口
 
-`include/heddle/lang.h`：
+语言表是进程内的一张表（`heddle/src/lang.rs`），对外只有 `heddle.toml` 里的 `[lang.NAME]` 这一条路：
+`load_toml` 读配置，调用 `lang::add(ext, cmd, args, out, cflags, fmt)` 逐条登记。
 
-```c
-int lang_add(const char *ext, const char *cmd,
-             const char *const *args, int nargs,
-             const char *outext, int cflags, int fmt);
+按扩展名查表用 `lang::for_path`，找不到返回 `None`。先注册先匹配，内置的排在前面，
+所以声明同名扩展名不会覆盖内置语言——内置的 C/C++/汇编永远先命中。
 
-int lang_add_ext(LANG *l, const char *ext);
-const LANG *lang_for(const char *path);
-```
-
-`lang_add` 注册语言，`outext` 是对象后缀，`cflags` 和 `fmt` 是两个开关。
-`lang_add_ext` 给已注册的语言再加一个扩展名。
-
-```c
-static const char *const args[] = { "-c", "{src}", "{out}" };
-
-lang_add("mylang", "mycompiler", args, 3, ".o", 0, 0);
-```
-
-`lang_for` 按扩展名查，找不到返回 `NULL`。先注册先匹配，内置的排在前面；
-要覆盖内置语言，得在 `lang_init_builtin()` 之前注册。
-
-上限 32 门语言，每门 16 个 `args`。
+上限 32 门语言。

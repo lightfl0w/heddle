@@ -15,7 +15,7 @@ mkdir -p "$stage/bin"
 find_bin() {
     local stem=$1
     local hit
-    for hit in build/*/*/release/"$stem" build/*/*/release/"$stem".exe; do
+    for hit in target/release/"$stem" target/release/"$stem".exe; do
         [ -f "$hit" ] && { printf '%s' "$hit"; return 0; }
     done
     return 1
