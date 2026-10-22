@@ -1,0 +1,6 @@
+*.sh text eol=lf
+tests/run.sh text eol=lf
+tests/linkconv/bin/* text eol=lf
+tests/star_platform/bin/* text eol=lf
+tests/pkg/registry/toolchain/*/*/bin/* text eol=lf
+bench/*.sh text eol=lf

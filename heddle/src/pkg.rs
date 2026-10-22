@@ -961,17 +961,13 @@ fn chmod_bin(dir: &str) {
 fn which_prog(prog: &str) -> Option<String> {
     let path = std::env::var("PATH").ok()?;
 
-    let sep = if cfg!(windows) { ';' } else { ':' };
     let exts: &[&str] = if cfg!(windows) {
         &[".exe", ".bat", ".cmd"]
     } else {
         &[""]
     };
 
-    for dir in path.split(sep) {
-        if dir.is_empty() {
-            continue;
-        }
+    for dir in sys::path_dirs(&path) {
         for e in exts {
             let c = format!("{}/{}{}", dir, prog, e);
             if let Some(st) = sys::stat(&c) {

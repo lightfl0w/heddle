@@ -1,4 +1,5 @@
 use crate::model::Toolchain;
+use crate::sys;
 use crate::toml::Toml;
 use loom_core::proc;
 
@@ -232,11 +233,7 @@ fn on_path(prog: &str) -> bool {
         Ok(v) => v,
         Err(_) => return false,
     };
-    let sep = if cfg!(windows) { ';' } else { ':' };
-    for dir in path.split(sep) {
-        if dir.is_empty() {
-            continue;
-        }
+    for dir in sys::path_dirs(&path) {
         if exec_try(dir, prog) {
             return true;
         }
@@ -864,10 +861,7 @@ pub fn tool_ok(_tc: &Toolchain, tool: &str) -> bool {
         Ok(v) => v,
         Err(_) => return false,
     };
-    for d in path.split(|c| c == ':' || c == ';') {
-        if d.is_empty() {
-            continue;
-        }
+    for d in sys::path_dirs(&path) {
         if exec_try(d, tool) {
             return true;
         }

@@ -79,8 +79,24 @@ pub fn run_inherit(
 }
 
 pub fn shell(cmd_str: &str, cwd: Option<&str>, log_path: &str) -> Option<ProcResult> {
-    let argv: Vec<String> = vec!["sh".to_string(), "-c".to_string(), cmd_str.to_string()];
+    let argv: Vec<String> = shell_argv(cmd_str);
     run(&argv, cwd, log_path, &[])
+}
+
+#[cfg(windows)]
+fn shell_argv(cmd_str: &str) -> Vec<String> {
+    vec![
+        "cmd.exe".to_string(),
+        "/d".to_string(),
+        "/s".to_string(),
+        "/c".to_string(),
+        cmd_str.to_string(),
+    ]
+}
+
+#[cfg(not(windows))]
+fn shell_argv(cmd_str: &str) -> Vec<String> {
+    vec!["sh".to_string(), "-c".to_string(), cmd_str.to_string()]
 }
 
 #[allow(dead_code)]

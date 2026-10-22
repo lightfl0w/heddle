@@ -65,6 +65,18 @@ pub fn sleep_ms(ms: u64) {
     std::thread::sleep(Duration::from_millis(ms));
 }
 
+pub fn path_sep() -> char {
+    if cfg!(windows) {
+        ';'
+    } else {
+        ':'
+    }
+}
+
+pub fn path_dirs(path: &str) -> impl Iterator<Item = &str> {
+    path.split(path_sep()).filter(|d| !d.is_empty())
+}
+
 pub fn read_to_string(path: &str) -> Option<String> {
     std::fs::read(path).ok().map(|b| String::from_utf8_lossy(&b).into_owned())
 }
@@ -102,5 +114,47 @@ pub fn base_name(path: &str) -> &str {
     match path.rfind('/') {
         Some(i) => &path[i + 1..],
         None => path,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_dirs_splits_on_native_sep_only() {
+        if cfg!(windows) {
+            let got: Vec<&str> = path_dirs("C:\\mingw64\\bin;D:\\a\\tools").collect();
+            assert_eq!(got, vec!["C:\\mingw64\\bin", "D:\\a\\tools"]);
+        } else {
+            let got: Vec<&str> = path_dirs("/usr/bin:/bin").collect();
+            assert_eq!(got, vec!["/usr/bin", "/bin"]);
+        }
+    }
+
+    #[test]
+    fn path_dirs_keeps_drive_colon_intact() {
+        if cfg!(windows) {
+            let got: Vec<&str> = path_dirs("C:\\msys64\\mingw64\\bin").collect();
+            assert_eq!(got, vec!["C:\\msys64\\mingw64\\bin"]);
+        }
+    }
+
+    #[test]
+    fn path_dirs_drops_empty_entries() {
+        let got: Vec<&str> = path_dirs(if cfg!(windows) {
+            "C:\\a;;D:\\b"
+        } else {
+            "/a::/b"
+        })
+        .collect();
+        assert_eq!(got.len(), 2);
+    }
+
+    #[test]
+    fn join_and_dir_of_roundtrip() {
+        assert_eq!(join("out", "app"), "out/app");
+        assert_eq!(dir_of("out/app.o"), "out");
+        assert_eq!(base_name("out/app.o"), "app.o");
     }
 }

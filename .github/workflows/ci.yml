@@ -8,6 +8,7 @@ on:
 jobs:
   linux:
     runs-on: ubuntu-latest
+    name: linux
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -17,18 +18,54 @@ jobs:
       - run: cmake --version
       - run: sudo apt-get update && sudo apt-get install -y nasm
       - run: cargo build --release
-      - run: bash tests/run.sh
+      - run: cargo test --release
+      - name: test
+        run: |
+          set -o pipefail
+          bash tests/run.sh 2>&1 | tee tests-output.log
+      - name: show failures
+        if: failure()
+        run: |
+          grep -n "FAIL" tests-output.log || echo "(none)"
+          tail -60 tests-output.log
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output-linux
+          path: tests-output.log
+          retention-days: 7
+
+  cross-check:
+    runs-on: ubuntu-latest
+    name: cross-check (windows target)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - run: cargo check --release --target x86_64-pc-windows-gnu
 
   macos:
     runs-on: macos-latest
+    name: macos
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --release
-      - run: bash tests/run.sh
+      - name: test
+        run: |
+          set -o pipefail
+          bash tests/run.sh 2>&1 | tee tests-output.log
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output-macos
+          path: tests-output.log
+          retention-days: 7
 
   windows:
     runs-on: windows-latest
+    name: windows
     defaults:
       run:
         shell: msys2 {0}
@@ -57,7 +94,24 @@ jobs:
           cargo --version
       - run: cmake --version
       - run: cargo build --release
-      - run: bash tests/run.sh
+      - run: cargo test --release
+      - name: test
+        run: |
+          set -o pipefail
+          bash tests/run.sh 2>&1 | tee tests-output.log
+      - name: show failures
+        if: failure()
+        run: |
+          echo "--- failing assertions ---"
+          grep -n "FAIL" tests-output.log || echo "(none)"
+          echo "--- tail 60 ---"
+          tail -60 tests-output.log
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output-windows
+          path: tests-output.log
+          retention-days: 7
       - name: diagnose
         if: failure()
         run: |

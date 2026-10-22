@@ -158,10 +158,7 @@ fn find_clang_format() -> Option<String> {
         } else {
             n.to_string()
         };
-        for d in env.split(|c| c == ':' || c == ';') {
-            if d.is_empty() {
-                continue;
-            }
+        for d in sys::path_dirs(&env) {
             let path = format!("{}/{}", d, probe);
             if path.len() >= 4096 {
                 continue;
