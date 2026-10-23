@@ -84,6 +84,7 @@ jobs:
             mingw-w64-x86_64-nasm
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-clang
       - uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '>=3.28'

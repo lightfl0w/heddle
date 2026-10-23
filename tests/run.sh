@@ -1129,7 +1129,7 @@ RC
 
 out=$($HEDDLE run app 2>&1)
 check_rc "run builds and runs" $? 0
-expect_err "run passes argv0" "$out" "arg[0]=<out/app>"
+expect_err "run passes argv0" "$out" "arg[0]=<out/app$EXE>"
 
 out=$($HEDDLE run app -- alpha beta 2>&1)
 check_rc "run forwards args" $? 7

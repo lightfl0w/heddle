@@ -150,22 +150,22 @@ fn find_clang_format() -> Option<String> {
     let env = std::env::var("PATH").unwrap_or_default();
     let second = format!("clang-format-{}", CLANG_VER);
     let names = ["clang-format", second.as_str()];
-    for (i, n) in names.iter().enumerate() {
-        let probe = if i == 0 {
-            n.to_string()
-        } else if cfg!(windows) {
-            format!("{}.exe", n)
+    for n in names.iter() {
+        let probes: Vec<String> = if cfg!(windows) {
+            vec![format!("{}.exe", n), (*n).to_string()]
         } else {
-            n.to_string()
+            vec![(*n).to_string()]
         };
-        for d in sys::path_dirs(&env) {
-            let path = format!("{}/{}", d, probe);
-            if path.len() >= 4096 {
-                continue;
-            }
-            if let Some(st) = sys::stat(&path) {
-                if !st.is_dir {
-                    return Some(path);
+        for probe in probes.iter() {
+            for d in sys::path_dirs(&env) {
+                let path = format!("{}/{}", d, probe);
+                if path.len() >= 4096 {
+                    continue;
+                }
+                if let Some(st) = sys::stat(&path) {
+                    if !st.is_dir {
+                        return Some(path);
+                    }
                 }
             }
         }
