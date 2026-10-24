@@ -1236,6 +1236,7 @@ impl Interp {
                 for i in 0..self.cfg.targets.len() {
                     if self.cfg.targets[i].name == name {
                         found = Some(i);
+                        break;
                     }
                 }
                 let i = match found {

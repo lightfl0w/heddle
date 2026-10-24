@@ -5,6 +5,21 @@ use crate::project;
 use crate::sys;
 use crate::toolchain;
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+static SELF_NAME: OnceLock<String> = OnceLock::new();
+
+pub fn set_self(argv0: &str) {
+    let v = if argv0.is_empty() { "heddle" } else { argv0 };
+    let _ = SELF_NAME.set(v.to_string());
+}
+
+fn self_name() -> String {
+    SELF_NAME
+        .get()
+        .cloned()
+        .unwrap_or_else(|| "heddle".to_string())
+}
 
 const CMD_MAX: usize = 8000;
 
@@ -41,24 +56,6 @@ impl Plan {
     fn step_dep(&mut self, id: usize, dep: usize) {
         if !self.steps[id].deps.contains(&dep) {
             self.steps[id].deps.push(dep);
-        }
-    }
-}
-
-static mut SELF_NAME: Option<String> = None;
-
-pub fn set_self(argv0: &str) {
-    let v = if argv0.is_empty() { "heddle" } else { argv0 };
-    unsafe {
-        SELF_NAME = Some(v.to_string());
-    }
-}
-
-fn self_name() -> String {
-    unsafe {
-        match &*std::ptr::addr_of!(SELF_NAME) {
-            Some(s) => s.clone(),
-            None => "heddle".to_string(),
         }
     }
 }
@@ -515,7 +512,9 @@ fn emit_objects(
                     ))
                 }
             };
-            let bin = artifact(p, t).ok_or_else(|| "out of memory".to_string())?;
+            let bin = artifact(p, t).ok_or_else(|| {
+                format!("target '{}': cannot determine artifact path", t.name)
+            })?;
             let cmd = build_cmd(
                 p,
                 t,

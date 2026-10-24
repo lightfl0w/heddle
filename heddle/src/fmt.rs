@@ -231,9 +231,9 @@ pub fn heddle_fmt(o: &HeddleOpts) -> i32 {
     let mut changed = 0i32;
 
     for f in &files {
-        let before = match sys::stat(f) {
-            Some(s) => s,
-            None => continue,
+        let before = match std::fs::read(f) {
+            Ok(b) => b,
+            Err(_) => continue,
         };
 
         if o.verbose {
@@ -252,11 +252,13 @@ pub fn heddle_fmt(o: &HeddleOpts) -> i32 {
             continue;
         }
 
-        if let Some(after) = sys::stat(f) {
-            if after.mtime_ns != before.mtime_ns {
-                changed += 1;
-                println!("  formatted {}", f);
-            }
+        let did_change = match std::fs::read(f) {
+            Ok(after) => after != before,
+            Err(_) => false,
+        };
+        if did_change {
+            changed += 1;
+            println!("  formatted {}", f);
         }
     }
 

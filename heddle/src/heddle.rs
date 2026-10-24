@@ -275,7 +275,10 @@ pub fn heddle_exec(o: &HeddleOpts) -> i32 {
     let bin = match artifact_path(&p, &t) {
         Some(b) => b,
         None => {
-            eprintln!("heddle: out of memory");
+            eprintln!(
+                "heddle: cannot determine artifact path for target '{}'",
+                t.name
+            );
             return 1;
         }
     };

@@ -195,10 +195,14 @@ fn pc_log_path() -> String {
 fn pc_query(pc: &str, mode: &str, ran: &mut bool) -> Option<String> {
     *ran = false;
 
-    let log = format!("{}/heddle-pkgconfig.log", pc_log_path());
-    let cmd = format!("pkg-config {} {}", mode, pc);
+    let log = format!(
+        "{}/heddle-pkgconfig-{}.log",
+        pc_log_path(),
+        std::process::id()
+    );
+    let argv = vec!["pkg-config".to_string(), mode.to_string(), pc.to_string()];
 
-    let r = match proc::shell(&cmd, None, &log) {
+    let r = match proc::run(&argv, None, &log, &[]) {
         Some(r) => r,
         None => return None,
     };
@@ -579,7 +583,7 @@ fn hash_tree_rec(dir: &str, base: &str, h0: u64) -> u64 {
 
 pub fn hash_tree(dir: &str) -> String {
     let h = hash_tree_rec(dir, "", HASH_FNV_OFFSET);
-    format!("sha256:{:016x}", h)
+    format!("fnv64:{:016x}", h)
 }
 
 fn copy_file(src: &str, dst: &str) -> bool {
@@ -629,7 +633,7 @@ fn remove_tree(path: &str) {
 }
 
 fn sh_log_path() -> String {
-    format!("{}/heddle-sh.log", pc_log_path())
+    format!("{}/heddle-sh-{}.log", pc_log_path(), std::process::id())
 }
 
 fn sh(cmd: &str) -> bool {

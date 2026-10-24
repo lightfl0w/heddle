@@ -45,6 +45,10 @@ fn scan_file(nd: &Node, path: &str, visited: &mut HashSet<String>, out: &mut Vec
         if !s.starts_with("include") {
             continue;
         }
+        match s[7..].chars().next() {
+            Some(c) if c.is_ascii_whitespace() || c == '"' || c == '<' || c == '\'' => {}
+            _ => continue,
+        }
         let s = s[7..].trim();
         let q = match s.chars().next() {
             Some(c) => c,

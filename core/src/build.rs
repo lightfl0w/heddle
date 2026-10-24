@@ -159,27 +159,41 @@ impl BuildEngine {
     }
 
     fn cache_restore(&mut self, dirty: &mut usize) {
-        for i in 0..self.db.n {
-            if self.active[i] == 0 {
-                continue;
+        let mut progress = true;
+        while progress {
+            progress = false;
+            for i in 0..self.db.n {
+                if self.active[i] == 0 {
+                    continue;
+                }
+                if i >= self.graph.nodes.len() {
+                    continue;
+                }
+                if self.graph.nodes[i].outs.is_empty() {
+                    continue;
+                }
+                if !self.deps_ready(i) {
+                    continue;
+                }
+                if !self.restore_one(i) {
+                    continue;
+                }
+                self.cached += 1;
+                *dirty -= 1;
+                progress = true;
             }
-            if i >= self.graph.nodes.len() {
-                continue;
-            }
-            if self.graph.nodes[i].outs.is_empty() {
-                continue;
-            }
-            if !self.deps_ready(i) {
-                continue;
-            }
+        }
+    }
+
+    fn restore_one(&mut self, i: usize) -> bool {
             let key = self.cache_key(i);
-            let ent = match self.ac.find(key) {
+            let idx = match self.ac.find(key) {
                 Some(e) => e,
-                None => continue,
+                None => return false,
             };
             let outs: Vec<AcOut> = self
                 .ac
-                .items[ent]
+                .items[idx]
                 .outs
                 .iter()
                 .map(|o| AcOut {
@@ -188,7 +202,7 @@ impl BuildEngine {
                 })
                 .collect();
             if !outs.iter().all(|o| self.cas.has(o.hash)) {
-                continue;
+                return false;
             }
             let targets = self.graph.nodes[i].outs.clone();
             let mut restored = true;
@@ -206,7 +220,7 @@ impl BuildEngine {
                 }
             }
             if !restored {
-                continue;
+                return false;
             }
             for (k, o) in outs.iter().enumerate() {
                 if let Some(t) = targets.get(k) {
@@ -217,9 +231,7 @@ impl BuildEngine {
             }
             incremental::record(&mut self.db, &self.graph, i);
             self.active[i] = 0;
-            self.cached += 1;
-            *dirty -= 1;
-        }
+            true
     }
 
     fn cache_store(&mut self) {

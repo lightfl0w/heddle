@@ -1,7 +1,7 @@
 use crate::hash::{hash_read_file, HashDb};
 use crate::sys;
 use std::collections::HashMap;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub struct Cas {
     pub root: String,
@@ -21,16 +21,10 @@ fn copy_file(from: &str, to: &str) -> bool {
     sys::write_bytes(to, &data)
 }
 
-fn shell_ok(cmd: &str) -> bool {
-    let mut c = if cfg!(windows) {
-        let mut c = Command::new("cmd");
-        c.arg("/d").arg("/s").arg("/c").arg(cmd);
-        c
-    } else {
-        let mut c = Command::new("sh");
-        c.arg("-c").arg(cmd);
-        c
-    };
+fn curl_ok(args: &[&str]) -> bool {
+    let mut c = Command::new("curl");
+    c.args(args);
+    c.stderr(Stdio::null());
     matches!(c.status(), Ok(s) if s.success())
 }
 
@@ -57,8 +51,7 @@ impl Cas {
         };
         if self.remote_http {
             let url = format!("{}/{}", remote, rel);
-            let cmd = format!("curl -fsS -o '{}' '{}' >/dev/null 2>&1", dest, url);
-            return shell_ok(&cmd);
+            return curl_ok(&["-fsS", "-o", dest, &url]);
         }
         copy_file(&format!("{}/{}", remote, rel), dest)
     }
@@ -70,8 +63,7 @@ impl Cas {
         };
         if self.remote_http {
             let url = format!("{}/{}", remote, rel);
-            let cmd = format!("curl -fsS -T '{}' '{}' >/dev/null 2>&1", src, url);
-            return shell_ok(&cmd);
+            return curl_ok(&["-fsS", "-T", src, &url]);
         }
         let dst = format!("{}/{}", remote, rel);
         if sys::stat(&dst).is_some() {
@@ -81,11 +73,18 @@ impl Cas {
     }
 
     pub fn has(&self, h: u64) -> bool {
+        let rel = obj_rel(h);
         let path = self.obj_path(h);
         if sys::stat(&path).is_some() {
             return true;
         }
-        self.remote_fetch(&obj_rel(h), &path)
+        if self.remote_http {
+            let url = format!("{}/{}", self.remote.as_deref().unwrap_or(""), rel);
+            if !curl_ok(&["-fsI", &url]) {
+                return false;
+            }
+        }
+        self.remote_fetch(&rel, &path)
     }
 
     pub fn put_file(&self, path: &str) -> u64 {
@@ -105,7 +104,9 @@ impl Cas {
         if sys::stat(&dst).is_some() {
             return true;
         }
-        copy_file(path, &dst);
+        if !copy_file(path, &dst) {
+            return false;
+        }
         self.remote_push(&obj_rel(h), &dst);
         true
     }

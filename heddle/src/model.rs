@@ -271,4 +271,3 @@ pub struct HeddleOpts {
     pub interval_ms: i64,
     pub run_args: Vec<String>,
 }
-

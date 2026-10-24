@@ -369,7 +369,11 @@ fn probe_tmpdir() -> String {
 }
 
 pub fn probe_triple(cc: &str) -> Result<String, String> {
-    let log = format!("{}/heddle-triple.log", probe_tmpdir());
+    let log = format!(
+        "{}/heddle-triple-{}.log",
+        probe_tmpdir(),
+        std::process::id()
+    );
     let argv = vec![cc.to_string(), "-dumpmachine".to_string()];
     let fail = || format!("cannot determine target triple of '{}'", cc);
     let r = match proc::run(&argv, None, &log, &[]) {

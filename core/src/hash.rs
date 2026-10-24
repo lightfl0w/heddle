@@ -55,7 +55,7 @@ impl HashDb {
             None => return false,
         };
         for line in text.lines() {
-            let mut t = line.split_whitespace();
+            let mut t = line.splitn(5, char::is_whitespace);
             let tag = match t.next() {
                 Some(x) => x,
                 None => continue,
