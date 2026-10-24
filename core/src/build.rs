@@ -34,6 +34,9 @@ pub struct BuildEngine {
     deps_path: String,
     loaded: bool,
     tools: HashMap<String, u64>,
+    tool_cache: HashMap<String, (u64, i64, i64)>,
+    tool_cache_path: String,
+    tool_cache_dirty: bool,
 }
 
 impl Drop for BuildEngine {
@@ -54,6 +57,7 @@ impl BuildEngine {
         let state_path = format!("{}/loom.db", o.logdir);
         let hash_path = format!("{}/loom.hash", o.logdir);
         let deps_path = format!("{}/loom.deps", o.logdir);
+        let tool_cache_path = format!("{}/loom.tools", o.logdir);
         let cache_root = o.cache_dir.clone().unwrap_or_else(|| o.logdir.clone());
         let cas = Cas::open(&cache_root, o.remote.as_deref());
         let mut ac = ActionCache::new(&cache_root);
@@ -72,6 +76,9 @@ impl BuildEngine {
             deps_path,
             loaded: false,
             tools: HashMap::new(),
+            tool_cache: HashMap::new(),
+            tool_cache_path,
+            tool_cache_dirty: false,
         })
     }
 
@@ -83,15 +90,32 @@ impl BuildEngine {
         self.db.files.load(&self.hash_path);
         self.db.load(&self.state_path);
         deps::load(&mut self.graph, &self.deps_path);
+        self.tool_cache = load_tool_cache(&self.tool_cache_path);
         self.loaded = true;
     }
 
-    fn tool_resolve(&self, name: &str) -> u64 {
+    fn tool_lookup(&mut self, path: &str) -> Option<u64> {
+        let st = sys::stat(path)?;
+        if let Some(&(h, mtime, size)) = self.tool_cache.get(path) {
+            if h != 0 && mtime == st.mtime_ns && size == st.size {
+                return Some(h);
+            }
+        }
+        let h = hash_read_file(None, path);
+        if h != 0 {
+            self.tool_cache
+                .insert(path.to_string(), (h, st.mtime_ns, st.size));
+            self.tool_cache_dirty = true;
+        }
+        Some(h)
+    }
+
+    fn tool_resolve(&mut self, name: &str) -> u64 {
         if name.is_empty() {
             return 0;
         }
         if name.contains('/') {
-            return hash_read_file(None, name);
+            return self.tool_lookup(name).unwrap_or(0);
         }
         let path = match std::env::var_os("PATH") {
             Some(p) => p,
@@ -99,8 +123,10 @@ impl BuildEngine {
         };
         for dir in std::env::split_paths(&path) {
             let cand = dir.join(name);
-            let h = hash_read_file(None, &cand.to_string_lossy());
-            if h != 0 {
+            if sys::stat(&cand.to_string_lossy()).is_none() {
+                continue;
+            }
+            if let Some(h) = self.tool_lookup(&cand.to_string_lossy()) {
                 return h;
             }
         }
@@ -112,6 +138,10 @@ impl BuildEngine {
             return *h;
         }
         let h = self.tool_resolve(name);
+        if self.tool_cache_dirty {
+            save_tool_cache(&self.tool_cache_path, &self.tool_cache);
+            self.tool_cache_dirty = false;
+        }
         self.tools.insert(name.to_string(), h);
         h
     }
@@ -323,4 +353,38 @@ impl BuildEngine {
         }
         rc
     }
+}
+
+fn load_tool_cache(path: &str) -> HashMap<String, (u64, i64, i64)> {
+    let mut map = HashMap::new();
+    if let Some(text) = sys::read_to_string(path) {
+        for line in text.lines() {
+            let mut it = line.splitn(5, char::is_whitespace);
+            if it.next() != Some("T") {
+                continue;
+            }
+            let (h, mtime, size, file) = match (it.next(), it.next(), it.next(), it.next()) {
+                (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
+                _ => continue,
+            };
+            let hash = match u64::from_str_radix(h, 16) {
+                Ok(v) if v != 0 => v,
+                _ => continue,
+            };
+            let mtime: i64 = mtime.parse().unwrap_or(0);
+            let size: i64 = size.parse().unwrap_or(0);
+            map.insert(file.to_string(), (hash, mtime, size));
+        }
+    }
+    map
+}
+
+fn save_tool_cache(path: &str, cache: &HashMap<String, (u64, i64, i64)>) {
+    let mut out = String::new();
+    let mut entries: Vec<(&String, &(u64, i64, i64))> = cache.iter().collect();
+    entries.sort();
+    for (file, (h, mtime, size)) in entries {
+        out.push_str(&format!("T {:016x} {} {} {}\n", h, mtime, size, file));
+    }
+    sys::write_bytes(path, out.as_bytes());
 }
