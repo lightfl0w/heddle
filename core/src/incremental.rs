@@ -65,7 +65,7 @@ impl IncrDb {
             out.extend_from_slice(&(if st.valid { 1i32 } else { 0i32 }).to_le_bytes());
             out.extend_from_slice(&[0u8; 4]);
         }
-        sys::write_bytes(path, &out)
+        sys::write_bytes_if_changed(path, &out)
     }
 }
 

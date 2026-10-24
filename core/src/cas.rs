@@ -252,7 +252,7 @@ impl ActionCache {
             }
             out.push('\n');
         }
-        sys::write_bytes(&path, out.as_bytes())
+        sys::write_bytes_if_changed(&path, out.as_bytes())
     }
 }
 

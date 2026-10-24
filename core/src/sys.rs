@@ -92,6 +92,15 @@ pub fn write_bytes(path: &str, data: &[u8]) -> bool {
     std::fs::write(path, data).is_ok()
 }
 
+pub fn write_bytes_if_changed(path: &str, data: &[u8]) -> bool {
+    if let Some(old) = read_bytes(path) {
+        if old == data {
+            return true;
+        }
+    }
+    write_bytes(path, data)
+}
+
 pub fn join(dir: &str, name: &str) -> String {
     if dir.is_empty() || dir == "." {
         name.to_string()

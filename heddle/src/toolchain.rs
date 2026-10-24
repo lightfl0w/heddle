@@ -1,6 +1,7 @@
 use crate::model::Toolchain;
 use crate::sys;
 use crate::toml::Toml;
+use loom_core::hash::{hash_text, hash_u64, HASH_SEED};
 use loom_core::proc;
 
 struct Preset {
@@ -368,7 +369,51 @@ fn probe_tmpdir() -> String {
     }
 }
 
+fn resolve_tool(cc: &str) -> Option<String> {
+    if cc.contains('/') {
+        return Some(cc.to_string());
+    }
+    let path = std::env::var("PATH").ok()?;
+    for dir in sys::path_dirs(&path) {
+        let cand = format!("{}/{}", dir, cc);
+        if let Some(st) = sys::stat(&cand) {
+            if !st.is_dir {
+                return Some(cand);
+            }
+        }
+    }
+    None
+}
+
+fn probe_cache_path(cc: &str) -> Option<String> {
+    let cc = resolve_tool(cc)?;
+    let st = sys::stat(&cc)?;
+    let mtime = u64::from_le_bytes(st.mtime_ns.to_le_bytes());
+    let key = hash_u64(hash_text(HASH_SEED, &cc), mtime ^ (st.size as u64).rotate_left(32));
+    Some(format!("{}/heddle-probe-{:016x}.txt", probe_tmpdir(), key))
+}
+
+fn probe_cache_get(cc: &str) -> Option<String> {
+    let path = probe_cache_path(cc)?;
+    let text = sys::read_to_string(&path)?;
+    let t = text.trim().to_string();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t)
+    }
+}
+
+fn probe_cache_put(cc: &str, triple: &str) {
+    if let Some(path) = probe_cache_path(cc) {
+        let _ = std::fs::write(&path, triple);
+    }
+}
+
 pub fn probe_triple(cc: &str) -> Result<String, String> {
+    if let Some(t) = probe_cache_get(cc) {
+        return Ok(t);
+    }
     let log = format!(
         "{}/heddle-triple-{}.log",
         probe_tmpdir(),
@@ -400,7 +445,9 @@ pub fn probe_triple(cc: &str) -> Result<String, String> {
     if end == 0 {
         return Err(fail());
     }
-    Ok(String::from_utf8_lossy(&line[..end]).to_string())
+    let triple = String::from_utf8_lossy(&line[..end]).to_string();
+    probe_cache_put(cc, &triple);
+    Ok(triple)
 }
 
 pub fn triple_needs_msvc(triple: &str) -> bool {

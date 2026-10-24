@@ -89,7 +89,7 @@ impl HashDb {
                 e.value, e.mtime_ns, e.size, e.path
             ));
         }
-        sys::write_bytes(path, out.as_bytes())
+        sys::write_bytes_if_changed(path, out.as_bytes())
     }
 }
 
