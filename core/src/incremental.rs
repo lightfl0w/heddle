@@ -1,5 +1,5 @@
 use crate::graph::{Graph, Node};
-use crate::hash::{hash_read_file, hash_u64, HashDb, HASH_FNV_OFFSET};
+use crate::hash::{hash_read_file, hash_u64, HashDb, HASH_SEED};
 use crate::sys;
 
 pub const NODE_REC: usize = 32;
@@ -81,7 +81,7 @@ pub fn node_input_hash(nd: &Node, files: &mut HashDb) -> u64 {
 }
 
 pub fn node_output_hash(nd: &Node, files: &mut HashDb) -> u64 {
-    let mut h = HASH_FNV_OFFSET;
+    let mut h = HASH_SEED;
     for o in &nd.outs {
         h = hash_u64(h, hash_read_file(Some(files), o));
     }

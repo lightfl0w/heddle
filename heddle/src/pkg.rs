@@ -4,7 +4,7 @@ use std::fs;
 use crate::model::{PkgKind, PkgManifest, PkgSource, PkgSpec, TargetProfile, Toolchain};
 use crate::sys;
 use crate::toml::Toml;
-use loom_core::hash::{hash_read_file, hash_text, hash_u64, HASH_FNV_OFFSET};
+use loom_core::hash::{hash_read_file, hash_text, hash_u64, HASH_SEED};
 use loom_core::proc;
 
 const ARCH_TABLE: &[(&str, &str, &str, &str, &str)] = &[
@@ -567,8 +567,8 @@ fn hash_tree_rec(dir: &str, base: &str, h0: u64) -> u64 {
 }
 
 pub fn hash_tree(dir: &str) -> String {
-    let h = hash_tree_rec(dir, "", HASH_FNV_OFFSET);
-    format!("fnv64:{:016x}", h)
+    let h = hash_tree_rec(dir, "", HASH_SEED);
+    format!("xxh64:{:016x}", h)
 }
 
 fn copy_file(src: &str, dst: &str) -> bool {
@@ -1264,7 +1264,7 @@ pub fn prepend_path(m: &mut PkgManifest) {
 }
 
 pub fn variant_key(t: &TargetProfile, tc: &Toolchain) -> String {
-    let mut h = HASH_FNV_OFFSET;
+    let mut h = HASH_SEED;
 
     for p in [
         &t.arch,

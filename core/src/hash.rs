@@ -1,8 +1,10 @@
 use crate::sys;
 use std::collections::HashMap;
+use std::io::{BufReader, Read};
+use xxhash_rust::xxh64;
 
-pub const HASH_FNV_OFFSET: u64 = 1469598103934665603;
-pub const HASH_FNV_PRIME: u64 = 1099511628211;
+pub const HASH_SEED: u64 = 0;
+const HASH_CHUNK: usize = 256 * 1024;
 
 pub struct HashEntry {
     pub path: String,
@@ -92,18 +94,14 @@ impl HashDb {
 }
 
 pub fn hash_bytes(seed: u64, p: &[u8]) -> u64 {
-    let mut h = seed;
-    for b in p {
-        h ^= *b as u64;
-        h = h.wrapping_mul(HASH_FNV_PRIME);
-    }
-    h
+    xxh64::xxh64(p, seed)
 }
 
 pub fn hash_text(seed: u64, s: &str) -> u64 {
-    let mut h = hash_bytes(seed, s.as_bytes());
-    h = hash_bytes(h, &[0u8]);
-    h
+    let mut h = xxh64::Xxh64::new(seed);
+    h.update(s.as_bytes());
+    h.update(&[0u8]);
+    h.digest()
 }
 
 pub fn hash_u64(seed: u64, v: u64) -> u64 {
@@ -123,11 +121,21 @@ pub fn hash_read_file(mut db: Option<&mut HashDb>, path: &str) -> u64 {
             return e.value;
         }
     }
-    let data = match sys::read_bytes(path) {
-        Some(b) => b,
-        None => return 0,
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return 0,
     };
-    let h = hash_bytes(HASH_FNV_OFFSET, &data);
+    let mut h = xxh64::Xxh64::new(HASH_SEED);
+    let mut reader = BufReader::with_capacity(HASH_CHUNK, file);
+    let mut buf = vec![0u8; HASH_CHUNK];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => h.update(&buf[..n]),
+            Err(_) => return 0,
+        }
+    }
+    let h = h.digest();
     if let Some(d) = db.as_mut() {
         let i = match cached {
             Some(i) => i,

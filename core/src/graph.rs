@@ -1,4 +1,4 @@
-use crate::hash::{hash_text, HASH_FNV_OFFSET};
+use crate::hash::{hash_text, HASH_SEED};
 use std::collections::HashMap;
 
 #[derive(Default, Clone)]
@@ -146,7 +146,7 @@ fn list_add_words(v: &mut Vec<String>, words: &str, skip_outs: bool, nd: &Node) 
 }
 
 fn node_scan(nd: &mut Node) {
-    nd.cmd_hash = HASH_FNV_OFFSET;
+    nd.cmd_hash = HASH_SEED;
     for a in &nd.argv {
         nd.cmd_hash = hash_text(nd.cmd_hash, a);
     }

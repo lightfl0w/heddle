@@ -1,7 +1,7 @@
 use crate::cas::{AcOut, ActionCache, Cas};
 use crate::deps;
 use crate::graph::{self, Graph};
-use crate::hash::{hash_read_file, hash_u64, HashDb, HASH_FNV_OFFSET};
+use crate::hash::{hash_read_file, hash_u64, HashDb, HASH_SEED};
 use crate::incremental::{self, IncrDb};
 use crate::scheduler::{self, SchedOpts};
 use crate::sys;
@@ -161,7 +161,7 @@ impl BuildEngine {
     }
 
     fn deps_key(&mut self, i: usize) -> u64 {
-        let mut k = HASH_FNV_OFFSET;
+        let mut k = HASH_SEED;
         let dyns = self.graph.nodes[i].dyns.clone();
         for d in &dyns {
             k = hash_u64(k, hash_read_file(Some(&mut self.db.files), d));

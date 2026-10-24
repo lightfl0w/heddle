@@ -3,7 +3,7 @@ use crate::model::{InstallItem, InstallPlan, InstallRule, Project};
 use crate::star;
 use crate::sys;
 use crate::toml::Toml;
-use loom_core::hash::{hash_text, HASH_FNV_OFFSET};
+use loom_core::hash::{hash_text, HASH_SEED};
 
 fn join(a: &str, b: &str) -> String {
     if a.is_empty() || a == "." {
@@ -422,7 +422,7 @@ pub fn write_log(log: &str, pl: &InstallPlan) -> Result<(), String> {
 }
 
 pub fn log_path(root: &str, destdir: Option<&str>, prefix: &str) -> String {
-    let mut h = HASH_FNV_OFFSET;
+    let mut h = HASH_SEED;
     h = hash_text(h, destdir.unwrap_or(""));
     h = hash_text(h, prefix);
     format!("{}/.heddle/install/{:016x}.log", root, h)

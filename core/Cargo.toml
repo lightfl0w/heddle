@@ -6,3 +6,6 @@ edition = "2021"
 [lib]
 name = "loom_core"
 path = "src/lib.rs"
+
+[dependencies]
+xxhash-rust = { version = "0.8.19", features = ["xxh64"] }

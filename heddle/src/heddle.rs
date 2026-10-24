@@ -8,7 +8,7 @@ use crate::sys;
 use crate::toolchain;
 use crate::toml::Toml;
 use loom_core::build::{BuildEngine, BuildOpts};
-use loom_core::hash::{hash_text, hash_u64, HASH_FNV_OFFSET};
+use loom_core::hash::{hash_text, hash_u64, HASH_SEED};
 use loom_core::proc;
 
 fn load(o: &HeddleOpts) -> Result<Project, String> {
@@ -167,7 +167,7 @@ fn watch_walk(dir: &str, skip: &str, acc: &mut u64, n: &mut usize) {
         if !watch_file(&name) {
             continue;
         }
-        *acc = hash_u64(*acc, hash_text(HASH_FNV_OFFSET, &full));
+        *acc = hash_u64(*acc, hash_text(HASH_SEED, &full));
         *acc = hash_u64(*acc, st.mtime_ns as u64);
         *acc = hash_u64(*acc, st.size as u64);
         *n += 1;
@@ -175,7 +175,7 @@ fn watch_walk(dir: &str, skip: &str, acc: &mut u64, n: &mut usize) {
 }
 
 fn watch_scan(p: &Project) -> u64 {
-    let mut acc = HASH_FNV_OFFSET;
+    let mut acc = HASH_SEED;
     let mut n = 0usize;
     watch_walk(&p.root, &p.build_dir, &mut acc, &mut n);
     acc
