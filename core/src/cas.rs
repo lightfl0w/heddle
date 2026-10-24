@@ -14,6 +14,9 @@ fn obj_rel(h: u64) -> String {
 }
 
 fn copy_file(from: &str, to: &str) -> bool {
+    if let Some(parent) = std::path::Path::new(to).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     std::fs::copy(from, to).is_ok()
 }
 

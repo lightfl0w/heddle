@@ -243,9 +243,9 @@ else
     $HEDDLE tool install >/dev/null 2>&1
     check_rc "tool install" $? 0
     [ -f heddle.lock ] && ok "lockfile written" || bad "lockfile missing"
-    grep -q "^toolchain arm-none-eabi 12.2.0 sha256:" heddle.lock \
+    grep -q "^toolchain arm-none-eabi 12.2.0 fnv64:" heddle.lock \
         && ok "lock records toolchain hash" || bad "lock toolchain line"
-    grep -q "^library freertos 10.5.1 sha256:" heddle.lock \
+    grep -q "^library freertos 10.5.1 fnv64:" heddle.lock \
         && ok "lock records dependency hash" || bad "lock library line"
 
     $HEDDLE env verify >/dev/null 2>&1
@@ -765,7 +765,7 @@ check_rc "vcpkg import" $? 0
 [ -f .heddle/store/library/zlib/1.3.1/lib/libz.a ] \
     && ok "imported lib" || bad "imported lib missing"
 [ -f heddle.lock ] && ok "import wrote lock" || bad "import lock missing"
-grep -q "^library zlib 1.3.1 sha256:" heddle.lock \
+grep -q "^library zlib 1.3.1 fnv64:" heddle.lock \
     && ok "lock records vcpkg package" || bad "lock line wrong"
 
 $HEDDLE env verify >/dev/null 2>&1

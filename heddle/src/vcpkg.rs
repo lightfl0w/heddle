@@ -317,7 +317,7 @@ fn cmd_import(args: &[String]) -> i32 {
         p.name,
         port_version(&p)
     );
-    println!("heddle: sha256 {}", hash);
+    println!("heddle: hash   {}", hash);
 
     let mut lock = lock_opt;
     if lock.is_none() && sys::stat("heddle.toml").is_some() {
