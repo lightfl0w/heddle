@@ -216,20 +216,5 @@ impl Toml {
 }
 
 pub fn parse_atoi(s: &str) -> i64 {
-    let t = s.trim_start();
-    let b = t.as_bytes();
-    let mut i = 0usize;
-    let mut sign = 1i64;
-    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
-        if b[i] == b'-' {
-            sign = -1;
-        }
-        i += 1;
-    }
-    let mut v: i64 = 0;
-    while i < b.len() && b[i].is_ascii_digit() {
-        v = v.wrapping_mul(10).wrapping_add((b[i] - b'0') as i64);
-        i += 1;
-    }
-    v * sign
+    sys::atoi(s)
 }

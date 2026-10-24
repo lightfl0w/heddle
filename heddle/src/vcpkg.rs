@@ -10,20 +10,9 @@ struct Port {
     deps: Vec<String>,
 }
 
-fn join(a: &str, b: &str) -> String {
-    if a.is_empty() || a == "." {
-        return b.to_string();
-    }
-    format!("{}/{}", a, b)
-}
-
-fn exists(p: &str) -> bool {
-    sys::stat(p).is_some()
-}
-
 fn port_load(dir: &str) -> Result<Port, String> {
-    let path = join(dir, "vcpkg.json");
-    if !exists(&path) {
+    let path = sys::path_join(dir, "vcpkg.json");
+    if !sys::exists(&path) {
         return Err(format!(
             "no vcpkg.json in {}",
             if dir.is_empty() { "." } else { dir }
@@ -104,7 +93,7 @@ fn stem(file: &str) -> Option<&str> {
     Some(&base[3..dot])
 }
 
-fn write_libs(libdir: &str, meta: &str) -> i32 {
+pub fn write_libs(libdir: &str, meta: &str) -> i32 {
     let rd = match std::fs::read_dir(libdir) {
         Ok(v) => v,
         Err(_) => return 0,
@@ -131,17 +120,24 @@ fn port_version(p: &Port) -> &str {
     }
 }
 
-fn import(p: &Port, installed: &str, trip: &str, store: &str) -> Result<String, String> {
-    let tree = join(installed, trip);
+pub fn import_tree(
+    installed: &str,
+    trip: &str,
+    store: &str,
+    name: &str,
+    version: &str,
+) -> Result<String, String> {
+    let tree = sys::path_join(installed, trip);
     if !sys::is_dir(&tree) {
         return Err(format!("no installed tree at {}", tree));
     }
-    let d3 = format!("{}/library/{}/{}", store, p.name, port_version(p));
+    let ver = if version.is_empty() { "0" } else { version };
+    let d3 = format!("{}/library/{}/{}", store, name, ver);
     sys::mkpath(&d3);
     let mut copied = 0;
     for item in PAYLOAD.iter() {
-        let src = join(&tree, item);
-        if sys::is_dir(&src) && pkg::copy_tree(&src, &join(&d3, item)) {
+        let src = sys::path_join(&tree, item);
+        if sys::is_dir(&src) && pkg::copy_tree(&src, &sys::path_join(&d3, item)) {
             copied += 1;
         }
     }
@@ -151,14 +147,14 @@ fn import(p: &Port, installed: &str, trip: &str, store: &str) -> Result<String, 
             trip
         ));
     }
-    let meta = join(&d3, ".heddle-pkg");
-    write_libs(&join(&d3, "lib"), &meta);
+    let meta = sys::path_join(&d3, ".heddle-pkg");
+    write_libs(&sys::path_join(&d3, "lib"), &meta);
     Ok(pkg::hash_tree(&d3))
 }
 
-fn is_registry(dir: &str) -> bool {
-    let p = join(dir, "ports");
-    let v = join(dir, "versions");
+pub fn is_registry(dir: &str) -> bool {
+    let p = sys::path_join(dir, "ports");
+    let v = sys::path_join(dir, "versions");
     sys::is_dir(&p) && sys::is_dir(&v)
 }
 
@@ -291,14 +287,14 @@ fn cmd_import(args: &[String]) -> i32 {
 
     let from = match from_opt {
         Some(f) => f,
-        None => join(&port, ".vcpkg"),
+        None => sys::path_join(&port, ".vcpkg"),
     };
     let store = match store_opt {
         Some(s) => s,
         None => ".heddle/store".to_string(),
     };
 
-    let hash = match import(&p, &from, &trip, &store) {
+    let hash = match import_tree(&from, &trip, &store, &p.name, p.version.as_deref().unwrap_or("")) {
         Ok(h) => h,
         Err(e) => {
             eprintln!("heddle: {}", e);

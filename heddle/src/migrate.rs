@@ -34,10 +34,6 @@ pub struct MigSet {
     pub warn: Vec<String>,
 }
 
-fn is_space(c: u8) -> bool {
-    matches!(c, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
-}
-
 fn target_get(items: &[MigTarget], name: &str) -> Option<usize> {
     items.iter().position(|t| t.name == name)
 }
@@ -123,7 +119,7 @@ fn split_args_ex(s: &[u8], commas: bool) -> Vec<String> {
     let mut out = Vec::new();
     let mut p = 0usize;
     while p < s.len() {
-        while p < s.len() && (is_space(s[p]) || (commas && s[p] == b',')) {
+        while p < s.len() && (sys::is_space(s[p]) || (commas && s[p] == b',')) {
             p += 1;
         }
         if p >= s.len() {
@@ -138,9 +134,9 @@ fn split_args_ex(s: &[u8], commas: bool) -> Vec<String> {
             let stop = if q {
                 false
             } else if commas {
-                s[p] == b',' || is_space(s[p])
+                s[p] == b',' || sys::is_space(s[p])
             } else {
-                is_space(s[p])
+                sys::is_space(s[p])
             };
             if stop {
                 break;
@@ -327,7 +323,7 @@ fn migrate_load_cmake(s: &mut MigSet, path: &str) -> Result<(), String> {
     let n = b.len();
     let mut p = 0usize;
     while p < n {
-        while p < n && (is_space(b[p]) || b[p] == b')') {
+        while p < n && (sys::is_space(b[p]) || b[p] == b')') {
             p += 1;
         }
         if p >= n {
@@ -346,7 +342,7 @@ fn migrate_load_cmake(s: &mut MigSet, path: &str) -> Result<(), String> {
             p += 1;
             continue;
         }
-        while p < n && is_space(b[p]) {
+        while p < n && sys::is_space(b[p]) {
             p += 1;
         }
         if p >= n || b[p] != b'(' {
@@ -420,7 +416,7 @@ fn lua_strip(line: &mut [u8]) {
 
 fn lua_fn(line: &[u8]) -> Option<String> {
     let mut p = 0usize;
-    while p < line.len() && is_space(line[p]) {
+    while p < line.len() && sys::is_space(line[p]) {
         p += 1;
     }
     let b = p;
@@ -431,7 +427,7 @@ fn lua_fn(line: &[u8]) -> Option<String> {
     if n == 0 || n >= 64 {
         return None;
     }
-    while p < line.len() && is_space(line[p]) {
+    while p < line.len() && sys::is_space(line[p]) {
         p += 1;
     }
     if p >= line.len() || line[p] != b'(' {

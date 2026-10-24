@@ -38,21 +38,6 @@ const VCPKG_TRIPLETS: &[(&str, &str, &str)] = &[
     ("armv7em", "", "thumbv7em-none-eabihf"),
 ];
 
-fn path_join(a: &str, b: &str) -> String {
-    if a.is_empty() || a == "." {
-        return b.to_string();
-    }
-    format!("{}/{}", a, b)
-}
-
-fn path_join3(a: &str, b: &str, c: &str) -> String {
-    path_join(&path_join(a, b), c)
-}
-
-fn exists(p: &str) -> bool {
-    sys::stat(p).is_some()
-}
-
 fn dir_exists(p: &str) -> bool {
     sys::is_dir(p)
 }
@@ -382,7 +367,7 @@ fn load_section(t: &Toml, section: &str, kind: PkgKind, out: &mut Vec<PkgSpec>) 
 }
 
 fn has_recipe(dir: &str) -> bool {
-    exists(&path_join(dir, "package.toml"))
+    sys::exists(&sys::path_join(dir, "package.toml"))
 }
 
 fn resolve_store(m: &mut PkgManifest) {
@@ -390,8 +375,8 @@ fn resolve_store(m: &mut PkgManifest) {
     for pass in 0..2 {
         let list = if pass == 0 { &mut m.tools } else { &mut m.deps };
         for s in list.iter_mut() {
-            let p = path_join3(&store, kind_dir(s.kind), &s.name);
-            s.store_path = path_join(&p, &s.version);
+            let p = sys::path_join3(&store, kind_dir(s.kind), &s.name);
+            s.store_path = sys::path_join(&p, &s.version);
             s.recipe = has_recipe(&s.store_path);
         }
     }
@@ -443,8 +428,8 @@ fn manifest_load_star(mut m: PkgManifest, star_path: &str) -> Result<PkgManifest
     let cfg = crate::star::run(star_path)?;
 
     m.store = match &cfg.store {
-        Some(s) => path_join(&m.root, s),
-        None => path_join3(&m.root, ".heddle", "store"),
+        Some(s) => sys::path_join(&m.root, s),
+        None => sys::path_join3(&m.root, ".heddle", "store"),
     };
 
     let plat = cfg.platforms.first();
@@ -488,23 +473,23 @@ pub fn manifest_load(root: &str) -> Result<PkgManifest, String> {
     };
     let cfg = format!("{}/heddle.toml", m.root);
     let star = format!("{}/heddle.star", m.root);
-    m.lock_path = path_join(&m.root, "heddle.lock");
+    m.lock_path = sys::path_join(&m.root, "heddle.lock");
 
-    if exists(&star) {
+    if sys::exists(&star) {
         m.manifest = star.clone();
         return manifest_load_star(m, &star);
     }
 
     m.manifest = cfg.clone();
-    if !exists(&cfg) {
+    if !sys::exists(&cfg) {
         return Err(format!("cannot read {} or {}", cfg, star));
     }
 
     let t = Toml::parse(&cfg)?;
 
     m.store = match t.str_of("build", "store") {
-        Some(s) => path_join(&m.root, s),
-        None => path_join3(&m.root, ".heddle", "store"),
+        Some(s) => sys::path_join(&m.root, s),
+        None => sys::path_join3(&m.root, ".heddle", "store"),
     };
     m.target.arch = t.str_of("target", "arch").unwrap_or("").to_string();
     m.target.abi = t.str_of("target", "abi").unwrap_or("").to_string();
@@ -527,7 +512,7 @@ fn list_dir(path: &str) -> Option<Vec<String>> {
         if name == "." || name == ".." {
             continue;
         }
-        let full = path_join(path, &name);
+        let full = sys::path_join(path, &name);
         if sys::is_dir(&full) {
             out.push(format!("{}/", full));
         } else {
@@ -600,7 +585,7 @@ pub fn copy_tree(src: &str, dst: &str) -> bool {
 
     for it in &items {
         let rel = rel_of(src, it);
-        let d = path_join(dst, &rel);
+        let d = sys::path_join(dst, &rel);
         let ok = if is_dir_name(&rel) {
             copy_tree(it, &d)
         } else {
@@ -657,7 +642,7 @@ fn hoist(dst: &str, wrap: &str) {
     };
 
     for it in &items {
-        let d = path_join(dst, &rel_of(wrap, it));
+        let d = sys::path_join(dst, &rel_of(wrap, it));
         if fs::rename(it, &d).is_err() {
             copy_tree(it, &d);
         }
@@ -715,40 +700,7 @@ fn vcpkg_triplet_for(tp: &TargetProfile) -> Option<&'static str> {
 }
 
 fn vcpkg_is_registry(dir: &str) -> bool {
-    dir_exists(&path_join(dir, "ports")) && dir_exists(&path_join(dir, "versions"))
-}
-
-fn write_libs(libdir: &str, meta: &str) {
-    let items = match list_dir(libdir) {
-        Some(v) => v,
-        None => return,
-    };
-
-    let mut out = String::new();
-
-    for it in &items {
-        if is_dir_name(it) {
-            continue;
-        }
-        let base = match it.rfind('/') {
-            Some(i) => &it[i + 1..],
-            None => it.as_str(),
-        };
-        if !base.starts_with("lib") {
-            continue;
-        }
-        let dot = match base.rfind('.') {
-            Some(d) => d,
-            None => continue,
-        };
-        if dot <= 3 {
-            continue;
-        }
-        out.push_str(&base[3..dot]);
-        out.push('\n');
-    }
-
-    let _ = fs::write(meta, out.as_bytes());
+    crate::vcpkg::is_registry(dir)
 }
 
 fn vcpkg_import(
@@ -758,39 +710,7 @@ fn vcpkg_import(
     name: &str,
     version: &str,
 ) -> Result<String, String> {
-    let tree = path_join(installed, triplet);
-
-    if !dir_exists(&tree) {
-        return Err(format!("no installed tree at {}", tree));
-    }
-
-    let ver = if version.is_empty() { "0" } else { version };
-    let dst = path_join(&path_join3(store, "library", name), ver);
-
-    sys::mkpath(&dst);
-
-    let mut copied = 0;
-
-    for payload in ["include", "lib", "bin", "share"] {
-        let src = path_join(&tree, payload);
-        if dir_exists(&src) {
-            let sub = path_join(&dst, payload);
-            if copy_tree(&src, &sub) {
-                copied += 1;
-            }
-        }
-    }
-
-    if copied == 0 {
-        return Err(format!(
-            "installed tree {} has no include/lib/bin/share",
-            triplet
-        ));
-    }
-
-    write_libs(&path_join(&dst, "lib"), &path_join(&dst, ".heddle-pkg"));
-
-    Ok(hash_tree(&dst))
+    crate::vcpkg::import_tree(installed, triplet, store, name, version)
 }
 
 fn registry() -> Option<String> {
@@ -825,7 +745,7 @@ fn fetch_pkg(
 
     if let (Some(vroot), Some(trip)) = (vcpkg_root_dir, triplet) {
         if !vroot.is_empty() && s.kind == PkgKind::Library {
-            let inst = path_join(vroot, "installed");
+            let inst = sys::path_join(vroot, "installed");
             match vcpkg_import(&inst, trip, store, &s.name, &s.version) {
                 Ok(_) => return Ok(()),
                 Err(e) => keep = e,
@@ -869,7 +789,7 @@ fn fetch_pkg(
         };
     }
 
-    let dir = path_join(&reg, &rel);
+    let dir = sys::path_join(&reg, &rel);
     let targz = format!("{}.tar.gz", dir);
 
     let mut ok = false;
@@ -877,10 +797,10 @@ fn fetch_pkg(
 
     if dir_exists(&dir) {
         ok = copy_tree(&dir, dst);
-    } else if exists(&targz) {
+    } else if sys::exists(&targz) {
         ok = unpack(&targz, dst);
     } else if vcpkg_is_registry(&reg) {
-        let port = path_join3(&reg, "ports", &s.name);
+        let port = sys::path_join3(&reg, "ports", &s.name);
         if dir_exists(&port) {
             msg = format!(
                 "vcpkg port '{}' needs a built tree; run 'heddle vcpkg import' first",
@@ -947,7 +867,7 @@ fn lock_write(m: &PkgManifest) -> Result<(), String> {
 }
 
 fn chmod_bin(dir: &str) {
-    let bin = path_join(dir, "bin");
+    let bin = sys::path_join(dir, "bin");
     if !dir_exists(&bin) {
         return;
     }
@@ -1004,15 +924,15 @@ fn vcpkg_root() -> Option<String> {
     };
 
     for f in fixed {
-        if dir_exists(&path_join(f, "installed")) {
+        if dir_exists(&sys::path_join(f, "installed")) {
             return Some(f.to_string());
         }
     }
 
     if let Some(h) = &home {
         for rel in ["vcpkg", "src/vcpkg", ".vcpkg"] {
-            let cand = path_join(h, rel);
-            if dir_exists(&path_join(&cand, "installed")) {
+            let cand = sys::path_join(h, rel);
+            if dir_exists(&sys::path_join(&cand, "installed")) {
                 return Some(cand);
             }
         }
@@ -1023,7 +943,7 @@ fn vcpkg_root() -> Option<String> {
             let bindir = &exe[..slash];
             if let Some(up) = bindir.rfind('/') {
                 let root = &bindir[..up];
-                if dir_exists(&path_join(root, "installed")) {
+                if dir_exists(&sys::path_join(root, "installed")) {
                     return Some(root.to_string());
                 }
             }
@@ -1168,7 +1088,7 @@ pub fn install(m: &mut PkgManifest, offline: bool, verbose: bool) -> Result<(), 
 }
 
 pub fn verify(m: &mut PkgManifest, verbose: bool) -> Result<(), String> {
-    if !exists(&m.lock_path) {
+    if !sys::exists(&m.lock_path) {
         return Err(format!(
             "no lockfile at {}; run 'heddle tool install'",
             m.lock_path
@@ -1278,7 +1198,7 @@ fn tool_path(m: &PkgManifest) -> String {
     let mut s = String::new();
 
     for t in &m.tools {
-        let bin = path_join(&t.store_path, "bin");
+        let bin = sys::path_join(&t.store_path, "bin");
         if dir_exists(&bin) {
             if !s.is_empty() {
                 s.push(':');
@@ -1301,8 +1221,8 @@ pub fn env(m: &PkgManifest) -> Vec<String> {
     let mut cpath = String::new();
 
     for s in &m.deps {
-        let inc = path_join(&s.store_path, "include");
-        let lib = path_join(&s.store_path, "lib");
+        let inc = sys::path_join(&s.store_path, "include");
+        let lib = sys::path_join(&s.store_path, "lib");
 
         if dir_exists(&inc) {
             cflags.push_str(&format!(" -I{}", inc));

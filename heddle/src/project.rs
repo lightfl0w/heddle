@@ -25,10 +25,7 @@ fn get_want_target() -> Option<String> {
 }
 
 pub fn path(a: &str, b: &str) -> String {
-    if a.is_empty() || a == "." {
-        return b.to_string();
-    }
-    format!("{}/{}", a, b)
+    sys::path_join(a, b)
 }
 
 fn prefixed(dir: &str, rel: &str) -> String {

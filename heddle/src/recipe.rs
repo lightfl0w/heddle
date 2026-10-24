@@ -3,13 +3,6 @@ use crate::model::Recipe;
 use crate::sys;
 use crate::toml::Toml;
 
-fn join(a: &str, b: &str) -> String {
-    if a.is_empty() || a == "." {
-        return b.to_string();
-    }
-    format!("{}/{}", a, b)
-}
-
 fn exists(p: &str) -> bool {
     sys::stat(p).is_some()
 }
@@ -25,7 +18,7 @@ fn load_list(t: &Toml, sect: &str, key: &str) -> Vec<String> {
 }
 
 pub fn match_dir(dir: &str) -> bool {
-    exists(&join(dir, "package.toml"))
+    exists(&sys::path_join(dir, "package.toml"))
 }
 
 pub fn load(dir: &str) -> Result<Recipe, String> {
@@ -34,7 +27,7 @@ pub fn load(dir: &str) -> Result<Recipe, String> {
         ..Recipe::default()
     };
 
-    let cfg = join(dir, "package.toml");
+    let cfg = sys::path_join(dir, "package.toml");
 
     if !exists(&cfg) {
         return Err(format!("cannot read {}", cfg));
@@ -72,7 +65,7 @@ pub fn load(dir: &str) -> Result<Recipe, String> {
 
     for pat in r.build.patterns.clone() {
         for f in glob::glob_dir(&r.dir, &pat) {
-            r.build.files.push(join(&r.dir, &f));
+            r.build.files.push(sys::path_join(&r.dir, &f));
         }
     }
 

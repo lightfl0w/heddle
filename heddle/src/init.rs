@@ -43,17 +43,6 @@ const G_ARCHS: [&str; 11] = [
     "msp430",
 ];
 
-fn is_space(c: u8) -> bool {
-    c == b' ' || c == b'\t' || c == b'\n' || c == b'\r' || c == 0x0b || c == 0x0c
-}
-
-fn join(a: &str, b: &str) -> String {
-    if a.is_empty() || a == "." {
-        return b.to_string();
-    }
-    format!("{}/{}", a, b)
-}
-
 fn write_file(path: &str, text: &str, force: bool) -> i32 {
     if !force && sys::stat(path).is_some() {
         eprintln!("heddle: {} exists, skip (use --force to overwrite)", path);
@@ -68,29 +57,6 @@ fn write_file(path: &str, text: &str, force: bool) -> i32 {
     }
     println!("  create {}", path);
     0
-}
-
-fn atoi(s: &str) -> i64 {
-    let b = s.as_bytes();
-    let mut i = 0usize;
-    while i < b.len() && is_space(b[i]) {
-        i += 1;
-    }
-    let mut neg = false;
-    if i < b.len() && (b[i] == b'+' || b[i] == b'-') {
-        neg = b[i] == b'-';
-        i += 1;
-    }
-    let mut n: i64 = 0;
-    while i < b.len() && b[i].is_ascii_digit() {
-        n = n.saturating_mul(10).saturating_add((b[i] - b'0') as i64);
-        i += 1;
-    }
-    if neg {
-        -n
-    } else {
-        n
-    }
 }
 
 fn type_index(name: &str) -> Option<usize> {
@@ -128,7 +94,7 @@ fn choose_type() -> usize {
         Some(l) => l,
         None => return 0,
     };
-    let n = atoi(&line);
+    let n = sys::atoi(&line);
     if n >= 1 && n <= G_TYPES.len() as i64 {
         return (n - 1) as usize;
     }
@@ -151,7 +117,7 @@ fn choose_arch() -> &'static str {
         Some(l) => l,
         None => return G_ARCHS[0],
     };
-    let n = atoi(&line);
+    let n = sys::atoi(&line);
     if n >= 1 && n <= G_ARCHS.len() as i64 {
         return G_ARCHS[(n - 1) as usize];
     }
@@ -247,8 +213,8 @@ const LIB_C: &str = concat!(
 
 fn gen_exe(dir: &str, force: bool) -> i32 {
     let star = G_STAR.load(Ordering::Relaxed);
-    let a = join(dir, if star { "heddle.star" } else { "heddle.toml" });
-    let b = join(dir, "src/main.c");
+    let a = sys::path_join(dir, if star { "heddle.star" } else { "heddle.toml" });
+    let b = sys::path_join(dir, "src/main.c");
     let mut rc = 0;
     if write_file(&a, if star { EXE_STAR } else { EXE_TOML }, force) != 0 {
         rc = -1;
@@ -261,9 +227,9 @@ fn gen_exe(dir: &str, force: bool) -> i32 {
 
 fn gen_lib(dir: &str, force: bool) -> i32 {
     let star = G_STAR.load(Ordering::Relaxed);
-    let a = join(dir, if star { "heddle.star" } else { "heddle.toml" });
-    let b = join(dir, "include/mylib.h");
-    let c = join(dir, "src/mylib.c");
+    let a = sys::path_join(dir, if star { "heddle.star" } else { "heddle.toml" });
+    let b = sys::path_join(dir, "include/mylib.h");
+    let c = sys::path_join(dir, "src/mylib.c");
     let mut rc = 0;
     if write_file(&a, if star { LIB_STAR } else { LIB_TOML }, force) != 0 {
         rc = -1;
@@ -328,9 +294,9 @@ fn gen_embedded(dir: &str, arch: &str, force: bool) -> i32 {
         "    .bss  : { *(.bss*) *(COMMON) } > RAM\n",
         "}\n",
     );
-    let a = join(dir, "heddle.toml");
-    let b = join(dir, "src/main.c");
-    let c2 = join(dir, "firmware.ld");
+    let a = sys::path_join(dir, "heddle.toml");
+    let b = sys::path_join(dir, "src/main.c");
+    let c2 = sys::path_join(dir, "firmware.ld");
     let mut rc = 0;
     if write_file(&a, &toml, force) != 0 {
         rc = -1;
@@ -426,11 +392,11 @@ fn gen_baremetal(dir: &str, force: bool) -> i32 {
         "    .bss  : { *(.bss) }\n",
         "}\n",
     );
-    let a = join(dir, "heddle.toml");
-    let b = join(dir, "src/mbr.asm");
-    let c = join(dir, "src/boot.asm");
-    let d = join(dir, "src/kernel.c");
-    let e = join(dir, "kernel.ld");
+    let a = sys::path_join(dir, "heddle.toml");
+    let b = sys::path_join(dir, "src/mbr.asm");
+    let c = sys::path_join(dir, "src/boot.asm");
+    let d = sys::path_join(dir, "src/kernel.c");
+    let e = sys::path_join(dir, "kernel.ld");
     let mut rc = 0;
     if write_file(&a, toml, force) != 0 {
         rc = -1;

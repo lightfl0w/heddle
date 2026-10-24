@@ -1,3 +1,5 @@
+use crate::sys;
+
 struct Region {
     name: String,
     origin: String,
@@ -16,10 +18,6 @@ struct Scan<'a> {
     p: usize,
 }
 
-fn is_space(c: u8) -> bool {
-    c == b' ' || c == b'\t' || c == b'\n' || c == b'\r' || c == 0x0b || c == 0x0c
-}
-
 impl<'a> Scan<'a> {
     fn at_end(&self) -> bool {
         self.p >= self.b.len()
@@ -30,7 +28,7 @@ impl<'a> Scan<'a> {
     }
 
     fn skip_ws(&mut self) {
-        while self.p < self.b.len() && is_space(self.b[self.p]) {
+        while self.p < self.b.len() && sys::is_space(self.b[self.p]) {
             self.p += 1;
         }
     }
@@ -275,7 +273,7 @@ fn num(s: &str) -> u64 {
         return 0;
     }
     let mut i = 0usize;
-    while i < b.len() && is_space(b[i]) {
+    while i < b.len() && sys::is_space(b[i]) {
         i += 1;
     }
     let mut neg = false;
