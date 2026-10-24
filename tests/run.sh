@@ -612,7 +612,7 @@ check_rc "generated lib builds" $? 0
 
 $HEDDLE init exe star1 --star </dev/null >/dev/null 2>&1
 check_rc "init exe --star" $? 0
-[ -f star1/heddle.star ] && ok "star manifest created" || bad "no heddle.star"
+[ -f star1/heddle.rhai ] && ok "star manifest created" || bad "no heddle.rhai"
 [ ! -f star1/heddle.toml ] && ok "no toml when --star" || bad "toml written too"
 ( cd star1 && $HEDDLE app >/dev/null 2>&1 )
 check_rc "generated star builds" $? 0
@@ -812,15 +812,15 @@ $HEDDLE app >/dev/null 2>&1
 check_rc "migrated cmake builds" $? 0
 check_eq "migrated cmake runs" "$(./out/app$EXE)" "42"
 
-rm -f heddle.toml heddle.star
+rm -f heddle.toml heddle.rhai
 rm -rf out .heddle
 $HEDDLE migrate . --star >/dev/null 2>&1
 check_rc "migrate --star" $? 0
-grep -q "target(" heddle.star && ok "star output has target()" || bad "no target() in star"
+grep -q "target(" heddle.rhai && ok "star output has target()" || bad "no target() in star"
 $HEDDLE app >/dev/null 2>&1
 check_rc "migrated star builds" $? 0
 check_eq "migrated star runs" "$(./out/app$EXE)" "42"
-rm -f heddle.star
+rm -f heddle.rhai
 rm -rf out .heddle
 $HEDDLE migrate . >/dev/null 2>&1
 
@@ -899,36 +899,34 @@ grep -q "libmath.a" .heddle/app.graph \
 grep -q -- "-DLEVEL=3" .heddle/app.graph \
     && ok "target cflags applied" || bad "cflags missing"
 
-cp heddle.star heddle.star.good
+cp heddle.rhai heddle.rhai.good
 
-cat > heddle.star <<'EOF'
-build(dir = "out")
-target(name = "bad", type = "exe", src = ["src/nope.c"])
+cat > heddle.rhai <<'EOF'
+build(#{ dir: "out" });
+target(#{ name: "bad", type: "exe", src: ["src/nope.c"] });
 EOF
 out=$($HEDDLE check 2>&1)
 check_rc "missing source rejected" $? 1
 expect_err "missing source message" "$out" "missing source"
 
-cat > heddle.star <<'EOF'
-build(dir = "out")
-target(name = "t", type = &&&)
+cat > heddle.rhai <<'EOF'
+build(#{ dir: "out" });
+target(#{ name: "t", type: &&& });
 EOF
 out=$($HEDDLE check 2>&1)
 check_rc "parse error rejected" $? 1
-expect_err "parse error has line" "$out" "heddle.star:2"
+expect_err "parse error has line" "$out" "line 2"
 
-cat > heddle.star <<'EOF'
-build(dir = "out")
-i = 0
-while i < 3:
-    i = i + 1
+cat > heddle.rhai <<'EOF'
+build(#{ dir: "out" });
+nosuch_builtin(1);
 EOF
 out=$($HEDDLE check 2>&1)
-check_rc "while rejected" $? 1
-expect_err "while message" "$out" "not supported"
+check_rc "unknown function rejected" $? 1
+expect_err "unknown function message" "$out" "nosuch_builtin"
 
-cp heddle.star.good heddle.star
-rm -f heddle.star.good
+cp heddle.rhai.good heddle.rhai
+rm -f heddle.rhai.good
 rm -rf out .heddle
 
 cd "$HERE/star_full"
@@ -949,8 +947,8 @@ rm -rf out .heddle
 
 cd "$HERE/star_install"
 rm -rf out .heddle stage
-cp heddle.star heddle.star.orig
-sed "s|out/app\*|out/app$EXE|" heddle.star.orig > heddle.star
+cp heddle.rhai heddle.rhai.orig
+sed "s|out/app\*|out/app$EXE|" heddle.rhai.orig > heddle.rhai
 b=$($HEDDLE app 2>&1) || echo "$b"
 b=$($HEDDLE mylib 2>&1) || echo "$b"
 out=$($HEDDLE install --destdir=./stage --prefix=opt/x 2>&1)
@@ -960,7 +958,7 @@ check_rc "star install" $rc 0
 [ -f "stage/opt/x/bin/app$EXE" ]    && ok "star install bin" || bad "star install bin"
 [ -f stage/opt/x/lib/libmylib.a ]  && ok "star install lib" || bad "star install lib"
 [ -f stage/opt/x/include/mylib.h ] && ok "star install include" || bad "star install include"
-mv heddle.star.orig heddle.star
+mv heddle.rhai.orig heddle.rhai
 rm -rf out .heddle stage
 
 cd "$HERE/star_platform"
@@ -1008,7 +1006,7 @@ rm -rf out .heddle
 
 cd "$HERE/star"
 rm -rf out .heddle
-cp heddle.star heddle.star.good
+cp heddle.rhai heddle.rhai.good
 cat > heddle.toml <<'EOF'
 [build]
 dir = "out"
@@ -1026,8 +1024,8 @@ rm -f heddle.toml
 out=$($HEDDLE check 2>&1)
 check_rc "toml fallback checks" $? 0
 expect_err "toml fallback selected" "$out" "app"
-cp heddle.star.good heddle.star
-rm -f heddle.star.good
+cp heddle.rhai.good heddle.rhai
+rm -f heddle.rhai.good
 rm -rf out .heddle
 echo
 

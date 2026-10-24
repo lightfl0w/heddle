@@ -259,7 +259,7 @@ fn load_star(p: &Project, path: &str) -> Result<Vec<InstallRule>, String> {
 
 pub fn load(p: &Project) -> Result<Vec<InstallRule>, String> {
     let cfg = format!("{}/heddle.toml", p.root);
-    let star = format!("{}/heddle.star", p.root);
+    let star = format!("{}/heddle.rhai", p.root);
     if sys::stat(&star).is_some() {
         return load_star(p, &star);
     }

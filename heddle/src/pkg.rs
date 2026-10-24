@@ -472,7 +472,7 @@ pub fn manifest_load(root: &str) -> Result<PkgManifest, String> {
         ..PkgManifest::default()
     };
     let cfg = format!("{}/heddle.toml", m.root);
-    let star = format!("{}/heddle.star", m.root);
+    let star = format!("{}/heddle.rhai", m.root);
     m.lock_path = sys::path_join(&m.root, "heddle.lock");
 
     if sys::exists(&star) {

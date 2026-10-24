@@ -134,7 +134,7 @@ fn watch_file(name: &str) -> bool {
     if name.ends_with(".h") || name.ends_with(".hpp") || name.ends_with(".hh") {
         return true;
     }
-    if name.ends_with(".toml") || name.ends_with(".star") {
+    if name.ends_with(".toml") || name.ends_with(".rhai") {
         return true;
     }
     lang::for_path(name).is_some()

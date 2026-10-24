@@ -1,6 +1,6 @@
 # heddle
 
-构建工具。读 `heddle.star` 或 `heddle.toml`，生成依赖图，增量执行。
+构建工具。读 `heddle.rhai` 或 `heddle.toml`，生成依赖图，增量执行。
 
 引擎是 loom（`core/`），负责 DAG 调度、内容哈希增量、头文件扫描和 CAS 缓存。
 
@@ -70,7 +70,7 @@ heddle -C /path/to/proj app
 heddle init                 # 交互选择类型
 heddle init embedded fw     # 指定类型和目录
 heddle init lib --force     # 覆盖已存在的文件
-heddle init exe app --star  # 生成 heddle.star 而不是 heddle.toml
+heddle init exe app --star  # 生成 heddle.rhai 而不是 heddle.toml
 heddle init --list          # 列出类型
 ```
 
@@ -85,7 +85,7 @@ heddle init --list          # 列出类型
 `riscv32imac` `riscv64` `xtensa` `avr` `msp430`。生成的 `[target] arch`
 会自动推出编译器前缀和编译参数。
 
-`--star` 生成 `heddle.star`（`exe` 和 `lib`），不加就是 `heddle.toml`。
+`--star` 生成 `heddle.rhai`（`exe` 和 `lib`），不加就是 `heddle.toml`。
 默认不覆盖已有文件，`--force` 才覆盖。
 
 ## 工具链与依赖
@@ -118,70 +118,73 @@ heddle env verify     # 校验当前环境与锁一致
 
 ## 配置
 
-工程用 `heddle.star`（Starlark 子集）或 `heddle.toml`。两者都在时 `.star` 优先，
+工程用 `heddle.rhai`（Rhai 脚本）或 `heddle.toml`。两者都在时 `.rhai` 优先，
 `.toml` 作为回退。
 
-### heddle.star
+### heddle.rhai
 
-```python
-project(name = "firmware", build_dir = "out", default_toolchain = "arm-none-eabi")
+```js
+project(#{ name: "firmware", build_dir: "out", default_toolchain: "arm-none-eabi" });
 
-toolchain(name = "arm-none-eabi", family = "gcc",
-          cc = "arm-none-eabi-gcc", ar = "arm-none-eabi-ar")
+toolchain(#{ name: "arm-none-eabi", family: "gcc",
+            cc: "arm-none-eabi-gcc", ar: "arm-none-eabi-ar" });
 
-nucleo = platform(name = "nucleo_f4", arch = "armv7em", abi = "eabihf",
-                  float = "hard", toolchain = "arm-none-eabi")
-bluepill = platform(name = "bluepill_f1", arch = "armv7m", abi = "eabi",
-                    float = "soft", toolchain = "arm-none-eabi")
+let nucleo = platform(#{ name: "nucleo_f4", arch: "armv7em", abi: "eabihf",
+                        float: "hard", toolchain: "arm-none-eabi" });
+let bluepill = platform(#{ name: "bluepill_f1", arch: "armv7m", abi: "eabi",
+                          float: "soft", toolchain: "arm-none-eabi" });
 
-freertos = package(name = "freertos", version = "10.5.1")
+let freertos = pkg(#{ name: "freertos", version: "10.5.1" });
 
-def firmware(board, chip, platform):
-    return target(
-        name = "fw_" + board,
-        type = "exe",
-        src = ["src/" + chip + ".c"],
-        deps = [freertos],
-        platform = platform,
-        linker_script = "boards/" + board + ".ld",
-        entry = "reset_handler",
-    )
+fn firmware(board, chip, plat, dep) {
+    target(#{
+        name: "fw_" + board,
+        type: "exe",
+        src: ["src/" + chip + ".c"],
+        deps: [dep],
+        platform: plat,
+        linker_script: "boards/" + board + ".ld",
+        entry: "reset_handler",
+    });
+}
 
-BOARDS = {"nucleo": ("f4", nucleo), "bluepill": ("f1", bluepill)}
+let BOARDS = #{ "nucleo": ["f4", nucleo], "bluepill": ["f1", bluepill] };
 
-for board, (chip, platform) in BOARDS.items():
-    firmware(board, chip, platform)
+for board in BOARDS.keys() {
+    let info = BOARDS[board];
+    firmware(board, info[0], info[1], freertos);
+}
 ```
 
-`project` / `toolchain` / `platform` / `package` 返回对象，可以赋给变量、
-放进列表和字典，再传给 `target`。`deps` 里放 package 对象是包依赖（链接
-`-l`），放字符串是依赖另一个 target。一个 `.star` 里可以有多个 platform，
-构建哪个 target 就按它绑定的 platform 推 arch/abi/float：
+`project` / `toolchain` / `platform` / `pkg` 返回名字字符串，可以赋给变量、
+放进列表和映射，再传给 `target`。`deps` 里放 target 名是依赖另一个 target；
+pkg 依赖（链接 `-l`）由已声明的包自动生效。一个 `.rhai` 里可以有多个
+platform，构建哪个 target 就按它绑定的 platform 推 arch/abi/float：
 
 ```sh
 heddle fw_nucleo     # -mcpu=cortex-m4 -mfloat-abi=hard
 heddle fw_bluepill   # -mcpu=cortex-m3 -mfloat-abi=soft
 ```
 
-`build(dir = ...)` 和 `target_config(...)` 也认，等价于 `project`/`platform`
+`build(#{ dir: ... })` 和 `target_config(...)` 也认，等价于 `project`/`platform`
 的简化写法，适合单配置工程。
 
 能用的东西：
 
 | 功能 | 写法 |
 | --- | --- |
-| 函数 | `def f(a, b): return ...` |
-| 循环 | `for x in list:`，`for k, v in dict.items():`，`for k, (a, b) in ...` |
-| 条件 | `if` / `elif` / `else` |
-| 列表、元组、字典 | `[1, 2]`，`(1, 2)`，`{"a": 1}` |
-| 下标、切片 | `L[0]`，`L[1:3]` |
-| 字符串 | `"a" + "b"`，`"v" + str(n)` |
-| 内置 | `glob("src/*.c")`，`len`，`range`，`str` |
-| 声明 | `project` `platform` `toolchain` `package` `target` `install` `build` `target_config` |
+| 关键字参数 | 对象映射 `#{ name: "app", src: [...] }` |
+| 函数 | `fn f(a, b) { return ...; }` |
+| 循环 | `for x in list {}`，`for k in map.keys() {}` |
+| 条件 | `if` / `else if` / `else` |
+| 列表、映射 | `[1, 2]`，`#{ "a": 1 }` |
+| 下标、切片 | `L[0]`，`L[1..3]` |
+| 字符串 | `"a" + "b"`，`` `v${n}` `` |
+| 内置 | `glob(["src/*.c"])`，`len`，`range`，`to_string` |
+| 声明 | `project` `platform` `toolchain` `pkg` `target` `install` `build` `target_config` |
 
-尾随逗号（`[1, 2,]`、`{"a": 1,}`）也认。
-
-`while`、`import`、`class`、`lambda`、`global` 不支持，写了会报错并指出行号。
+底层是 [Rhai](https://rhai.rs) 引擎，完整语言能力（while、switch、闭包等）
+都可用；语句之间需要分号。
 
 `target(...)` 的键：`name` `type` `src` `inc` `deps` `cflags` `ldflags`
 `linker_script` `entry` `out` `platform` `start_group` `whole_archive`。
@@ -460,7 +463,7 @@ heddle watch app        # 指定 target
 heddle watch --interval 0.2 app   # 轮询间隔（秒，默认 0.5）
 ```
 
-它先构建一次，然后每 `interval` 轮询一次源文件、头文件和 `heddle.toml`/`heddle.star`
+它先构建一次，然后每 `interval` 轮询一次源文件、头文件和 `heddle.toml`/`heddle.rhai`
 的修改时间与大小，一旦变化就重新加载工程并增量重建：
 
 ```
@@ -582,7 +585,7 @@ heddle migrate ./proj           # 指定目录
 heddle migrate --from xmake     # 目录里两个都有时强制选一个
 heddle migrate --dry-run        # 只打印解析结果
 heddle migrate --out my.toml    # 换个输出名
-heddle migrate --star           # 生成 heddle.star
+heddle migrate --star           # 生成 heddle.rhai
 ```
 
 （`--from cmake` / `--from xmake`。）生成的清单里已有的同名文件不会覆盖。

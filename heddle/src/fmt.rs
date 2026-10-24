@@ -194,7 +194,7 @@ pub fn heddle_fmt(o: &HeddleOpts) -> i32 {
 
     let mut files: Vec<String> = Vec::new();
 
-    if sys::stat("heddle.star").is_some() || sys::stat("heddle.toml").is_some() {
+    if sys::stat("heddle.rhai").is_some() || sys::stat("heddle.toml").is_some() {
         let proj = match project::load(".", o.toolchain.as_deref()) {
             Ok(p) => p,
             Err(e) => {

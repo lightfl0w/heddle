@@ -574,7 +574,7 @@ fn star_list(out: &mut Vec<u8>, key: &str, v: &[String]) {
     if v.is_empty() {
         return;
     }
-    out.extend_from_slice(format!("    {} = [", key).as_bytes());
+    out.extend_from_slice(format!("    {}: [", key).as_bytes());
     for (i, x) in v.iter().enumerate() {
         if i > 0 {
             out.extend_from_slice(b", ");
@@ -615,11 +615,11 @@ fn clip200(s: &str) -> String {
 
 fn migrate_write_star(s: &MigSet, out: &str) -> Result<(), String> {
     let mut b: Vec<u8> = Vec::new();
-    b.extend_from_slice(b"build(dir = \"out\")\n");
+    b.extend_from_slice(b"build(#{ dir: \"out\" });\n");
     for t in &s.items {
-        b.extend_from_slice(b"\ntarget(\n    name = ");
+        b.extend_from_slice(b"\ntarget(#{\n    name: ");
         emit_qstr(&mut b, &t.name);
-        b.extend_from_slice(b",\n    type = ");
+        b.extend_from_slice(b",\n    type: ");
         emit_qstr(&mut b, &t.kind);
         b.extend_from_slice(b",\n");
         star_list(&mut b, "src", &t.src);
@@ -628,11 +628,11 @@ fn migrate_write_star(s: &MigSet, out: &str) -> Result<(), String> {
         star_list(&mut b, "cflags", &t.cflags);
         star_list(&mut b, "ldflags", &t.ldflags);
         if let Some(ld) = &t.ldscript {
-            b.extend_from_slice(b"    linker_script = ");
+            b.extend_from_slice(b"    linker_script: ");
             emit_qstr(&mut b, ld);
             b.extend_from_slice(b",\n");
         }
-        b.extend_from_slice(b")\n");
+        b.extend_from_slice(b"});\n");
     }
     if !sys::write_bytes(out, &b) {
         return Err(format!("cannot write {}", clip200(out)));
@@ -1055,7 +1055,7 @@ fn migrate_usage() {
     println!("options:");
     println!("  --from cmake|xmake   force the source format");
     println!("  --out FILE           output file (default heddle.toml)");
-    println!("  --star               write heddle.star instead of heddle.toml");
+    println!("  --star               write heddle.rhai instead of heddle.toml");
     println!("  --dry-run            print the plan, write nothing");
     println!("  --cmake-build DIR    build dir used for the File API configure");
     println!("  --config NAME        configuration to import (multi-config gen)");
@@ -1212,7 +1212,7 @@ pub fn heddle_migrate(args: &[String]) -> i32 {
         return 0;
     }
 
-    let def_out = format!("{}/heddle.{}", dir, if star { "star" } else { "toml" });
+    let def_out = format!("{}/heddle.{}", dir, if star { "rhai" } else { "toml" });
     let target_out = match out {
         Some(o) => o,
         None => def_out,

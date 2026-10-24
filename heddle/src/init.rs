@@ -144,14 +144,14 @@ const EXE_TOML: &str = concat!(
 );
 
 const EXE_STAR: &str = concat!(
-    "build(dir = \"out\")\n",
+    "build(#{ dir: \"out\" });\n",
     "\n",
-    "target(\n",
-    "    name = \"app\",\n",
-    "    type = \"exe\",\n",
-    "    src = glob(\"src/*.c\"),\n",
-    "    inc = [\"src\"],\n",
-    ")\n",
+    "target(#{\n",
+    "    name: \"app\",\n",
+    "    type: \"exe\",\n",
+    "    src: glob([\"src/*.c\"]),\n",
+    "    inc: [\"src\"],\n",
+    "});\n",
 );
 
 const EXE_MAIN_C: &str = concat!(
@@ -182,16 +182,16 @@ const LIB_TOML: &str = concat!(
 );
 
 const LIB_STAR: &str = concat!(
-    "build(dir = \"out\")\n",
+    "build(#{ dir: \"out\" });\n",
     "\n",
-    "target(\n",
-    "    name = \"mylib\",\n",
-    "    type = \"staticlib\",\n",
-    "    src = glob(\"src/*.c\"),\n",
-    "    inc = [\"include\"],\n",
-    ")\n",
+    "target(#{\n",
+    "    name: \"mylib\",\n",
+    "    type: \"staticlib\",\n",
+    "    src: glob([\"src/*.c\"]),\n",
+    "    inc: [\"include\"],\n",
+    "});\n",
     "\n",
-    "install(target = \"mylib\", lib = [\"out/libmylib.a\"], include = [\"include/**/*.h\"])\n",
+    "install(#{ target: \"mylib\", lib: [\"out/libmylib.a\"], include: [\"include/**/*.h\"] });\n",
 );
 
 const LIB_H: &str = concat!(
@@ -213,7 +213,7 @@ const LIB_C: &str = concat!(
 
 fn gen_exe(dir: &str, force: bool) -> i32 {
     let star = G_STAR.load(Ordering::Relaxed);
-    let a = sys::path_join(dir, if star { "heddle.star" } else { "heddle.toml" });
+    let a = sys::path_join(dir, if star { "heddle.rhai" } else { "heddle.toml" });
     let b = sys::path_join(dir, "src/main.c");
     let mut rc = 0;
     if write_file(&a, if star { EXE_STAR } else { EXE_TOML }, force) != 0 {
@@ -227,7 +227,7 @@ fn gen_exe(dir: &str, force: bool) -> i32 {
 
 fn gen_lib(dir: &str, force: bool) -> i32 {
     let star = G_STAR.load(Ordering::Relaxed);
-    let a = sys::path_join(dir, if star { "heddle.star" } else { "heddle.toml" });
+    let a = sys::path_join(dir, if star { "heddle.rhai" } else { "heddle.toml" });
     let b = sys::path_join(dir, "include/mylib.h");
     let c = sys::path_join(dir, "src/mylib.c");
     let mut rc = 0;
@@ -448,7 +448,7 @@ pub fn heddle_init(args: &[String]) -> i32 {
             println!("usage: heddle init [TYPE] [DIR]\n");
             list_types();
             println!(
-                "\noptions:\n  --arch NAME   target arch for 'embedded'\n  --star        write heddle.star instead of heddle.toml\n  --force       overwrite existing files\n  --list        list project types"
+                "\noptions:\n  --arch NAME   target arch for 'embedded'\n  --star        write heddle.rhai instead of heddle.toml\n  --force       overwrite existing files\n  --list        list project types"
             );
             return 0;
         }

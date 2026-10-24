@@ -280,6 +280,12 @@ fn add_target_from_cfg(p: &mut Project, st: &StarTargetDef) -> Result<(), String
     Ok(())
 }
 
+fn filter_pkg_deps(st: &StarTargetDef, dep_names: &[String]) -> StarTargetDef {
+    let mut st = st.clone();
+    st.deps.retain(|d| !dep_names.iter().any(|n| n == d));
+    st
+}
+
 fn find_platform<'a>(cfg: &'a StarCfg, name: &str) -> Option<&'a StarPlatform> {
     cfg.platforms.iter().find(|p| p.name == name)
 }
@@ -289,7 +295,7 @@ fn project_load_star(
     root: &str,
     toolchain: Option<&str>,
 ) -> Result<(), String> {
-    let cfgpath = format!("{}/heddle.star", root);
+    let cfgpath = format!("{}/heddle.rhai", root);
     let cfg = star::run(&cfgpath)?;
 
     let want = get_want_target();
@@ -397,7 +403,8 @@ fn project_load_star(
         );
     }
     for st in &cfg.targets {
-        add_target_from_cfg(p, st)?;
+        let filtered = filter_pkg_deps(st, &cfg.dep_name);
+        add_target_from_cfg(p, &filtered)?;
     }
     Ok(())
 }
@@ -411,7 +418,7 @@ pub fn load(root: &str, toolchain: Option<&str>) -> Result<Project, String> {
         },
         ..Default::default()
     };
-    let star_path = format!("{}/heddle.star", p.root);
+    let star_path = format!("{}/heddle.rhai", p.root);
     let cfg_path_s = format!("{}/heddle.toml", p.root);
     if path_exists(&star_path) {
         let r = p.root.clone();

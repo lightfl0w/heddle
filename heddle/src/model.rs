@@ -148,7 +148,6 @@ pub struct StarTargetDef {
     pub src: Vec<String>,
     pub inc: Vec<String>,
     pub deps: Vec<String>,
-    pub pkgdeps: Vec<String>,
     pub platform: Option<String>,
     pub cflags: Vec<String>,
     pub ldflags: Vec<String>,
@@ -177,7 +176,6 @@ pub struct StarPlatform {
 
 #[derive(Clone, Default)]
 pub struct StarCfg {
-    pub root: String,
     pub project_name: Option<String>,
     pub build_dir: Option<String>,
     pub toolchain: Option<String>,
