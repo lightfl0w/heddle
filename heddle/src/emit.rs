@@ -173,6 +173,14 @@ fn target_index(p: &Project, name: &str) -> Option<usize> {
     p.targets.iter().position(|t| t.name == name)
 }
 
+fn target_map(p: &Project) -> HashMap<&str, usize> {
+    p.targets
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (t.name.as_str(), i))
+        .collect()
+}
+
 fn mark_closure(p: &Project, i: usize, want: &mut [u8]) {
     if want[i] != 0 {
         return;
@@ -192,7 +200,7 @@ fn object_of(p: &Project, t: &Target, src: &str) -> String {
         _ => base,
     };
     let ext = lang::for_path(src)
-        .and_then(|l| l.outext)
+        .and_then(|l| l.outext.clone())
         .unwrap_or_else(|| p.tc.objext.clone());
     let name = format!("{}_{}{}", t.name, stem, ext);
     format!("{}/{}", p.build_dir, name)
@@ -623,8 +631,9 @@ fn script_for_family(
 }
 
 fn plan_graph(p: &Project, target: &str) -> Result<(Plan, Vec<Option<usize>>), String> {
-    let root = match target_index(p, target) {
-        Some(i) => i,
+    let tmap = target_map(p);
+    let root = match tmap.get(target) {
+        Some(&i) => i,
         None => return Err(format!("unknown target '{}'", target)),
     };
     let n = p.targets.len();
@@ -637,31 +646,30 @@ fn plan_graph(p: &Project, target: &str) -> Result<(Plan, Vec<Option<usize>>), S
 
     emit_objects(p, &mut pl, &mut obj_of, &want)?;
 
-    let mut order: Vec<usize> = Vec::new();
-    let mut done = vec![0u8; n];
-    while order.len() < n {
-        let mut progressed = false;
-        for i in 0..n {
-            if done[i] != 0 {
-                continue;
-            }
-            let mut ready = true;
-            for d in &p.targets[i].deps {
-                if let Some(j) = target_index(p, d) {
-                    if done[j] == 0 {
-                        ready = false;
-                    }
+    let mut indeg = vec![0usize; n];
+    let mut rdeps: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (i, t) in p.targets.iter().enumerate() {
+        for d in &t.deps {
+            if let Some(&j) = tmap.get(d.as_str()) {
+                if j != i {
+                    indeg[i] += 1;
+                    rdeps[j].push(i);
                 }
             }
-            if !ready {
-                continue;
-            }
-            order.push(i);
-            done[i] = 1;
-            progressed = true;
         }
-        if !progressed {
-            break;
+    }
+    let mut order: Vec<usize> = Vec::new();
+    let mut queue: Vec<usize> = (0..n).filter(|&i| indeg[i] == 0).collect();
+    let mut qh = 0usize;
+    while qh < queue.len() {
+        let i = queue[qh];
+        qh += 1;
+        order.push(i);
+        for &d in &rdeps[i] {
+            indeg[d] -= 1;
+            if indeg[d] == 0 {
+                queue.push(d);
+            }
         }
     }
 
@@ -714,7 +722,7 @@ fn plan_graph(p: &Project, target: &str) -> Result<(Plan, Vec<Option<usize>>), S
             let mut libs: Vec<String> = Vec::new();
             libs_open_group(p, t, &mut libs);
             for d in &t.deps {
-                if let Some(j) = target_index(p, d) {
+                if let Some(&j) = tmap.get(d.as_str()) {
                     if let Some(lib) = artifact(p, &p.targets[j]) {
                         libs.push(lib);
                     }
@@ -772,7 +780,7 @@ fn plan_graph(p: &Project, target: &str) -> Result<(Plan, Vec<Option<usize>>), S
             }
         }
         for d in &p.targets[i].deps {
-            if let Some(j) = target_index(p, d) {
+            if let Some(&j) = tmap.get(d.as_str()) {
                 if let Some(a) = art[j] {
                     pl.step_dep(id, a);
                 }

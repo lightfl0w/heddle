@@ -71,7 +71,25 @@ pub fn glob_match(pat: &str, name: &str) -> bool {
     match_segs(pat, name)
 }
 
-fn walk(base: &str, rel: &str, pat: &str, out: &mut Vec<String>) {
+fn skip_dir(name: &str) -> bool {
+    matches!(
+        name,
+        ".git" | ".hg" | ".svn" | ".heddle" | "out" | "build" | "node_modules"
+    )
+}
+
+fn first_seg_literal(pat: &str) -> Option<String> {
+    let (pseg, _) = split_once_slash(pat);
+    if pseg == "**" || pseg.contains('*') || pseg.contains('?') {
+        return None;
+    }
+    Some(pseg.to_string())
+}
+
+fn walk(base: &str, rel: &str, pat: &str, depth: u32, out: &mut Vec<String>) {
+    if depth > 64 {
+        return;
+    }
     let dir = if rel.is_empty() {
         base.to_string()
     } else {
@@ -81,6 +99,7 @@ fn walk(base: &str, rel: &str, pat: &str, out: &mut Vec<String>) {
         Ok(r) => r,
         Err(_) => return,
     };
+    let lit = first_seg_literal(pat);
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
         if name == "." || name == ".." {
@@ -93,7 +112,17 @@ fn walk(base: &str, rel: &str, pat: &str, out: &mut Vec<String>) {
         };
         let full = sys::join(&dir, &name);
         if sys::is_dir(&full) {
-            walk(base, &r, pat, out);
+            if skip_dir(&name) {
+                continue;
+            }
+            if rel.is_empty() {
+                if let Some(lit) = &lit {
+                    if &name != lit {
+                        continue;
+                    }
+                }
+            }
+            walk(base, &r, pat, depth + 1, out);
         } else if glob_match(pat, &r) {
             out.push(r);
         }
@@ -102,6 +131,6 @@ fn walk(base: &str, rel: &str, pat: &str, out: &mut Vec<String>) {
 
 pub fn glob_dir(dir: &str, pat: &str) -> Vec<String> {
     let mut out = Vec::new();
-    walk(dir, "", pat, &mut out);
+    walk(dir, "", pat, 0, &mut out);
     out
 }

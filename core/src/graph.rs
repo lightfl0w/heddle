@@ -1,4 +1,5 @@
 use crate::hash::{hash_text, HASH_FNV_OFFSET};
+use std::collections::HashMap;
 
 #[derive(Default, Clone)]
 pub struct Node {
@@ -258,25 +259,30 @@ fn node_add_dep(nd: &mut Node, d: usize) {
     }
 }
 
-fn node_produces(nd: &Node, path: &str) -> bool {
-    nd.outs.iter().any(|o| o == path)
-}
-
 pub fn finalize(g: &mut Graph) -> Result<(), String> {
     let n = g.nodes.len();
+    let mut producers: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, nd) in g.nodes.iter().enumerate() {
+        for o in &nd.outs {
+            producers.entry(o.as_str()).or_default().push(i);
+        }
+    }
+    let producers: HashMap<String, Vec<usize>> = producers
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
     for i in 0..n {
         let dyns = g.nodes[i].dyns.clone();
         let keep = g.nodes[i].ndeps_static;
         g.nodes[i].deps.truncate(keep);
         for d in dyns {
-            for j in 0..n {
-                if j == i {
-                    continue;
+            if let Some(js) = producers.get(d.as_str()) {
+                for &j in js {
+                    if j == i {
+                        continue;
+                    }
+                    node_add_dep(&mut g.nodes[i], j);
                 }
-                if !node_produces(&g.nodes[j], &d) {
-                    continue;
-                }
-                node_add_dep(&mut g.nodes[i], j);
             }
         }
     }

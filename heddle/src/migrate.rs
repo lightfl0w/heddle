@@ -676,23 +676,8 @@ fn json_key<'a>(j: &'a Json, base: &str, key: &str) -> Option<&'a str> {
     }
 }
 
-fn has_node(j: &Json, path: &str) -> bool {
-    if j.get(path).is_some() {
-        return true;
-    }
-    let dot = format!("{}.", path);
-    let br = format!("{}[", path);
-    j.items
-        .iter()
-        .any(|(k, _)| k.starts_with(&dot) || k.starts_with(&br))
-}
-
-fn arr_len(j: &Json, path: &str) -> usize {
-    let mut n = 0usize;
-    while has_node(j, &format!("{}[{}]", path, n)) {
-        n += 1;
-    }
-    n
+fn json_arr_len(j: &Json, path: &str) -> usize {
+    j.arr_len(path)
 }
 
 fn map_type(t: Option<&str>) -> &'static str {
@@ -730,7 +715,7 @@ fn id_to_name(id: &str) -> String {
 }
 
 fn add_sources(t: &mut MigTarget, j: &Json, src: &str) {
-    let n = arr_len(j, "sources");
+    let n = json_arr_len(j, "sources");
     for i in 0..n {
         let base = format!("sources[{}]", i);
         if let Some(p) = json_key(j, &base, "path") {
@@ -740,24 +725,24 @@ fn add_sources(t: &mut MigTarget, j: &Json, src: &str) {
 }
 
 fn add_compile(t: &mut MigTarget, j: &Json) {
-    let ng = arr_len(j, "compileGroups");
+    let ng = json_arr_len(j, "compileGroups");
     for g in 0..ng {
         let gp = format!("compileGroups[{}]", g);
-        let ni = arr_len(j, &format!("{}.includes", gp));
+        let ni = json_arr_len(j, &format!("{}.includes", gp));
         for i in 0..ni {
             let p = format!("{}.includes[{}]", gp, i);
             if let Some(v) = json_key(j, &p, "path") {
                 push_uniq(&mut t.inc, v);
             }
         }
-        let nd = arr_len(j, &format!("{}.defines", gp));
+        let nd = json_arr_len(j, &format!("{}.defines", gp));
         for i in 0..nd {
             let p = format!("{}.defines[{}]", gp, i);
             if let Some(v) = json_key(j, &p, "define") {
                 push_uniq(&mut t.cflags, &format!("-D{}", v));
             }
         }
-        let nf = arr_len(j, &format!("{}.compileCommandFragments", gp));
+        let nf = json_arr_len(j, &format!("{}.compileCommandFragments", gp));
         for i in 0..nf {
             let p = format!("{}.compileCommandFragments[{}]", gp, i);
             if let Some(v) = json_key(j, &p, "fragment") {
@@ -770,7 +755,7 @@ fn add_compile(t: &mut MigTarget, j: &Json) {
 }
 
 fn add_link(t: &mut MigTarget, j: &Json) {
-    let n = arr_len(j, "link.commandFragments");
+    let n = json_arr_len(j, "link.commandFragments");
     for i in 0..n {
         let p = format!("link.commandFragments[{}]", i);
         let fr = match json_key(j, &p, "fragment") {
@@ -787,7 +772,7 @@ fn add_link(t: &mut MigTarget, j: &Json) {
 
 fn add_deps(s: &mut MigSet, ti: usize, j: &Json) {
     for key in ["linkLibraries", "dependencies"] {
-        let n = arr_len(j, key);
+        let n = json_arr_len(j, key);
         for i in 0..n {
             let p = format!("{}[{}]", key, i);
             let id = json_key(j, &p, "id");
@@ -944,7 +929,7 @@ fn cmake_api_load(
         Err(_) => return Err("cannot parse codemodel-v2".to_string()),
     };
 
-    let ncfg = arr_len(&model, "configurations");
+    let ncfg = json_arr_len(&model, "configurations");
     if ncfg == 0 {
         return Err("codemodel has no configurations".to_string());
     }
@@ -970,7 +955,7 @@ fn cmake_api_load(
     }
 
     let tbase = format!("configurations[{}].targets", ci);
-    let ntg = arr_len(&model, &tbase);
+    let ntg = json_arr_len(&model, &tbase);
     let mut loaded: Vec<(usize, Json)> = Vec::new();
     for i in 0..ntg {
         let tp = format!("{}[{}]", tbase, i);
@@ -1010,21 +995,31 @@ fn cmake_api_load(
         grab_ldscript(&mut s.items[i]);
     }
 
-    let mut dups: Vec<String> = Vec::new();
-    for i in 0..s.items.len() {
-        for k in 0..s.items[i].src.len() {
-            for j in (i + 1)..s.items.len() {
-                for m in 0..s.items[j].src.len() {
-                    if s.items[i].src[k] == s.items[j].src[m] {
-                        dups.push(format!(
-                            "source '{}' used by both '{}' and '{}'",
-                            s.items[i].src[k], s.items[i].name, s.items[j].name
-                        ));
-                    }
-                }
-            }
+    use std::collections::HashMap;
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for t in &s.items {
+        for src in &t.src {
+            *seen.entry(src.as_str()).or_insert(0) += 1;
         }
     }
+    let mut dups: Vec<String> = Vec::new();
+    for (src, count) in &seen {
+        if *count > 1 {
+            let owners: Vec<&str> = s
+                .items
+                .iter()
+                .filter(|t| t.src.iter().any(|x| x == src))
+                .map(|t| t.name.as_str())
+                .collect();
+            dups.push(format!(
+                "source '{}' used by both '{}' and '{}'",
+                src,
+                owners.first().unwrap_or(&"?"),
+                owners.get(1).unwrap_or(&"?")
+            ));
+        }
+    }
+    dups.sort();
     for d in dups {
         s.warn.push(d);
     }

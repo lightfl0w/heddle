@@ -1,5 +1,5 @@
 use crate::toml::Toml;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Clone, Default)]
 pub struct Lang {
@@ -11,8 +11,8 @@ pub struct Lang {
     pub fmt: bool,
 }
 
-fn registry() -> &'static Mutex<Vec<Lang>> {
-    static R: OnceLock<Mutex<Vec<Lang>>> = OnceLock::new();
+fn registry() -> &'static Mutex<Vec<Arc<Lang>>> {
+    static R: OnceLock<Mutex<Vec<Arc<Lang>>>> = OnceLock::new();
     R.get_or_init(|| Mutex::new(Vec::new()))
 }
 
@@ -34,14 +34,14 @@ pub fn add(ext: &str, cmd: &str, args: &[String], outext: Option<&str>, cflags: 
     if r.len() >= 32 {
         return;
     }
-    r.push(Lang {
+    r.push(Arc::new(Lang {
         exts: vec![ext.to_string()],
         cmd: cmd.to_string(),
         args: args.to_vec(),
         outext: outext.map(|s| s.to_string()),
         cflags,
         fmt,
-    });
+    }));
 }
 
 pub fn init_builtin() {
@@ -64,12 +64,12 @@ pub fn init_builtin() {
     add("asm", "nasm", &[], None, false, true);
 }
 
-pub fn for_path(path: &str) -> Option<Lang> {
+pub fn for_path(path: &str) -> Option<Arc<Lang>> {
     let r = registry().lock().unwrap();
     for l in r.iter() {
         for e in &l.exts {
             if ext_match(path, e) {
-                return Some(l.clone());
+                return Some(Arc::clone(l));
             }
         }
     }

@@ -1,4 +1,4 @@
-use crate::sys;
+use toml::Value;
 
 #[derive(Default, Clone)]
 pub struct TomlTable {
@@ -9,10 +9,6 @@ pub struct TomlTable {
 #[derive(Default, Clone)]
 pub struct Toml {
     pub tables: Vec<TomlTable>,
-}
-
-fn trim(s: &str) -> &str {
-    s.trim_matches(|c: char| c.is_whitespace())
 }
 
 fn table_find(t: &Toml, name: &str) -> Option<usize> {
@@ -38,40 +34,54 @@ fn table_put(tab: &mut TomlTable, key: &str, val: &str) {
     tab.items.push((key.to_string(), val.to_string()));
 }
 
-pub fn unquote(s: &str) -> String {
-    let b = s.as_bytes();
-    let mut start = 0usize;
-    let mut n = b.len();
-    while n > 0 && (b[n - 1] as char).is_whitespace() {
-        n -= 1;
+fn scalar_text(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
     }
-    while n > 0 && (b[start] as char).is_whitespace() {
-        start += 1;
-        n -= 1;
-    }
-    if n >= 2 && b[start] == b'"' && b[start + n - 1] == b'"' {
-        start += 1;
-        n -= 2;
-    }
-    let seg = &s[start..start + n];
-    let mut out = String::new();
-    let mut it = seg.chars();
-    while let Some(c) = it.next() {
-        if c == '\\' {
-            match it.next() {
-                Some('n') => out.push('\n'),
-                Some('t') => out.push('\t'),
-                Some('r') => out.push('\r'),
-                Some('\\') => out.push('\\'),
-                Some('"') => out.push('"'),
-                Some(e) => out.push(e),
-                None => out.push('\\'),
+}
+
+fn walk(v: &Value, name: &str, t: &mut Toml) {
+    let m = match v {
+        Value::Table(m) => m,
+        _ => return,
+    };
+    let cur = table_add(t, name);
+    for (k, val) in m {
+        match val {
+            Value::Table(_) | Value::Array(_) => {}
+            _ => {
+                table_put(&mut t.tables[cur], k, &scalar_text(val));
             }
-            continue;
         }
-        out.push(c);
     }
-    out
+    for (k, val) in m {
+        let sub = if name.is_empty() {
+            k.clone()
+        } else {
+            format!("{}.{}", name, k)
+        };
+        match val {
+            Value::Table(_) => walk(val, &sub, t),
+            Value::Array(a) => {
+                if a.iter().all(|x| matches!(x, Value::Table(_))) && !a.is_empty() {
+                    for item in a {
+                        walk(item, &sub, t);
+                    }
+                } else {
+                    let cur = table_add(t, name);
+                    for (i, item) in a.iter().enumerate() {
+                        table_put(
+                            &mut t.tables[cur],
+                            &format!("{}[{}]", k, i),
+                            &scalar_text(item),
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 impl Toml {
@@ -82,98 +92,12 @@ impl Toml {
     }
 
     pub fn parse(path: &str) -> Result<Toml, String> {
-        let text = match sys::read_to_string(path) {
-            Some(t) => t,
-            None => return Err(format!("cannot read {}", path)),
-        };
+        let text = crate::sys::read_to_string(path)
+            .ok_or_else(|| format!("cannot read {}", path))?;
+        let root: Value = toml::from_str(&text)
+            .map_err(|e| format!("{}: {}", path, e))?;
         let mut t = Toml::new();
-        let mut cur = 0usize;
-        let mut lineno = 0usize;
-        for raw in text.split('\n') {
-            lineno += 1;
-            let s = trim(raw);
-            if s.is_empty() || s.starts_with('#') {
-                continue;
-            }
-            if s.starts_with('[') {
-                let close = match s.rfind(']') {
-                    Some(i) => i,
-                    None => return Err(format!("line {}: missing ']'", lineno)),
-                };
-                cur = table_add(&mut t, trim(&s[1..close]));
-                continue;
-            }
-            let eq = match s.find('=') {
-                Some(i) => i,
-                None => return Err(format!("line {}: missing '='", lineno)),
-            };
-            let key = trim(&s[..eq]);
-            if key.is_empty() {
-                return Err(format!("line {}: empty key", lineno));
-            }
-            let val = trim(&s[eq + 1..]);
-            if val.starts_with('[') {
-                let close = match val.rfind(']') {
-                    Some(i) => i,
-                    None => return Err(format!("line {}: missing ']'", lineno)),
-                };
-                let inner = &val[1..close];
-                let mut p = 0usize;
-                let bb = inner.as_bytes();
-                let mut idx = 0usize;
-                while p < bb.len() {
-                    while p < bb.len() && (bb[p] == b' ' || bb[p] == b'\t') {
-                        p += 1;
-                    }
-                    if p < bb.len() && bb[p] == b',' {
-                        p += 1;
-                        continue;
-                    }
-                    if p >= bb.len() {
-                        break;
-                    }
-                    let start;
-                    
-                    let len = if bb[p] == b'"' {
-                        start = p;
-                        p += 1;
-                        while p < bb.len() {
-                            if bb[p] == b'\\' && p + 1 < bb.len() {
-                                p += 2;
-                                continue;
-                            }
-                            if bb[p] == b'"' {
-                                break;
-                            }
-                            p += 1;
-                        }
-                        if p < bb.len() {
-                            p += 1;
-                        }
-                        p - start
-                    } else {
-                        start = p;
-                        while p < bb.len() && bb[p] != b',' {
-                            p += 1;
-                        }
-                        p - start
-                    };
-                    let item = unquote(&inner[start..start + len]);
-                    let norm = format!("{}[{}]", key, idx);
-                    idx += 1;
-                    table_put(&mut t.tables[cur], &norm, &item);
-                    while p < bb.len() && bb[p] != b',' {
-                        p += 1;
-                    }
-                    if p < bb.len() && bb[p] == b',' {
-                        p += 1;
-                    }
-                }
-                continue;
-            }
-            let plain = unquote(val);
-            table_put(&mut t.tables[cur], key, &plain);
-        }
+        walk(&root, "", &mut t);
         Ok(t)
     }
 
@@ -216,5 +140,5 @@ impl Toml {
 }
 
 pub fn parse_atoi(s: &str) -> i64 {
-    sys::atoi(s)
+    crate::sys::atoi(s)
 }
