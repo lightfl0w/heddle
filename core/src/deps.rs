@@ -82,7 +82,7 @@ fn input_key(nd: &Node, files: &mut HashDb) -> u64 {
     k
 }
 
-fn scan_node(g: &mut Graph, node: usize, files: &mut HashDb) {
+fn scan_node(g: &mut Graph, node: usize) {
     let nd = &g.nodes[node];
     let ins = nd.ins.clone();
     let mut visited: HashSet<String> = HashSet::new();
@@ -90,7 +90,6 @@ fn scan_node(g: &mut Graph, node: usize, files: &mut HashDb) {
     for i in &ins {
         scan_file(nd, i, &mut visited, &mut out);
     }
-    let _ = files;
     let nd = &mut g.nodes[node];
     nd.dyns.clear();
     for p in out {
@@ -104,7 +103,7 @@ pub fn scan(g: &mut Graph, files: &mut HashDb) {
         if key == g.nodes[i].scan_hash {
             continue;
         }
-        scan_node(g, i, files);
+        scan_node(g, i);
         g.nodes[i].scan_hash = key;
     }
 }

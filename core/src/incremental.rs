@@ -107,8 +107,8 @@ fn node_dirty(db: &mut IncrDb, g: &Graph, i: usize) -> bool {
 }
 
 pub fn plan(db: &mut IncrDb, g: &Graph, active: &mut [u8]) -> usize {
-    for i in 0..db.n {
-        active[i] = if i < g.nodes.len() && node_dirty(db, g, i) {
+    for (i, a) in active.iter_mut().enumerate() {
+        *a = if i < g.nodes.len() && node_dirty(db, g, i) {
             1
         } else {
             0
@@ -120,8 +120,7 @@ pub fn plan(db: &mut IncrDb, g: &Graph, active: &mut [u8]) -> usize {
             continue;
         }
         count += 1;
-        for k in 0..g.nodes[i].rdeps.len() {
-            let d = g.nodes[i].rdeps[k];
+        for &d in &g.nodes[i].rdeps {
             active[d] = 1;
         }
     }
@@ -140,17 +139,10 @@ pub fn record(db: &mut IncrDb, g: &Graph, node: usize) {
 }
 
 pub fn commit(db: &mut IncrDb, g: &Graph, active: &[u8]) {
-    for i in 0..db.n {
-        if active[i] == 0 {
+    for (i, &a) in active.iter().enumerate().take(db.n) {
+        if a == 0 {
             continue;
         }
-        let nd = &g.nodes[i];
-        let ch = nd.cmd_hash;
-        let ih = node_input_hash(nd, &mut db.files);
-        let oh = node_output_hash(nd, &mut db.files);
-        db.states[i].cmd_hash = ch;
-        db.states[i].in_hash = ih;
-        db.states[i].out_hash = oh;
-        db.states[i].valid = true;
+        record(db, g, i);
     }
 }

@@ -1207,9 +1207,11 @@ impl Interp {
                         return Star::Nil;
                     }
                 };
-                let mut t = StarTargetDef::default();
-                t.name = name;
-                t.kind = Some(type_name(kw_str(kw, "type")).to_string());
+                let mut t = StarTargetDef {
+                    name,
+                    kind: Some(type_name(kw_str(kw, "type")).to_string()),
+                    ..StarTargetDef::default()
+                };
                 tg_list(kw, "src", &mut t.src);
                 tg_list(kw, "inc", &mut t.inc);
                 tg_deps(kw, &mut t);
@@ -1609,9 +1611,10 @@ pub fn run(path: &str) -> Result<StarCfg, String> {
         None => return Err(format!("cannot read {}", path)),
     };
     let toks = lex(&src, path)?;
-    let mut cfg = StarCfg::default();
-    cfg.root = sys::dir_of(path);
-    cfg.file = path.to_string();
+    let cfg = StarCfg {
+        root: sys::dir_of(path),
+        ..StarCfg::default()
+    };
     let cwd = cfg.root.clone();
     let mut it = Interp {
         toks,

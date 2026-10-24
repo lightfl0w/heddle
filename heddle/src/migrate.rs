@@ -720,7 +720,7 @@ fn is_internal(nm: &str, ty: Option<&str>) -> bool {
         "edit_cache",
         "rebuild_cache",
     ];
-    if KNOWN.iter().any(|k| *k == nm) {
+    if KNOWN.contains(&nm) {
         return true;
     }
     nm.starts_with("Nightly") || nm.starts_with("Continuous") || nm.starts_with("Experimental")
@@ -1114,9 +1114,9 @@ pub fn heddle_migrate(args: &[String]) -> i32 {
             }
             continue;
         }
-        if a.starts_with("--cmake-arg=") {
+        if let Some(v) = a.strip_prefix("--cmake-arg=") {
             if cargs.len() < 64 {
-                cargs.push(a[12..].to_string());
+                cargs.push(v.to_string());
             }
             i += 1;
             continue;

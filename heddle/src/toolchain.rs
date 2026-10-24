@@ -276,7 +276,7 @@ fn find_cl(items: &[String], arch: &str) -> Option<String> {
     if let Some(vcdir) = env_lookup(items, "VCToolsInstallDir") {
         if !vcdir.is_empty() {
             let l = vcdir
-                .trim_end_matches(|c| c == '\\' || c == '/')
+                .trim_end_matches(['\\', '/'])
                 .len();
             let s = format!("{}\\bin\\Host{}\\{}\\cl.exe", &vcdir[..l], arch, arch);
             if tc_file_exists(&s) {
@@ -633,7 +633,7 @@ fn add_extra(tc: &mut Toolchain, extra_cflags: &str) {
     if extra_cflags.is_empty() {
         return;
     }
-    for tok in extra_cflags.split(|c: char| c == ' ' || c == '\t') {
+    for tok in extra_cflags.split([' ', '\t']) {
         if tok.is_empty() {
             continue;
         }
@@ -754,17 +754,26 @@ pub fn load_ex(
     Ok(())
 }
 
-pub fn load_star(
-    tc: &mut Toolchain,
-    name: &str,
-    based: Option<&str>,
-    cc: Option<&str>,
-    family: Option<&str>,
-    prefix: Option<&str>,
-    sysroot: Option<&str>,
-    extra_cflags: &str,
-    arch: &str,
-) -> Result<(), String> {
+pub struct StarTcSpec<'a> {
+    pub name: &'a str,
+    pub based: Option<&'a str>,
+    pub cc: Option<&'a str>,
+    pub family: Option<&'a str>,
+    pub prefix: Option<&'a str>,
+    pub sysroot: Option<&'a str>,
+    pub extra_cflags: &'a str,
+    pub arch: &'a str,
+}
+
+pub fn load_star(tc: &mut Toolchain, s: &StarTcSpec) -> Result<(), String> {
+    let name = s.name;
+    let based = s.based;
+    let cc = s.cc;
+    let family = s.family;
+    let prefix = s.prefix;
+    let sysroot = s.sysroot;
+    let extra_cflags = s.extra_cflags;
+    let arch = s.arch;
     *tc = Toolchain::default();
 
     let mut p = match based {

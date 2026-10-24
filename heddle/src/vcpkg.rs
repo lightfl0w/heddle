@@ -94,10 +94,7 @@ fn stem(file: &str) -> Option<&str> {
     if !base.starts_with("lib") {
         return None;
     }
-    let dot = match base.rfind('.') {
-        Some(i) => i,
-        None => return None,
-    };
+    let dot = base.rfind('.')?;
     if dot <= 3 {
         return None;
     }

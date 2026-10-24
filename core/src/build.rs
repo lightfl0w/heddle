@@ -166,9 +166,6 @@ impl BuildEngine {
                 if self.active[i] == 0 {
                     continue;
                 }
-                if i >= self.graph.nodes.len() {
-                    continue;
-                }
                 if self.graph.nodes[i].outs.is_empty() {
                     continue;
                 }
@@ -236,7 +233,7 @@ impl BuildEngine {
 
     fn cache_store(&mut self) {
         for i in 0..self.db.n {
-            if self.active[i] == 0 || i >= self.graph.nodes.len() {
+            if self.active[i] == 0 {
                 continue;
             }
             if self.graph.nodes[i].outs.is_empty() {
@@ -272,8 +269,12 @@ impl BuildEngine {
 
     fn save_state(&mut self) {
         incremental::commit(&mut self.db, &self.graph, &self.active);
-        self.db.files.save(&self.hash_path);
-        self.db.save(&self.state_path);
+        if !self.db.files.save(&self.hash_path) {
+            eprintln!("warning: cannot write {} (next build may be a full rebuild)", self.hash_path);
+        }
+        if !self.db.save(&self.state_path) {
+            eprintln!("warning: cannot write {} (next build may be a full rebuild)", self.state_path);
+        }
         deps::save(&self.graph, &self.deps_path);
     }
 

@@ -14,11 +14,7 @@ fn obj_rel(h: u64) -> String {
 }
 
 fn copy_file(from: &str, to: &str) -> bool {
-    let data = match sys::read_bytes(from) {
-        Some(d) => d,
-        None => return false,
-    };
-    sys::write_bytes(to, &data)
+    std::fs::copy(from, to).is_ok()
 }
 
 fn curl_ok(args: &[&str]) -> bool {

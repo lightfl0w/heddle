@@ -133,8 +133,8 @@ impl Toml {
                         break;
                     }
                     let start;
-                    let len;
-                    if bb[p] == b'"' {
+                    
+                    let len = if bb[p] == b'"' {
                         start = p;
                         p += 1;
                         while p < bb.len() {
@@ -150,14 +150,14 @@ impl Toml {
                         if p < bb.len() {
                             p += 1;
                         }
-                        len = p - start;
+                        p - start
                     } else {
                         start = p;
                         while p < bb.len() && bb[p] != b',' {
                             p += 1;
                         }
-                        len = p - start;
-                    }
+                        p - start
+                    };
                     let item = unquote(&inner[start..start + len]);
                     let norm = format!("{}[{}]", key, idx);
                     idx += 1;

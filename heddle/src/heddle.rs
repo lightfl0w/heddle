@@ -9,8 +9,7 @@ use crate::toolchain;
 use crate::toml::Toml;
 use loom_core::build::{BuildEngine, BuildOpts};
 use loom_core::hash::{hash_text, hash_u64, HASH_FNV_OFFSET};
-use loom_core::proc::{self, ProcResult};
-use std::path::Path;
+use loom_core::proc;
 
 fn load(o: &HeddleOpts) -> Result<Project, String> {
     if !sys::chdir(&o.root) {
@@ -550,15 +549,5 @@ pub fn heddle_compdb(o: &HeddleOpts) -> i32 {
         return 1;
     }
     println!("heddle: wrote {}", out);
-    0
-}
-
-#[allow(dead_code)]
-fn exists(p: &str) -> bool {
-    Path::new(p).exists()
-}
-
-#[allow(dead_code)]
-fn result_zero(_r: ProcResult) -> i32 {
     0
 }

@@ -500,8 +500,8 @@ pub fn heddle_init(args: &[String]) -> i32 {
             i += 1;
             continue;
         }
-        if a.starts_with("--arch=") {
-            arch = Some(a[7..].to_string());
+        if let Some(v) = a.strip_prefix("--arch=") {
+            arch = Some(v.to_string());
             i += 1;
             continue;
         }
@@ -537,7 +537,6 @@ pub fn heddle_init(args: &[String]) -> i32 {
         }
     };
 
-    let mut arch = arch;
     if kind == "embedded" {
         match &arch {
             Some(a) => {

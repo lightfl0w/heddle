@@ -338,17 +338,24 @@ fn lang_is_template(a: &lang::Lang) -> bool {
     })
 }
 
-fn build_cmd(
-    p: &Project,
-    t: &Target,
-    lg: &lang::Lang,
-    src: &str,
-    out: &str,
-    incs: &[String],
-    flags: &[String],
-    deffmt: &str,
-    flags_rsp: Option<&str>,
-) -> Option<String> {
+struct CcCtx<'a> {
+    p: &'a Project,
+    t: &'a Target,
+    lg: &'a lang::Lang,
+    incs: &'a [String],
+    flags: &'a [String],
+    deffmt: &'a str,
+    flags_rsp: Option<&'a str>,
+}
+
+fn build_cmd(c: &CcCtx, src: &str, out: &str) -> Option<String> {
+    let p = c.p;
+    let t = c.t;
+    let lg = c.lg;
+    let incs = c.incs;
+    let flags = c.flags;
+    let deffmt = c.deffmt;
+    let flags_rsp = c.flags_rsp;
     let fmt = t.format.clone().unwrap_or_else(|| deffmt.to_string());
     let msvc = tc_is_msvc(p);
     let mut cmd = toolchain::tool(&p.tc, &lg.cmd);
@@ -516,15 +523,17 @@ fn emit_objects(
                 format!("target '{}': cannot determine artifact path", t.name)
             })?;
             let cmd = build_cmd(
-                p,
-                t,
-                &lg,
+                &CcCtx {
+                    p,
+                    t,
+                    lg: &lg,
+                    incs: &incs,
+                    flags: &flags,
+                    deffmt: "bin",
+                    flags_rsp: frsp.as_deref(),
+                },
                 &t.src[0],
                 &bin,
-                &incs,
-                &flags,
-                "bin",
-                frsp.as_deref(),
             )
             .ok_or_else(|| format!("target '{}': command too long", t.name))?;
             let id = pl.add(cmd);
@@ -536,27 +545,29 @@ fn emit_objects(
             continue;
         }
 
-        for k in 0..t.src.len() {
-            let obj = object_of(p, t, &t.src[k]);
-            let lg = match lang::for_path(&t.src[k]) {
+        for (k, src) in t.src.iter().enumerate() {
+            let obj = object_of(p, t, src);
+            let lg = match lang::for_path(src) {
                 Some(l) => l,
                 None => {
                     return Err(format!(
                         "target '{}': no language for '{}'",
-                        t.name, t.src[k]
+                        t.name, src
                     ))
                 }
             };
             let cmd = build_cmd(
-                p,
-                t,
-                &lg,
-                &t.src[k],
+                &CcCtx {
+                    p,
+                    t,
+                    lg: &lg,
+                    incs: &incs,
+                    flags: &flags,
+                    deffmt: asm_format(p),
+                    flags_rsp: frsp.as_deref(),
+                },
+                src,
                 &obj,
-                &incs,
-                &flags,
-                asm_format(p),
-                frsp.as_deref(),
             )
             .ok_or_else(|| format!("target '{}': command too long", t.name))?;
             let id = pl.add(cmd);
@@ -756,8 +767,7 @@ fn plan_graph(p: &Project, target: &str) -> Result<(Plan, Vec<Option<usize>>), S
             None => continue,
         };
         if p.targets[i].kind != TargetType::Raw {
-            for k in 0..p.targets[i].src.len() {
-                let o = obj_of[i][k];
+            for &o in &obj_of[i] {
                 pl.step_dep(id, o);
             }
         }
@@ -871,8 +881,7 @@ pub fn compile_db(p: &Project, target: Option<&str>, out: &str) -> Result<(), St
 
     let mut s = String::from("[\n");
     let mut first = true;
-    for i in 0..n {
-        let t = &p.targets[i];
+    for (i, t) in p.targets.iter().enumerate() {
         if want[i] == 0 || !is_compile_unit(t) {
             continue;
         }
@@ -884,7 +893,19 @@ pub fn compile_db(p: &Project, target: Option<&str>, out: &str) -> Result<(), St
                 None => continue,
             };
             let obj = object_of(p, t, src);
-            let cmd = match build_cmd(p, t, &lg, src, &obj, &incs, &flags, asm_format(p), None) {
+            let cmd = match build_cmd(
+                &CcCtx {
+                    p,
+                    t,
+                    lg: &lg,
+                    incs: &incs,
+                    flags: &flags,
+                    deffmt: asm_format(p),
+                    flags_rsp: None,
+                },
+                src,
+                &obj,
+            ) {
                 Some(c) => c,
                 None => {
                     eprintln!("heddle: skipping {}: command too long", src);

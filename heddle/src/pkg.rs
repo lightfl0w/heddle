@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 
 use crate::model::{PkgKind, PkgManifest, PkgSource, PkgSpec, TargetProfile, Toolchain};
@@ -202,10 +203,7 @@ fn pc_query(pc: &str, mode: &str, ran: &mut bool) -> Option<String> {
     );
     let argv = vec!["pkg-config".to_string(), mode.to_string(), pc.to_string()];
 
-    let r = match proc::run(&argv, None, &log, &[]) {
-        Some(r) => r,
-        None => return None,
-    };
+    let r = proc::run(&argv, None, &log, &[])?;
 
     *ran = true;
 
@@ -484,8 +482,10 @@ fn manifest_load_star(mut m: PkgManifest, star_path: &str) -> Result<PkgManifest
 }
 
 pub fn manifest_load(root: &str) -> Result<PkgManifest, String> {
-    let mut m = PkgManifest::default();
-    m.root = root.to_string();
+    let mut m = PkgManifest {
+        root: root.to_string(),
+        ..PkgManifest::default()
+    };
     let cfg = format!("{}/heddle.toml", m.root);
     let star = format!("{}/heddle.star", m.root);
     m.lock_path = path_join(&m.root, "heddle.lock");
@@ -900,29 +900,27 @@ fn fetch_pkg(
     }
 }
 
-fn lock_lookup(path: &str, kind: &str, name: &str, version: &str) -> Option<String> {
-    let text = sys::read_to_string(path)?;
+type LockMap = HashMap<(String, String, String), String>;
 
-    for line in text.lines() {
-        if line.starts_with('#') {
-            continue;
+fn lock_read(path: &str) -> LockMap {
+    let mut map = LockMap::new();
+    if let Some(text) = sys::read_to_string(path) {
+        for line in text.lines() {
+            if line.starts_with('#') {
+                continue;
+            }
+            let mut t = line.split_whitespace();
+            let (k, n, v, h) = match (t.next(), t.next(), t.next(), t.next()) {
+                (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
+                _ => continue,
+            };
+            map.insert(
+                (k.to_string(), n.to_string(), v.to_string()),
+                h.to_string(),
+            );
         }
-        let mut t = line.split_whitespace();
-        let k = t.next();
-        let n = t.next();
-        let v = t.next();
-        let h = t.next();
-        let (k, n, v, h) = match (k, n, v, h) {
-            (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
-            _ => continue,
-        };
-        if k != kind || n != name || v != version {
-            continue;
-        }
-        return Some(h.to_string());
     }
-
-    None
+    map
 }
 
 fn lock_write(m: &PkgManifest) -> Result<(), String> {
@@ -1054,6 +1052,7 @@ fn install_list(
 
     let store = m.store.clone();
     let lock_path = m.lock_path.clone();
+    let locks = lock_read(&lock_path);
 
     let list = if is_deps { &mut m.deps } else { &mut m.tools };
 
@@ -1064,18 +1063,23 @@ fn install_list(
 
         let dst = s.store_path.clone();
 
-        let want = lock_lookup(&lock_path, kind_dir(s.kind), &s.name, &s.version);
-        let mut drift = false;
+        let want = locks.get(&(
+            kind_dir(s.kind).to_string(),
+            s.name.clone(),
+            s.version.clone(),
+        ));
+        let mut hex = if dir_exists(&dst) {
+            hash_tree(&dst)
+        } else {
+            String::new()
+        };
+        let mut have_hex = dir_exists(&dst);
+        let drift = match want {
+            Some(w) => have_hex && *w != hex,
+            None => false,
+        };
 
-        if dir_exists(&dst) {
-            let hex = hash_tree(&dst);
-            drift = match &want {
-                Some(w) => *w != hex,
-                None => false,
-            };
-        }
-
-        if !dir_exists(&dst) || drift {
+        if !have_hex || drift {
             if drift && offline {
                 return Err(format!(
                     "{} {}@{} drifted and --offline forbids repair",
@@ -1085,7 +1089,7 @@ fn install_list(
                 ));
             }
 
-            if dir_exists(&dst) {
+            if have_hex {
                 remove_tree(&dst);
             }
 
@@ -1107,6 +1111,7 @@ fn install_list(
                 vtrip,
                 offline,
             )?;
+            have_hex = false;
         }
 
         s.store_path = dst.clone();
@@ -1115,9 +1120,11 @@ fn install_list(
             chmod_bin(&dst);
         }
 
-        let hex = hash_tree(&dst);
+        if !have_hex {
+            hex = hash_tree(&dst);
+        }
 
-        if let Some(w) = &want {
+        if let Some(w) = want {
             if *w != hex {
                 eprintln!(
                     "heddle: warning: {} {}@{} content changed (lock {}, store {})",
@@ -1169,9 +1176,9 @@ pub fn verify(m: &mut PkgManifest, verbose: bool) -> Result<(), String> {
     }
 
     let mut bad = 0;
+    let locks = lock_read(&m.lock_path);
 
     for pass in 0..2 {
-        let lock_path = m.lock_path.clone();
         let list = if pass == 0 { &m.tools } else { &m.deps };
 
         for s in list {
@@ -1187,7 +1194,11 @@ pub fn verify(m: &mut PkgManifest, verbose: bool) -> Result<(), String> {
             }
 
             let hex = hash_tree(&s.store_path);
-            let want = lock_lookup(&lock_path, kind_dir(s.kind), &s.name, &s.version);
+            let want = locks.get(&(
+                kind_dir(s.kind).to_string(),
+                s.name.clone(),
+                s.version.clone(),
+            ));
 
             match want {
                 None => {
@@ -1200,7 +1211,7 @@ pub fn verify(m: &mut PkgManifest, verbose: bool) -> Result<(), String> {
                     bad += 1;
                 }
                 Some(w) => {
-                    if w != hex {
+                    if *w != hex {
                         eprintln!(
                             "heddle: {} {}@{}: drift (lock {}, store {})",
                             kind_dir(s.kind),

@@ -404,10 +404,7 @@ fn copy_file(src: &str, dst: &str) -> bool {
         Ok(d) => d,
         Err(_) => return false,
     };
-    match std::fs::write(dst, &data) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    std::fs::write(dst, &data).is_ok()
 }
 
 pub fn write_log(log: &str, pl: &InstallPlan) -> Result<(), String> {

@@ -161,7 +161,7 @@ fn node_scan(nd: &mut Node) {
         i += 1;
     }
     if let Some(a) = ar_output(nd) {
-        if !nd.outs.iter().any(|o| *o == a) {
+        if !nd.outs.contains(&a) {
             nd.outs.push(a);
         }
     }
@@ -205,9 +205,9 @@ fn build_rdeps(g: &mut Graph) -> Result<(), String> {
             rcap[d] += 1;
         }
     }
-    for i in 0..n {
-        g.nodes[i].rdeps = Vec::with_capacity(rcap[i]);
-        g.nodes[i].rdeps.clear();
+    for (i, nd) in g.nodes.iter_mut().enumerate() {
+        nd.rdeps = Vec::with_capacity(rcap[i]);
+        nd.rdeps.clear();
     }
     for i in 0..n {
         let deps = g.nodes[i].deps.clone();
@@ -225,8 +225,8 @@ fn detect_cycle(g: &Graph) -> Result<(), String> {
     }
     let mut indeg: Vec<usize> = g.nodes.iter().map(|x| x.indeg).collect();
     let mut queue: Vec<usize> = Vec::with_capacity(n);
-    for i in 0..n {
-        if indeg[i] == 0 {
+    for (i, &d) in indeg.iter().enumerate() {
+        if d == 0 {
             queue.push(i);
         }
     }
@@ -335,8 +335,10 @@ pub fn parse(text: &str) -> Result<Graph, String> {
             return Err(format!("line {}: empty command", lineno));
         }
 
-        let mut nd = Node::default();
-        nd.argv = argv;
+        let mut nd = Node {
+            argv,
+            ..Node::default()
+        };
         if let Some(ds) = deps_str {
             for t in split_ws(ds) {
                 let d = atoi(&t);

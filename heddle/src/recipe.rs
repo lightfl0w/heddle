@@ -29,8 +29,10 @@ pub fn match_dir(dir: &str) -> bool {
 }
 
 pub fn load(dir: &str) -> Result<Recipe, String> {
-    let mut r = Recipe::default();
-    r.dir = dir.to_string();
+    let mut r = Recipe {
+        dir: dir.to_string(),
+        ..Recipe::default()
+    };
 
     let cfg = join(dir, "package.toml");
 

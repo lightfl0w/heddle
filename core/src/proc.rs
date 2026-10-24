@@ -27,7 +27,7 @@ fn from_status(st: std::process::ExitStatus) -> ProcResult {
     }
 }
 
-fn spawn<'a>(
+fn spawn(
     cmd: &mut Command,
     cwd: Option<&str>,
     env: &[(String, String)],

@@ -246,7 +246,7 @@ fn auto_depends(p: &mut Project) -> Result<(), String> {
             if p.targets[k].name == name {
                 continue;
             }
-            if p.targets[k].deps.iter().any(|d| *d == name) {
+            if p.targets[k].deps.contains(&name) {
                 continue;
             }
             p.targets[k].deps.push(name.clone());
@@ -483,14 +483,16 @@ fn load_star_finish(
     if p.tc_cc.is_some() || p.tc_based.is_some() {
         toolchain::load_star(
             &mut p.tc,
-            &p.toolchain_name,
-            p.tc_based.as_deref(),
-            p.tc_cc.as_deref(),
-            p.tc_family.as_deref(),
-            p.target_prefix.as_deref(),
-            p.target_sysroot.as_deref(),
-            &flags,
-            &p.pkg.target.arch,
+            &toolchain::StarTcSpec {
+                name: &p.toolchain_name,
+                based: p.tc_based.as_deref(),
+                cc: p.tc_cc.as_deref(),
+                family: p.tc_family.as_deref(),
+                prefix: p.target_prefix.as_deref(),
+                sysroot: p.target_sysroot.as_deref(),
+                extra_cflags: &flags,
+                arch: &p.pkg.target.arch,
+            },
         )?;
     } else {
         toolchain::load_ex(

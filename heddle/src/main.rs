@@ -109,7 +109,10 @@ fn take_value_opts(arg: &str, args: &[String], i: &mut usize, a: &mut Args) -> R
         return Ok(true);
     }
     if let Some(v) = take_opt(arg, "-j", args, i)? {
-        a.o.jobs = v.parse().unwrap_or(0);
+        a.o.jobs = v.parse().map_err(|_| {
+            eprintln!("heddle: invalid job count '{}'", v);
+            2
+        })?;
         return Ok(true);
     }
     if let Some(v) = take_opt(arg, "-t", args, i)? {

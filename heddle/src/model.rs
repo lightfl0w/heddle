@@ -178,7 +178,6 @@ pub struct StarPlatform {
 #[derive(Clone, Default)]
 pub struct StarCfg {
     pub root: String,
-    pub file: String,
     pub project_name: Option<String>,
     pub build_dir: Option<String>,
     pub toolchain: Option<String>,
